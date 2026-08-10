@@ -191,13 +191,138 @@ function inferCategory(text){const s=text.toLowerCase();const tests=[['groceries
 function flattenWords(blocks){const words=[];for(const b of blocks||[])for(const p of b.paragraphs||[])for(const l of p.lines||[])for(const w of l.words||[]){const bb=w.bbox||w.box||{};if(!w.text||bb.x0==null||bb.y0==null)continue;words.push({text:normalizeOcrText(w.text),conf:Number(w.confidence??w.conf??0),x0:+bb.x0,y0:+bb.y0,x1:+bb.x1,y1:+bb.y1})}return words.filter(w=>w.text)}
 function layoutLinesFromWords(words){if(!words.length)return[];const hs=words.map(w=>Math.max(1,w.y1-w.y0)).sort((a,b)=>a-b),med=hs[Math.floor(hs.length/2)]||18,tol=Math.max(7,med*.58);const sorted=[...words].sort((a,b)=>((a.y0+a.y1)-(b.y0+b.y1))||a.x0-b.x0),rows=[];for(const w of sorted){const cy=(w.y0+w.y1)/2;let best=null,dist=Infinity;for(const r of rows.slice(-8)){const d=Math.abs(cy-r.cy);if(d<dist&&d<=tol){best=r;dist=d}}if(!best){best={cy,words:[]};rows.push(best)}best.words.push(w);best.cy=best.words.reduce((s,x)=>s+(x.y0+x.y1)/2,0)/best.words.length}return rows.sort((a,b)=>a.cy-b.cy).map(r=>{r.words.sort((a,b)=>a.x0-b.x0);const text=r.words.map(w=>w.text).join(' ').replace(/\s+/g,' ').trim();return{text,words:r.words,y:r.cy,confidence:r.words.reduce((s,w)=>s+w.conf,0)/Math.max(1,r.words.length)}}).filter(r=>r.text)}
 function numericWordsFromResult(res){return flattenWords(res?.blocks).filter(w=>/\d/.test(w.text)).map(w=>({...w,text:normalizeDigits(w.text).replace(/[^0-9.,:%/\-]/g,'')})).filter(w=>w.text)}
-function mergeNumericIntoLayout(layout,numericRes){const nums=numericWordsFromResult(numericRes);if(!layout.length||!nums.length)return layout;return layout.map(row=>{const heights=row.words.map(w=>Math.max(1,w.y1-w.y0)),h=heights.length?heights.reduce((a,b)=>a+b,0)/heights.length:18;const matched=nums.filter(n=>Math.abs((n.y0+n.y1)/2-row.y)<=Math.max(10,h*.78));if(!matched.length)return row;const textWords=row.words.filter(w=>!/^\s*[\d.,:%/\-]+\s*$/.test(w.text));const all=[...textWords,...matched].sort((a,b)=>a.x0-b.x0),text=all.map(w=>w.text).join(' ').replace(/\s+/g,' ').trim();return{...row,words:all,text}})}
+function mergeNumericIntoLayout(layout,numericRes){
+  const nums=numericWordsFromResult(numericRes);if(!nums.length)return layout;
+  const base=[...(layout||[])];
+  const numRows=layoutLinesFromWords(nums);
+  if(!base.length)return numRows;
+  for(const nr of numRows){
+    const nHeights=nr.words.map(w=>Math.max(1,w.y1-w.y0)),nh=nHeights.length?nHeights.reduce((a,b)=>a+b,0)/nHeights.length:18;
+    let best=null,dist=Infinity;
+    for(const row of base){const d=Math.abs(row.y-nr.y);if(d<dist&&d<=Math.max(11,nh*.9)){best=row;dist=d}}
+    if(best){
+      const textWords=best.words.filter(w=>!/^[\d.,:%/\-]+$/.test(normalizeDigits(w.text)));
+      const all=[...textWords,...nr.words].sort((a,b)=>a.x0-b.x0);
+      best.words=all;best.text=all.map(w=>w.text).join(' ').replace(/\s+/g,' ').trim();
+    }else{
+      base.push({...nr,source:'numeric-only'});
+    }
+  }
+  return base.sort((a,b)=>a.y-b.y);
+}
 function amountAfterLabel(line,re){const s=normalizeOcrText(line),m=s.match(re);if(!m)return null;const tail=s.slice((m.index||0)+m[0].length),vals=decimalMoneyTokens(tail);return vals.length?vals[0].value:null}
 function bestLabeledAmount(lines,re,exclude){let best=null;for(const line of lines){re.lastIndex=0;if(!re.test(line))continue;re.lastIndex=0;if(exclude){exclude.lastIndex=0;if(exclude.test(line))continue;exclude.lastIndex=0}let v=amountAfterLabel(line,re);re.lastIndex=0;if(v==null){const vals=decimalMoneyTokens(line);if(vals.length)v=vals.at(-1).value}if(v==null)continue;const conf=Math.min(100,55+(/grand|final|due|outstanding|excl|subtotal|vat|tax|الإجمالي|الضريبة|قبل/i.test(line)?25:0));if(!best||conf>best.conf)best={value:v,conf,line}}return best}
-function extractStore(lines){const ban=/(tax|vat|trn|invoice|receipt|date|time|tel|phone|cashier|order|job|deliver|branch|فاتورة|ضريبة|التاريخ|هاتف|رقم|طلب|كاشير)/i;let best={text:'',score:-1};for(const line of lines.slice(0,16)){const c=normalizeOcrText(line).replace(/[^\p{L}\p{N}\s&.'\-]/gu,' ').replace(/\s+/g,' ').trim();if(c.length<3||c.length>75||ban.test(c)||/^[\d\s:/\.\-]+$/.test(c))continue;const letters=(c.match(/\p{L}/gu)||[]).length,digits=(c.match(/\d/g)||[]).length;if(letters<3)continue;let score=letters*2-digits*3+(c===c.toUpperCase()?8:0)-(c.includes(':')?4:0);if(/laundry|restaurant|cafe|coffee|market|store|pharmacy|مغسلة|مطعم|سوق|صيدلية/i.test(c))score+=12;if(score>best.score)best={text:c,score}}return best.text}
-function extractItems(layoutLines,textLines,knownTotal){const lines=layoutLines.length?layoutLines.map(x=>x.text):textLines;let start=0,end=lines.length;const headerRe=/(item\s*name|description|item\b.*qty|qty\b.*amount|الصنف|الوصف|الكمية)/i,totalStart=/(excl\.?\s*vat|subtotal|sub\s*total|grand\s*total|outstanding\s*balance|vat\s*5|tax\s*5|المجموع|الإجمالي|الضريبة)/i;const hi=lines.findIndex(l=>headerRe.test(l));if(hi>=0)start=hi+1;for(let i=start;i<lines.length;i++){if(totalStart.test(lines[i])){end=i;break}}const out=[];let pending='';for(let i=start;i<end;i++){const line=normalizeOcrText(lines[i]);if(!line||/(date|time|order|job|sales|trn|tel|phone|cashier|delivery|فاتورة|التاريخ)/i.test(line))continue;const dec=decimalMoneyTokens(line);if(dec.length>=2){const unit=dec.at(-2).value,rowTotal=dec.at(-1).value;if(unit<=0||rowTotal<=0)continue;let qty=Math.round(rowTotal/unit);if(!(qty>=1&&qty<=50&&Math.abs(qty*unit-rowTotal)<=Math.max(.08,rowTotal*.025))){const prefix=line.slice(0,dec.at(-2).index);const ints=(normalizeDigits(prefix).match(/\b\d{1,2}\b/g)||[]).map(Number).filter(q=>q>=1&&q<=50);qty=ints.length?ints.at(-1):1;if(Math.abs(qty*unit-rowTotal)>Math.max(.12,rowTotal*.04))qty=1}let name=cleanItemName(line.slice(0,dec.at(-2).index));if(pending){name=`${pending} ${name}`.trim();pending=''}name=name.replace(/\b(?:qty|amount|total|price)\b/gi,' ').replace(/\s+/g,' ').trim();if(name.length<2)name='غرض';if(knownTotal&&rowTotal>knownTotal*1.05)continue;out.push({name,price:Number(unit.toFixed(2)),qty,readTotal:Number(rowTotal.toFixed(2))});continue}if(dec.length===0){const candidate=cleanItemName(line);if(candidate.length>=3&&!/(terms|condition|responsible|damage|within|call|please|thank|شكرا|شروط)/i.test(candidate))pending=(pending+' '+candidate).trim().slice(-120)}else if(dec.length===1){const candidate=cleanItemName(line.slice(0,dec[0].index));if(candidate.length>=3)pending=(pending+' '+candidate).trim().slice(-120)}}const uniq=[],seen=new Set();for(const it of out){const k=`${it.name.toLowerCase()}|${it.price}|${it.qty}`;if(!seen.has(k)){seen.add(k);uniq.push(it)}if(uniq.length>=40)break}return uniq}
+function storeCandidateText(line){
+  return normalizeOcrText(line).replace(/[^\p{L}\p{N}\s&.'\-]/gu,' ').replace(/\s+/g,' ').trim();
+}
+function extractStore(lines,layoutLines=[]){
+  const rows=(layoutLines&&layoutLines.length?layoutLines.map((r,i)=>({text:r.text,index:i,row:r})):lines.map((text,index)=>({text,index,row:null}))).slice(0,18);
+  const stopAt=rows.findIndex(x=>/(tax\s*invoice|invoice|receipt|فاتورة\s*(?:ضريبية)?)/i.test(x.text));
+  const pool=stopAt>0?rows.slice(0,Math.min(stopAt,12)):rows.slice(0,12);
+  const hardBan=/(tax|vat|trn|invoice|receipt|date|time|tel|phone|mobile|cashier|order|job|deliver|delivery|فاتورة|ضريبة|التاريخ|هاتف|رقم|طلب|كاشير)/i;
+  const addressRe=/(\bnear\b|\bmall\b|\broad\b|\bstreet\b|\bst\.?\b|\bbuilding\b|\bshop\b|\bpo\s*box\b|\bp\.?o\.?\b|\bu\.?a\.?e\.?\b|\bdubai\b|\babu\s*dhabi\b|\bal\s*ain\b|\barea\b|\bindustrial\b|\bzone\b|\bopposite\b|\bbehind\b|\bnext\s*to\b|قرب|شارع|طريق|مول|مبنى|محل\s*رقم|صندوق\s*بريد|دبي|أبوظبي|ابوظبي|العين)/i;
+  const businessRe=/(laundry|laundromat|dry\s*clean|restaurant|caf[eé]|cafeteria|coffee|bakery|supermarket|hypermarket|grocery|market|pharmacy|salon|barber|trading|electronics|automatic|services|llc|l\.l\.c|establishment|مغسلة|تنظيف|مطعم|مقهى|كافتيريا|مخبز|سوبر\s*ماركت|هايبر|بقالة|صيدلية|صالون|حلاقة|تجارة|خدمات|ذ\.?\s*م\.?\s*م)/i;
+  let best={text:'',score:-999};
+  const heights=(layoutLines||[]).flatMap(r=>(r.words||[]).map(w=>Math.max(1,w.y1-w.y0))).sort((a,b)=>a-b),medianH=heights.length?heights[Math.floor(heights.length/2)]:0;
+  for(const cand of pool){
+    let c=storeCandidateText(cand.text);if(c.length<3||c.length>90||hardBan.test(c)||/^[\d\s:/\.\-]+$/.test(c))continue;
+    const letters=(c.match(/\p{L}/gu)||[]).length,digits=(c.match(/\d/g)||[]).length;if(letters<3)continue;
+    const latin=(c.match(/[A-Za-z]/g)||[]).length,upper=(c.match(/[A-Z]/g)||[]).length;
+    const hasBusiness=businessRe.test(c),hasAddress=addressRe.test(c);
+    let score=18+Math.min(letters,34)*.45-digits*5-cand.index*1.4;
+    if(hasBusiness)score+=52;if(hasAddress)score-=38;
+    if(latin>=5&&upper/Math.max(1,latin)>.78)score+=18;
+    if(c.length>48)score-=Math.min(22,(c.length-48)*.7);
+    if(cand.row&&medianH){const ah=(cand.row.words||[]).reduce((a,w)=>a+Math.max(1,w.y1-w.y0),0)/Math.max(1,(cand.row.words||[]).length);if(ah>medianH*1.18)score+=10}
+    // If OCR merged a business name with an address, keep the business-name portion only.
+    if(hasBusiness&&hasAddress){
+      const am=c.search(addressRe);if(am>5)c=c.slice(0,am).trim();
+    }
+    if(score>best.score)best={text:c,score};
+  }
+  return best.text;
+}
+function scriptCleanItemName(text){
+  let c=cleanItemName(text)
+    .replace(/\b(?:item|name|description|desc|qty|quantity|amount|total|price|unit)\b/gi,' ')
+    .replace(/\b(?:wash\s*&?\s*[lI1]ron|wash\s+and\s+[lI1]ron)\b/gi,'Wash & Iron')
+    .replace(/\b[lI1]ron\b/g,'Iron')
+    .replace(/\s*[-–—]+\s*/g,' - ').replace(/\s*&\s*/g,' & ').replace(/\s+/g,' ').trim();
+  if(!c)return '';
+  const latin=(c.match(/[A-Za-z]/g)||[]).length,arabic=(c.match(/[\u0600-\u06FF]/g)||[]).length;
+  // Mixed-language OCR often injects isolated garbage from the second script. Prefer the coherent script.
+  if(latin>=7&&latin>=arabic*1.15){
+    c=c.replace(/[\u0600-\u06FF]+/g,' ').replace(/\s+/g,' ').trim();
+  }else if(arabic>=7&&arabic>=latin*1.35){
+    c=c.replace(/[A-Za-z]+(?:['.][A-Za-z]+)*/g,' ').replace(/\s+/g,' ').trim();
+  }
+  return c.replace(/\s*[-–—]+\s*/g,' - ').replace(/\s*&\s*/g,' & ').replace(/\s+/g,' ').replace(/^[-&\s]+|[-&\s]+$/g,'').trim();
+}
+function rowMoneyWords(row){
+  return (row?.words||[]).map(w=>({w,v:numericValue(w.text)})).filter(x=>x.v!=null&&/[.,]\d{1,2}\b/.test(normalizeDigits(x.w.text))&&x.v>0&&x.v<100000).sort((a,b)=>a.w.x0-b.w.x0);
+}
+function rowIntegerWords(row){
+  return (row?.words||[]).map(w=>({w,v:numericValue(w.text)})).filter(x=>x.v!=null&&/^\d{1,2}$/.test(normalizeDigits(x.w.text))&&x.v>=1&&x.v<=50).sort((a,b)=>a.w.x0-b.w.x0);
+}
+function tableBounds(layoutLines,textLines){
+  const rows=layoutLines?.length?layoutLines:(textLines||[]).map((text,i)=>({text,y:i,words:[]}));
+  const headerRe=/(item\s*name|description|item\b.*qty|qty\b.*amount|qty\b.*total|quantity|الصنف|الوصف|الكمية)/i;
+  const totalStart=/(excl\.?\s*vat|subtotal|sub\s*total|grand\s*total|outstanding\s*balance|vat\s*5|tax\s*5|total\s*item|round\s*off|المجموع|الإجمالي|الضريبة)/i;
+  let start=rows.findIndex(r=>headerRe.test(r.text));
+  if(start<0){start=rows.findIndex(r=>rowMoneyWords(r).length>=2);start=Math.max(-1,start-1)}
+  start=Math.max(0,start+1);let end=rows.length;
+  for(let i=start;i<rows.length;i++){if(totalStart.test(rows[i].text)){end=i;break}}
+  return{rows,start,end};
+}
+function itemNameFromRows(rows,from,to,currentRow,firstMoneyX=null){
+  const pieces=[];
+  for(let j=Math.max(from,to-2);j<=to;j++){
+    const r=rows[j];if(!r)continue;
+    let words=(r.words||[]).filter(w=>{
+      const t=normalizeDigits(w.text);if(/^\d+(?:[.,]\d+)?$/.test(t))return false;
+      if(firstMoneyX!=null&&j===to&&w.x0>=firstMoneyX-5)return false;
+      return true;
+    });
+    let txt=words.length?words.map(w=>w.text).join(' '):r.text;
+    txt=scriptCleanItemName(txt);
+    if(txt&&!/(date|time|order|job|sales|trn|tel|phone|cashier|delivery|invoice|receipt|فاتورة|التاريخ|الوقت)/i.test(txt))pieces.push(txt);
+  }
+  const c=scriptCleanItemName(pieces.join(' '));return c.length>=2?c:'';
+}
+function extractItems(layoutLines,textLines,knownTotal){
+  const {rows,start,end}=tableBounds(layoutLines,textLines),spatial=[];let lastNumeric=start-1;
+  for(let i=start;i<end;i++){
+    const row=rows[i],line=normalizeOcrText(row.text||'');if(!line)continue;
+    if(/(date|time|order|job|sales|trn|tel|phone|cashier|delivery|invoice|receipt|فاتورة|التاريخ)/i.test(line))continue;
+    const decW=rowMoneyWords(row);
+    if(decW.length>=2){
+      const unit=decW.at(-2).v,rowTotal=decW.at(-1).v;if(unit<=0||rowTotal<=0)continue;
+      let qty=Math.round(rowTotal/unit);
+      if(!(qty>=1&&qty<=50&&Math.abs(qty*unit-rowTotal)<=Math.max(.09,rowTotal*.03))){
+        const ints=rowIntegerWords(row).filter(x=>x.w.x0<decW.at(-2).w.x0);qty=ints.length?ints.at(-1).v:1;
+        if(Math.abs(qty*unit-rowTotal)>Math.max(.15,rowTotal*.05))qty=1;
+      }
+      const name=itemNameFromRows(rows,lastNumeric+1,i,row,decW[0].w.x0)||'غرض';
+      if(knownTotal&&rowTotal>knownTotal*1.08)continue;
+      spatial.push({name,price:Number(unit.toFixed(2)),qty,readTotal:Number(rowTotal.toFixed(2)),y:row.y});lastNumeric=i;continue;
+    }
+    // Some OCR passes return only one decimal on the text row. If the row has a qty integer and a plausible price, preserve it as a candidate.
+    if(decW.length===1){
+      const ints=rowIntegerWords(row).filter(x=>x.w.x0<decW[0].w.x0);if(ints.length){const qty=ints.at(-1).v,unit=decW[0].v,name=itemNameFromRows(rows,lastNumeric+1,i,row,decW[0].w.x0);if(name&&qty>=1)spatial.push({name,price:Number(unit.toFixed(2)),qty,readTotal:Number((unit*qty).toFixed(2)),y:row.y,weak:true}),lastNumeric=i}
+    }
+  }
+  // Text-only fallback for engines/browsers that do not expose word boxes.
+  const lines=rows.map(r=>r.text),fallback=[];let pending='';
+  for(let i=start;i<end;i++){
+    const line=normalizeOcrText(lines[i]);if(!line)continue;const dec=decimalMoneyTokens(line);
+    if(dec.length>=2){const unit=dec.at(-2).value,rowTotal=dec.at(-1).value;if(unit<=0||rowTotal<=0)continue;let qty=Math.round(rowTotal/unit);if(!(qty>=1&&qty<=50&&Math.abs(qty*unit-rowTotal)<=Math.max(.09,rowTotal*.03)))qty=1;let name=scriptCleanItemName(line.slice(0,dec.at(-2).index));if(pending){name=scriptCleanItemName(`${pending} ${name}`);pending=''};if(name.length<2)name='غرض';fallback.push({name,price:Number(unit.toFixed(2)),qty,readTotal:Number(rowTotal.toFixed(2))})}else if(dec.length===0){const c=scriptCleanItemName(line);if(c.length>=3&&!/(terms|condition|responsible|damage|within|call|please|thank|شكرا|شروط)/i.test(c))pending=(pending+' '+c).trim().slice(-140)}
+  }
+  const clean=list=>{const out=[],seen=new Set();for(const it of list){const k=`${it.name.toLowerCase()}|${it.price}|${it.qty}`;if(!seen.has(k)){seen.add(k);out.push(it)}if(out.length>=40)break}return out};
+  const a=clean(spatial),b=clean(fallback),sum=x=>x.reduce((s,it)=>s+Number(it.readTotal??it.price*it.qty),0),score=x=>{let sc=x.filter(it=>!it.weak).length*10+x.length*3;const sm=sum(x);if(knownTotal&&sm>0)sc+=Math.max(0,25-Math.abs(sm-knownTotal)/Math.max(.01,knownTotal)*35);return sc};
+  return score(a)>=score(b)?a:b;
+}
 function reconcileFinancials({totalHit,subHit,taxHit,items,vatEvidence}){let total=totalHit?.value??null,subtotal=subHit?.value??null,tax=taxHit?.value??null;const itemSum=items.reduce((s,x)=>s+Number(x.readTotal??x.price*x.qty),0),close=(a,b,t=.08)=>a!=null&&b!=null&&Math.abs(a-b)<=Math.max(t,Math.max(a,b)*.015);if(total!=null&&tax!=null&&(subtotal==null||!close(subtotal+tax,total,.12)))subtotal=Math.max(0,total-tax);if(total!=null&&subtotal!=null&&(tax==null||!close(subtotal+tax,total,.12)))tax=Math.max(0,total-subtotal);if(total==null&&itemSum>0)total=Number(itemSum.toFixed(2));if(vatEvidence&&total!=null&&subtotal==null&&tax==null){subtotal=Number((total/1.05).toFixed(2));tax=Number((total-subtotal).toFixed(2))}if(total==null&&subtotal!=null&&tax!=null)total=Number((subtotal+tax).toFixed(2));if(total!=null&&subtotal!=null&&tax!=null&&!close(subtotal+tax,total,.15)){if(taxHit?.conf>=75&&totalHit?.conf>=75)subtotal=Number((total-tax).toFixed(2));else if(subHit?.conf>=75&&totalHit?.conf>=75)tax=Number((total-subtotal).toFixed(2))}return{total,subtotal,tax,itemSum,totalReliable:!!totalHit||(itemSum>0&&total!=null)}}
-function parseReceiptSmart(res,secondPass=false,numericRes=null){const raw=normalizeDigits(res?.text||'').replace(/[\u200f\u200e]/g,' ').replace(/\r/g,''),textLines=raw.split(/\n+/).map(normalizeOcrText).filter(Boolean),words=flattenWords(res?.blocks),layout0=layoutLinesFromWords(words),layout=mergeNumericIntoLayout(layout0,numericRes),lines=layout.length?layout.map(x=>x.text):textLines;const store=extractStore(lines.length?lines:textLines),date=parseDate(lines.length?lines:textLines);const strongTotal=/(grand\s*total|final\s*total|amount\s*due|net\s*total|balance\s*due|outstanding\s*balance|total\s*amount|الإجمالي\s*النهائي|الاجمالي\s*النهائي|المجموع\s*الكلي|المبلغ\s*المستحق)/i,subRe=/(excl(?:uding)?\.?\s*vat|subtotal|sub\s*total|before\s*vat|before\s*tax|قبل\s*الضريبة|قبل\s*ضريبة)/i,taxRe=/(?:\bvat\b\s*(?:5\s*%)?|\btax\b|ضريبة\s*(?:القيمة\s*المضافة)?)/i;let totalHit=bestLabeledAmount(lines,strongTotal,/(item|qty|sub|excl|vat|tax)/i),subHit=bestLabeledAmount(lines,subRe),taxHit=bestLabeledAmount(lines,taxRe,/(trn|reg(?:istration)?|invoice|رقم\s*ضريبي)/i);if(!totalHit)totalHit=bestLabeledAmount(lines,/(?:^|\s)total\s*[:\-]?/i,/(item|qty|sub|excl|vat|tax|round|discount)/i);const vatEvidence=/(\bvat\b|ضريبة\s*القيمة\s*المضافة|5\s*%)/i.test(raw);const items=extractItems(layout,textLines,totalHit?.value??null),fin=reconcileFinancials({totalHit,subHit,taxHit,items,vatEvidence}),category=inferCategory(`${store}\n${raw}`);let score=0,fields=0;[[store,15],[date,17],[fin.total!=null,25],[fin.subtotal!=null,12],[fin.tax!=null,12],[items.length,14],[res?.confidence>=55,5]].forEach(([ok,w])=>{if(ok){score+=w;fields++}});if(fin.total!=null&&fin.subtotal!=null&&fin.tax!=null&&Math.abs((fin.subtotal+fin.tax)-fin.total)<=.12)score+=5;if(items.length&&fin.total!=null&&Math.abs(fin.itemSum-fin.total)<=Math.max(.18,fin.total*.02))score+=5;return{score:Math.min(100,score),fields,vatEvidence,items:items.length,itemRows:items,category,store,date,total:fin.total,subtotal:fin.subtotal,tax:fin.tax,totalReliable:fin.totalReliable,rawConfidence:Number(res?.confidence||0),secondPass}}
+function parseReceiptSmart(res,secondPass=false,numericRes=null){const raw=normalizeDigits(res?.text||'').replace(/[\u200f\u200e]/g,' ').replace(/\r/g,''),textLines=raw.split(/\n+/).map(normalizeOcrText).filter(Boolean),words=flattenWords(res?.blocks),layout0=layoutLinesFromWords(words),layout=mergeNumericIntoLayout(layout0,numericRes),lines=layout.length?layout.map(x=>x.text):textLines;const store=extractStore(lines.length?lines:textLines,layout),date=parseDate(lines.length?lines:textLines);const strongTotal=/(grand\s*total|final\s*total|amount\s*due|net\s*total|balance\s*due|outstanding\s*balance|total\s*amount|الإجمالي\s*النهائي|الاجمالي\s*النهائي|المجموع\s*الكلي|المبلغ\s*المستحق)/i,subRe=/(excl(?:uding)?\.?\s*vat|subtotal|sub\s*total|before\s*vat|before\s*tax|قبل\s*الضريبة|قبل\s*ضريبة)/i,taxRe=/(?:\bvat\b\s*(?:5\s*%)?|\btax\b|ضريبة\s*(?:القيمة\s*المضافة)?)/i;let totalHit=bestLabeledAmount(lines,strongTotal,/(item|qty|sub|excl|vat|tax)/i),subHit=bestLabeledAmount(lines,subRe),taxHit=bestLabeledAmount(lines,taxRe,/(trn|reg(?:istration)?|invoice|رقم\s*ضريبي)/i);if(!totalHit)totalHit=bestLabeledAmount(lines,/(?:^|\s)total\s*[:\-]?/i,/(item|qty|sub|excl|vat|tax|round|discount)/i);const vatEvidence=/(\bvat\b|ضريبة\s*القيمة\s*المضافة|5\s*%)/i.test(raw);const items=extractItems(layout,textLines,totalHit?.value??null),fin=reconcileFinancials({totalHit,subHit,taxHit,items,vatEvidence}),category=inferCategory(`${store}\n${raw}`);let score=0,fields=0;[[store,15],[date,17],[fin.total!=null,25],[fin.subtotal!=null,12],[fin.tax!=null,12],[items.length,14],[res?.confidence>=55,5]].forEach(([ok,w])=>{if(ok){score+=w;fields++}});if(fin.total!=null&&fin.subtotal!=null&&fin.tax!=null&&Math.abs((fin.subtotal+fin.tax)-fin.total)<=.12)score+=5;if(items.length&&fin.total!=null&&Math.abs(fin.itemSum-fin.total)<=Math.max(.18,fin.total*.02))score+=5;return{score:Math.min(100,score),fields,vatEvidence,items:items.length,itemRows:items,category,store,date,total:fin.total,subtotal:fin.subtotal,tax:fin.tax,totalReliable:fin.totalReliable,rawConfidence:Number(res?.confidence||0),secondPass}}
 function applyParsedReceipt(r){if(r.store)$('#storeName').value=r.store;if(r.date)$('#invoiceDate').value=r.date;renderCategoryOptions(r.category||'other');if(r.subtotal!=null)$('#subtotal').value=Number(r.subtotal).toFixed(2);if(r.tax!=null)$('#tax').value=Number(r.tax).toFixed(2);if(r.total!=null)$('#finalTotal').value=Number(r.total).toFixed(2);if(r.itemRows?.length){$('#items').innerHTML='';r.itemRows.forEach(it=>addItem({name:it.name,price:it.price,qty:it.qty}))}calcTotals()}
 function showScanResult(r){const el=$('#scanResult');el.style.display='block';const vat=r.vatEvidence?` · ${t('vatDetected')}`:'';const checked=r.total!=null&&r.subtotal!=null&&r.tax!=null&&Math.abs((r.subtotal+r.tax)-r.total)<=.12?(lang==='ar'?' · ✓ الأرقام متطابقة حسابيًا':' · ✓ Totals cross-checked'):'';el.textContent=`${t('quality')}: ${r.score}% · ${r.fields} ${t('fieldsDetected')} · ${r.items} ${t('itemsCount')}${vat}${checked}`}
 
@@ -207,6 +332,6 @@ $('#exportBtn').onclick=()=>{const payload={version:2,exportedAt:new Date().toIS
 clearForm();applyLang();
 </script>
 
-<footer class="app-version-footer" id="appVersionFooter" data-version="2.1.0">الإصدار 2.1.0</footer>
+<footer class="app-version-footer" id="appVersionFooter" data-version="2.1.1">الإصدار 2.1.1</footer>
 </body>
 </html>
