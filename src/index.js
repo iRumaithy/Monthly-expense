@@ -1,37 +1,54 @@
 const MODEL = '@cf/meta/llama-3.2-11b-vision-instruct';
-const VERSION = '4.3.4';
+const VERSION = '4.4.0';
 
-const PROMPT = `You are a literal OCR transcriber for UAE receipts. Read the supplied composite image.
+const PROMPT = `You are a literal OCR transcriber specialized in many different UAE receipt and tax-invoice layouts.
 
 The composite contains three FULL-WIDTH horizontal panels from the SAME receipt:
-- TOP: merchant/header and invoice date. Read STORE and DATE carefully.
-- MIDDLE: item table. Read every purchase row.
-- BOTTOM: totals/VAT area.
+- TOP: merchant/header and invoice date.
+- MIDDLE: item/service table.
+- BOTTOM: totals/VAT/payment summary.
 
-Do NOT return JSON. Return ONLY plain text lines using this exact protocol:
+Do NOT return JSON. Return ONLY plain text protocol lines:
 
-STORE|English merchant name
-DATE_RAW|date exactly as printed on the receipt
-COUNT|number
+STORE|best customer-facing merchant/trade/store name
+STORE_CANDIDATE|major English business/organization name from the header
+STORE_CANDIDATE|another major English business/organization name if present
+DATE_RAW|invoice/transaction date exactly as printed
+COUNT|number of DISTINCT ITEM ROWS only when explicitly printed as Total item / No. of items
 VAT_RATE|number
-SUBTOTAL|number
-VAT|number
-TOTAL|number
+SUBTOTAL|amount before VAT/tax
+VAT|tax amount
+TOTAL|final payable/gross total
 ITEM|English item text|Arabic item text|quantity|unit price|line total
 ITEM|English item text|Arabic item text|quantity|unit price|line total
 
-Rules:
-1. Emit ONE ITEM line for EVERY visible purchasable row. If "Total item: 3" is visible, there must be exactly 3 ITEM lines.
-2. Copy item names literally. Never translate or spell-correct. Use an empty field if one language is absent.
-3. Never include VAT, totals, balance, dates, TRN, order number or headings as items.
-4. DATE_RAW must be copied EXACTLY in the same numeric order printed on the receipt.
-   Example: if the receipt shows 02-08-2026, output DATE_RAW|02-08-2026.
-   NEVER convert 02-08-2026 to 2026-02-08 and NEVER swap day/month.
-   Do not infer an American MM-DD-YYYY order.
-5. STORE is only the English business name, excluding address/phone/TRN/TAX INVOICE/JOB ORDER.
-6. Read decimal amounts character by character. 12.00, 0.60 and 12.60 are different.
-7. If a value is unreadable, leave that field empty rather than guessing.
-8. No markdown, no commentary, no code fence. Only protocol lines.`;
+MERCHANT RULES:
+1. STORE means the CUSTOMER-FACING OUTLET/TRADE NAME that actually issued the receipt, not necessarily the first legal company name.
+2. Emit every major English organization/trade name in the header as STORE_CANDIDATE in TOP-TO-BOTTOM visual order.
+3. If a parent/owner/management/holding company appears above a pharmacy, laundry, restaurant, shop, branch, clinic, market, salon, etc., choose the customer-facing outlet as STORE.
+   Generic example: "ABC Facilities Management L.L.C." above "CITY PHARMACY - BRANCH" => STORE is CITY PHARMACY - BRANCH.
+4. Exclude addresses, mall/location text, municipality/building names, phone, TRN, TAX INVOICE, invoice number, customer name and payment system names from STORE.
+
+DATE RULES:
+5. DATE_RAW must be copied EXACTLY in the same order printed. Never swap day and month.
+   Example: 02-08-2026 => DATE_RAW|02-08-2026.
+   A text date such as 21 Jul 2026 => DATE_RAW|21 Jul 2026.
+6. Use the transaction/invoice date, not Delivery Date, due date or Print Time.
+
+ITEM RULES:
+7. Emit ONE ITEM line for every distinct purchasable row.
+8. Copy English and Arabic item names literally. Never translate or spell-correct.
+9. quantity, unit_price and line_total must belong to the SAME row.
+10. COUNT is ONLY a printed count of distinct item rows. Do NOT use T.Pcs, Total Pieces, Total Qty or total quantity as COUNT.
+11. Never include VAT, totals, balance, dates, TRN, invoice/order/customer numbers or table headings as ITEM rows.
+
+TOTAL RULES:
+12. SUBTOTAL is the amount before VAT/tax. Labels vary: Excl.VAT, Subtotal, Net W/Out Tax, G.Amt or similar.
+13. VAT is the tax amount, not the percentage.
+14. TOTAL is the final amount payable. Labels vary: Grand Total, Total, Gross, Amount Due, Adv when it clearly equals subtotal + tax, or similar.
+15. Read decimal points character-by-character. 12.00, 0.60 and 12.60 are different.
+16. If a field is unreadable, leave it empty rather than guessing.
+17. No markdown, no commentary and no code fences. Only protocol lines.`;
 
 function headers(extra={}) {
   return {'content-type':'application/json; charset=utf-8','cache-control':'no-store',...extra};
@@ -71,6 +88,51 @@ function merchant(v){
   s=s.replace(/\b(?:TAX\s*INVOICE|INVOICE|RECEIPT|JOB\s*ORDER|TRN|MOB(?:ILE)?|TEL(?:EPHONE)?)\b.*$/i,'').trim();
   return /[A-Za-z]{3}/.test(s)?s:null;
 }
+
+function merchantKey(v){
+  return txt(v).toLowerCase().replace(/[^a-z0-9]+/g,' ').replace(/\s+/g,' ').trim();
+}
+function merchantCandidateScore(name,index=0,preferred=false){
+  const s=txt(name),k=merchantKey(s); if(!k||!/^[\s\S]*[a-z]{2}/i.test(k))return -999;
+  let score=10 + Math.min(12,index*3);
+  if(preferred)score+=18;
+
+  // Strong customer-facing business signals.
+  if(/\b(pharmacy|laundry|laundromat|dry\s*clean|restaurant|cafe|coffee|bakery|supermarket|hypermarket|grocery|market|salon|barber|clinic|hospital|optical|boutique|store|shop|mart|garage|workshop|tailor|cafeteria|roastery)\b/i.test(s))score+=62;
+  else if(/\b(trading|services|medical|dental|electronics|furniture|fashion|jewellery|jewelry|flowers|florist|stationery|typing|printing|car\s*wash|rent\s*a\s*car)\b/i.test(s))score+=28;
+
+  if(/\bbranch\b/i.test(s))score+=9;
+  if(/\b(sole\s+proprietorship|establishment)\b/i.test(s))score+=5;
+
+  // Strong signals that a line is a parent/legal/administrative entity rather than the outlet.
+  if(/\bfacilit(?:y|ies)\s+management\b/i.test(s))score-=72;
+  if(/\b(property|properties|real\s*estate)\s+management\b/i.test(s))score-=48;
+  if(/\b(holding|holdings|investment|investments)\b/i.test(s))score-=42;
+  if(/\bmanagement\b/i.test(s))score-=24;
+  if(/\b(head\s*office|corporate|parent\s*company)\b/i.test(s))score-=28;
+  if(/\b(municipality|building|street|road|mall)\b/i.test(s))score-=35;
+  if(/\b(tax\s*invoice|invoice|receipt|trn|customer|cashier|bill\s*no|order\s*no)\b/i.test(s))score-=80;
+
+  // Legal suffixes are neutral, not evidence of being the storefront.
+  if(s.length>=5&&s.length<=100)score+=5;
+  return score;
+}
+function chooseMerchant(preferred,candidates){
+  const all=[];
+  const push=(v,pref=false)=>{
+    const s=merchant(v);if(!s)return;
+    const key=merchantKey(s);
+    if(all.some(x=>x.key===key)){if(pref)all.find(x=>x.key===key).preferred=true;return}
+    all.push({name:s,key,preferred:pref,index:all.length});
+  };
+  push(preferred,true);
+  for(const c of candidates||[])push(c,false);
+  if(!all.length)return null;
+  for(const x of all)x.score=merchantCandidateScore(x.name,x.index,x.preferred);
+  all.sort((a,b)=>b.score-a.score);
+  return all[0].name;
+}
+
 function summaryName(s){
   return /^(?:vat|tax|subtotal|sub\s*total|excl\.?\s*vat|grand\s*total|total|balance|outstanding|amount\s*due|total\s*item|cash|card|change|trn|invoice|job\s*order|ضريبة|الإجمالي|الاجمالي|المجموع)/i.test(txt(s));
 }
@@ -95,12 +157,13 @@ function cleanLine(s){
 }
 function parseProtocol(rawText){
   const raw=txt(rawText).replace(/```(?:text|txt)?/gi,'').replace(/```/g,'');
-  const out={store:null,date:null,count:null,rate:null,subtotal:null,tax:null,total:null,items:[],warnings:[]};
+  const out={store:null,storeCandidates:[],date:null,count:null,rate:null,subtotal:null,tax:null,total:null,items:[],warnings:[]};
   const lines=raw.split(/\n+/).map(cleanLine).filter(Boolean);
 
   for(const line of lines){
     const p=line.split('|').map(x=>x.trim()), key=(p[0]||'').toUpperCase().replace(/\s+/g,'_');
     if(key==='STORE'){out.store=merchant(p.slice(1).join('|'));continue}
+    if(key==='STORE_CANDIDATE'){const c=merchant(p.slice(1).join('|'));if(c)out.storeCandidates.push(c);continue}
     if(key==='DATE_RAW'||key==='DATE'){out.date=validDate(p[1]);continue}
     if(key==='COUNT'){const n=num(p[1]);out.count=n!=null&&n>0?Math.round(n):null;continue}
     if(key==='VAT_RATE'){const n=num(p[1]);out.rate=n!=null&&n>=0?n:null;continue}
@@ -125,8 +188,16 @@ function parseProtocol(rawText){
     if(m)out.store=merchant(m[1]);
   }
   if(!out.store){
-    const biz=lines.find(x=>/(laundr[yv]|laundromat|restaurant|caf[eé]|coffee|bakery|supermarket|hypermarket|grocery|market|pharmacy|salon|barber|trading|services|automatic)/i.test(x)&&!/(near|mall|invoice|receipt|tax|trn|phone|mob)/i.test(x));
+    const biz=lines.find(x=>/(laundr[yv]|laundromat|restaurant|caf[eé]|coffee|bakery|supermarket|hypermarket|grocery|market|pharmacy|salon|barber|trading|services|automatic|clinic|hospital|optical|shop|store)/i.test(x)&&!/(near|mall|invoice|receipt|tax|trn|phone|mob)/i.test(x));
     if(biz)out.store=merchant(biz.replace(/^(?:STORE|MERCHANT|BUSINESS)\s*(?:\||:|=|-)?\s*/i,''));
+  }
+  for(const line of lines){
+    if(/^STORE_CANDIDATE\s*\|/i.test(line))continue;
+    if(/\b(?:pharmacy|laundry|laundromat|restaurant|cafe|coffee|bakery|supermarket|hypermarket|grocery|market|salon|barber|clinic|hospital|optical|boutique|store|shop|trading|facilities management|holding|management)\b/i.test(line)
+      && !/\b(?:tax invoice|invoice|receipt|trn|telephone|mobile|customer|bill no|order no)\b/i.test(line)){
+      const c=merchant(line.replace(/^(?:STORE|MERCHANT|BUSINESS)\s*(?:\||:|=|-)?\s*/i,''));
+      if(c)out.storeCandidates.push(c);
+    }
   }
   if(!out.date){
     const m=raw.match(/(?:^|\n)\s*(?:DATE_RAW|DATE|INVOICE_DATE|INVOICE DATE)\s*(?:\||:|=|-)\s*([^\n]+)/im);
@@ -153,12 +224,19 @@ function parseProtocol(rawText){
     if(m)out.subtotal=r2(m[1]);
   }
 
+  out.store=chooseMerchant(out.store,out.storeCandidates);
   return {out,lines,raw};
 }
 function validate(parsed){
   const r=parsed.out, warnings=[...r.warnings];
   const itemSum=r2(r.items.reduce((s,x)=>s+(x.line_total??0),0));
-  if(r.count!=null&&r.count!==r.items.length)warnings.push(`Printed item count is ${r.count}, but ${r.items.length} rows were extracted`);
+  const quantitySum=Math.round(r.items.reduce((s,x)=>s+(Number(x.quantity)||0),0)*100)/100;
+  let pieceCount=null;
+  if(r.count!=null&&r.count!==r.items.length){
+    // Some receipts print T.Pcs / total pieces; if it equals the sum of quantities, it is NOT an item-row count.
+    if(Math.abs(r.count-quantitySum)<.001){pieceCount=r.count;r.count=null;warnings.push('Printed count interpreted as total pieces/quantity, not item-row count');}
+    else warnings.push(`Printed item count is ${r.count}, but ${r.items.length} rows were extracted`);
+  }
   if(r.subtotal!=null&&r.tax!=null&&r.total!=null&&Math.abs(r.subtotal+r.tax-r.total)>.06)warnings.push('Subtotal + VAT does not match Grand Total');
   if(r.rate!=null&&r.rate>0&&r.rate<30&&r.subtotal!=null&&r.tax!=null&&Math.abs(r.subtotal*r.rate/100-r.tax)>.06)warnings.push('VAT amount does not match printed VAT rate');
   if(r.items.length&&r.total!=null&&Math.abs(itemSum-r.total)>.18&&!(r.subtotal!=null&&Math.abs(itemSum-r.subtotal)<=.18))warnings.push('Item row sum does not match labeled totals');
@@ -188,7 +266,7 @@ function validate(parsed){
 
   return {
     receipt:{
-      merchant_name_en:r.store,date:r.date,printed_item_count:r.count,vat_rate_percent:r.rate,
+      merchant_name_en:r.store,date:r.date,printed_item_count:r.count,printed_piece_count:pieceCount,vat_rate_percent:r.rate,
       currency:'AED',subtotal:r.subtotal,tax:r.tax,total:r.total,items:r.items,
       confidence:{merchant:r.store?.length?0.82:0,date:r.date?0.85:0,items:r.items.length?0.82:0,totals:r.total!=null?0.9:0},
       warnings:[...new Set(warnings)].slice(0,14),item_sum:itemSum
@@ -219,7 +297,7 @@ export default {
   async fetch(request,env){
     const url=new URL(request.url);
     if(url.pathname==='/api/health'){
-      return new Response(JSON.stringify({ok:true,engine:'Cloudflare Workers AI • Llama Line OCR DMY',model:MODEL,version:VERSION}),{headers:headers()});
+      return new Response(JSON.stringify({ok:true,engine:'Cloudflare Workers AI • Universal Receipt OCR',model:MODEL,version:VERSION}),{headers:headers()});
     }
     if(url.pathname==='/api/receipt'){
       if(request.method!=='POST')return new Response(JSON.stringify({ok:false,error:'Method not allowed'}),{status:405,headers:headers()});
@@ -230,11 +308,13 @@ export default {
         const result=await readReceipt(env,image);
         return new Response(JSON.stringify({
           ok:true,...result,
-          meta:{engine:'Cloudflare Workers AI • Llama Line OCR DMY',model:MODEL,version:VERSION,scan_id:scanId,elapsed_ms:Date.now()-started,images:1,inference_calls:1}
+          meta:{engine:'Cloudflare Workers AI • Universal Receipt OCR',model:MODEL,version:VERSION,scan_id:scanId,elapsed_ms:Date.now()-started,images:1,inference_calls:1}
         }),{headers:headers()});
       }catch(e){
         console.error('receipt-reader',e);
-        return new Response(JSON.stringify({ok:false,error:e?.message||'Receipt analysis failed',meta:{version:VERSION,scan_id:scanId,elapsed_ms:Date.now()-started}}),{status:500,headers:headers()});
+        const msg=e?.message||'Receipt analysis failed';
+        const retriable=/load failed|timeout|timed out|out of capacity|3040|3007|3008|temporar|aborted/i.test(msg);
+        return new Response(JSON.stringify({ok:false,error:msg,retriable,meta:{version:VERSION,scan_id:scanId,elapsed_ms:Date.now()-started}}),{status:500,headers:headers()});
       }
     }
     if(url.pathname==='/api/license'){
