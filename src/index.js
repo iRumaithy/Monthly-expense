@@ -1,12 +1,12 @@
 const MODEL = '@cf/meta/llama-3.2-11b-vision-instruct';
-const VERSION = '4.3.2';
+const VERSION = '4.3.3';
 
 const PROMPT = `You are a literal OCR transcriber for UAE receipts. Read the supplied composite image.
 
-The composite contains three areas from the SAME receipt:
-- TOP LEFT: merchant/header and invoice date
-- TOP RIGHT: totals/VAT area
-- BOTTOM LARGE: item table. This is the most important area.
+The composite contains three FULL-WIDTH horizontal panels from the SAME receipt:
+- TOP: merchant/header and invoice date. Read STORE and DATE carefully.
+- MIDDLE: item table. Read every purchase row.
+- BOTTOM: totals/VAT area.
 
 Do NOT return JSON. Return ONLY plain text lines using this exact protocol:
 
@@ -46,10 +46,22 @@ function num(v){
 function r2(v){const n=num(v);return n==null?null:Math.round((n+Number.EPSILON)*100)/100}
 function clamp(v){const n=Number(v);return Number.isFinite(n)?Math.max(0,Math.min(1,n)):0}
 function validDate(v){
-  const s=txt(v); if(!/^\d{4}-\d{2}-\d{2}$/.test(s))return null;
-  const [y,m,d]=s.split('-').map(Number),z=new Date(Date.UTC(y,m-1,d));
+  let s=txt(v).trim();
+  if(!s)return null;
+  let y,m,d,match;
+  if((match=s.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/))){
+    y=+match[1];m=+match[2];d=+match[3];
+  }else if((match=s.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})$/))){
+    d=+match[1];m=+match[2];y=+match[3];
+  }else{
+    const months={jan:1,january:1,feb:2,february:2,mar:3,march:3,apr:4,april:4,may:5,jun:6,june:6,jul:7,july:7,aug:8,august:8,sep:9,september:9,oct:10,october:10,nov:11,november:11,dec:12,december:12};
+    match=s.match(/^(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})$/);
+    if(match){d=+match[1];m=months[match[2].toLowerCase()];y=+match[3];}
+  }
+  if(!y||!m||!d)return null;
+  const z=new Date(Date.UTC(y,m-1,d));
   if(y<2000||y>2100||z.getUTCFullYear()!==y||z.getUTCMonth()!==m-1||z.getUTCDate()!==d)return null;
-  return s;
+  return `${String(y).padStart(4,'0')}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
 }
 function merchant(v){
   let s=txt(v).replace(/[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]+/g,' ').replace(/\s+/g,' ').trim();
@@ -105,6 +117,26 @@ function parseProtocol(rawText){
   }
 
   // Conservative label fallbacks if the model slightly misses the protocol delimiter.
+  if(!out.store){
+    const m=raw.match(/(?:^|\n)\s*(?:STORE|MERCHANT|BUSINESS)\s*(?:\||:|=|-)\s*([^\n]+)/im);
+    if(m)out.store=merchant(m[1]);
+  }
+  if(!out.store){
+    const biz=lines.find(x=>/(laundr[yv]|laundromat|restaurant|caf[eé]|coffee|bakery|supermarket|hypermarket|grocery|market|pharmacy|salon|barber|trading|services|automatic)/i.test(x)&&!/(near|mall|invoice|receipt|tax|trn|phone|mob)/i.test(x));
+    if(biz)out.store=merchant(biz.replace(/^(?:STORE|MERCHANT|BUSINESS)\s*(?:\||:|=|-)?\s*/i,''));
+  }
+  if(!out.date){
+    const m=raw.match(/(?:^|\n)\s*(?:DATE|INVOICE_DATE|INVOICE DATE)\s*(?:\||:|=|-)\s*([^\n]+)/im);
+    if(m)out.date=validDate(m[1]);
+  }
+  if(out.count==null){
+    const m=raw.match(/(?:COUNT|TOTAL\s*ITEMS?)\s*(?:\||:|=|-)\s*(\d+)/i);
+    if(m)out.count=num(m[1]);
+  }
+  if(out.rate==null){
+    const m=raw.match(/(?:VAT_RATE|VAT\s*RATE|VAT)\s*(?:\||:|=|-)?\s*(\d+(?:\.\d+)?)\s*%/i);
+    if(m)out.rate=num(m[1]);
+  }
   if(out.total==null){
     const m=raw.match(/(?:GRAND\s*TOTAL|TOTAL)\s*[:=|\-]?\s*(\d+(?:[.,]\d{1,2})?)/i);
     if(m)out.total=r2(m[1]);
@@ -144,9 +176,12 @@ function validate(parsed){
   if(r.count!=null&&r.count===r.items.length)score+=5;
   score=Math.min(100,score);
 
-  const accepted=!!r.store&&!!r.date&&r.items.length>0&&r.total!=null&&
-    (r.count==null||r.count===r.items.length)&&
-    !warnings.some(x=>/does not match labeled|Printed item count|Subtotal \+ VAT/i.test(x));
+  const itemCountOk=(r.count==null||r.count===r.items.length);
+  const financeOk=r.total!=null&&!warnings.some(x=>/does not match labeled|Subtotal \+ VAT/i.test(x));
+  const accepted=r.items.length>0&&itemCountOk&&financeOk;
+  const complete=accepted&&!!r.store&&!!r.date;
+  if(accepted&&!r.store)warnings.push('Merchant name needs manual review');
+  if(accepted&&!r.date)warnings.push('Invoice date needs manual review');
 
   return {
     receipt:{
@@ -155,7 +190,7 @@ function validate(parsed){
       confidence:{merchant:r.store?.length?0.82:0,date:r.date?0.85:0,items:r.items.length?0.82:0,totals:r.total!=null?0.9:0},
       warnings:[...new Set(warnings)].slice(0,14),item_sum:itemSum
     },
-    score,accepted,fields
+    score,accepted,complete,fields
   };
 }
 function validImage(v){return typeof v==='string'&&v.startsWith('data:image/')&&v.length<7_000_000}
