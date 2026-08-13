@@ -146,7 +146,7 @@ button,input,textarea,select{font:inherit}button{cursor:pointer}.app{max-width:1
             <div class="ai-local-head"><div class="ai-local-title"><span>🧠</span><span data-i18n="localAIReader">القارئ الذكي المحلي</span></div><span class="ai-local-badge" id="aiLocalBadge" data-i18n="aiChecking">جارٍ التحقق…</span></div>
             <div class="ai-local-detail" id="aiLocalDetail" data-i18n="aiLocalNote">يعمل داخل الهاتف بدون API أو اشتراك. في أول تشغيل فقط يتم تنزيل النموذج وحفظه في ذاكرة المتصفح.</div>
             <div class="ai-local-meter" id="aiLocalMeter"><i id="aiLocalMeterBar"></i></div>
-            <div class="ai-local-tech"><span id="aiDeviceBadge">Cloudflare</span><span>Workers AI • Universal Receipt OCR + Adaptive Layout</span><span data-i18n="aiPrivate">معالجة سحابية آمنة</span></div>
+            <div class="ai-local-tech"><span id="aiDeviceBadge">Cloudflare</span><span>Workers AI • Universal Receipt OCR + Adaptive Validation</span><span data-i18n="aiPrivate">معالجة سحابية آمنة</span></div>
           </div>
         </div>
         <div class="footer-note" data-i18n="ocrNote">لأفضل نتيجة: اجعل الفاتورة كاملة داخل الصورة وبإضاءة متساوية. تتم معالجة التباين والقص تلقائيًا، ويمكنك مراجعة كل البيانات قبل الحفظ.</div>
@@ -190,8 +190,16 @@ let budgets=JSON.parse(localStorage.getItem(BUDGET_KEY)||'{}');
 let lang=localStorage.getItem('monthlyExpensesLang')||'ar';
 const DASHBOARD_MONTH_KEY='monthlyExpensesDashboardMonthV1';
 const MERCHANT_ALIASES_KEY='monthlyExpensesMerchantAliasesV1';
-let merchantAliases={};
-try{merchantAliases=JSON.parse(localStorage.getItem(MERCHANT_ALIASES_KEY)||'{}')||{}}catch(e){merchantAliases={}}
+const DEFAULT_MERCHANT_ALIASES={
+  'ALMADAMAUTOMATICLAUNDRY':'AL MAQAM AUTOMATIC LAUNDRY'
+};
+let merchantAliases={...DEFAULT_MERCHANT_ALIASES};
+try{
+  const savedAliases=JSON.parse(localStorage.getItem(MERCHANT_ALIASES_KEY)||'{}')||{};
+  merchantAliases={...DEFAULT_MERCHANT_ALIASES,...savedAliases}
+}catch(e){
+  merchantAliases={...DEFAULT_MERCHANT_ALIASES}
+}
 let lastOCRMerchantRaw='';
 let dashboardMonthKey=localStorage.getItem(DASHBOARD_MONTH_KEY)||null;
 let editingId=null,currentCanvas=null,sourceBitmap=null,sourceCanvas=null,enhanceLevel=1,ocrBusy=false,tesseractLoader=null,ocrWorker=null,ocrEnglishWorker=null;
@@ -712,7 +720,8 @@ function knownMerchantNames(){
 }
 function canonicalMerchantName(raw){
   const s=String(raw||'').trim();if(!s)return s;
-  const direct=merchantAliases[merchantMemoryKey(s)];
+  const key=merchantMemoryKey(s);
+  const direct=merchantAliases[key];
   if(direct)return direct;
 
   const type=merchantBusinessType(s);
@@ -753,7 +762,7 @@ function cloudReceiptToParsed(payload){
     store:canonicalMerchant,date:r.date||'',category:inferCategory(`${canonicalMerchant} ${(r.items||[]).map(x=>x.name||'').join(' ')}`),
     subtotal:r.subtotal??null,tax:r.tax??null,total:r.total??null,itemRows:items,items:items.length,itemsExpected:items.length,
     score:Number(payload?.score??0)||Math.min(100,vals*14),fields:vals,vatEvidence:Number(r.tax||0)>0,totalReliable:r.total!=null,
-    localAI:true,engine:'Cloudflare AI • Universal Receipt OCR + Adaptive Layout',warnings:Array.isArray(r.warnings)?r.warnings:[],readerMeta:payload?.meta||null,accepted:payload?.accepted!==false
+    localAI:true,engine:'Cloudflare AI • Universal Receipt OCR + Adaptive Validation',warnings:Array.isArray(r.warnings)?r.warnings:[],readerMeta:payload?.meta||null,accepted:payload?.accepted!==false
   }
 }
 async function checkCloudReaderHealth(){
@@ -1236,6 +1245,6 @@ $('#exportBtn').onclick=()=>{const payload={version:2,exportedAt:new Date().toIS
 clearForm(false);applyLang();ensurePersistentStorage();restoreDraft();setLocalAIStatus('loading',lang==='ar'?'جارٍ التحقق من اتصال Cloudflare AI…':'Checking Cloudflare AI connection…',5);setTimeout(checkCloudReaderHealth,250);
 </script>
 
-<footer class="app-version-footer" id="appVersionFooter" data-version="4.4.6">الإصدار 4.4.6</footer>
+<footer class="app-version-footer" id="appVersionFooter" data-version="4.4.7">الإصدار 4.4.7</footer>
 </body>
 </html>
