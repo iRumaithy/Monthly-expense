@@ -170,7 +170,7 @@ button,input,textarea,select{font:inherit}button{cursor:pointer}.app{max-width:1
             <div class="ai-local-head"><div class="ai-local-title"><span>🧠</span><span data-i18n="localAIReader">القارئ الذكي المحلي</span></div><span class="ai-local-badge" id="aiLocalBadge" data-i18n="aiChecking">جارٍ التحقق…</span></div>
             <div class="ai-local-detail" id="aiLocalDetail" data-i18n="aiLocalNote">يعمل داخل الهاتف بدون API أو اشتراك. في أول تشغيل فقط يتم تنزيل النموذج وحفظه في ذاكرة المتصفح.</div>
             <div class="ai-local-meter" id="aiLocalMeter"><i id="aiLocalMeterBar"></i></div>
-            <div class="ai-local-tech"><span id="aiDeviceBadge">Cloudflare</span><span>Workers AI • Universal Receipt OCR + Adaptive Validation</span><span data-i18n="aiPrivate">معالجة سحابية آمنة</span></div>
+            <div class="ai-local-tech"><span id="aiDeviceBadge">Cloudflare</span><span>Workers AI • Universal Receipt OCR + Segment Rescue</span><span data-i18n="aiPrivate">معالجة سحابية آمنة</span></div>
           </div>
         </div>
         <div class="footer-note" data-i18n="ocrNote">لأفضل نتيجة: اجعل الفاتورة كاملة داخل الصورة وبإضاءة متساوية. تتم معالجة التباين والقص تلقائيًا، ويمكنك مراجعة كل البيانات قبل الحفظ.</div>
@@ -1001,7 +1001,7 @@ function cloudReceiptToParsed(payload){
     store:canonicalMerchant,date:r.date||'',category:inferCategory(`${canonicalMerchant} ${(r.items||[]).map(x=>x.name||'').join(' ')}`),
     subtotal:r.subtotal??null,tax:r.tax??null,total:r.total??null,itemRows:items,items:items.length,itemsExpected:items.length,
     score:Number(payload?.score??0)||Math.min(100,vals*14),fields:vals,vatEvidence:Number(r.tax||0)>0,totalReliable:r.total!=null,
-    localAI:true,engine:'Cloudflare AI • Universal Receipt OCR + Adaptive Validation',warnings:Array.isArray(r.warnings)?r.warnings:[],readerMeta:payload?.meta||null,accepted:payload?.accepted!==false
+    localAI:true,engine:'Cloudflare AI • Universal Receipt OCR + Segment Rescue',warnings:Array.isArray(r.warnings)?r.warnings:[],readerMeta:payload?.meta||null,accepted:payload?.accepted!==false
   }
 }
 async function checkCloudReaderHealth(){
@@ -1079,6 +1079,20 @@ function buildCloudAlternateComposite(source,compact=false){
   return url
 }
 
+function buildCloudSegmentImages(source,compact=false){
+  if(!source)return [];
+  const W=compact?920:1200,H=compact?900:1120;
+  // Two high-resolution overlapping views. Coverage is positional only,
+  // not tied to merchant/items/totals semantics.
+  const bands=[[.00,.62],[.38,1.00]];
+  return bands.map(([a,b])=>{
+    const c=cloudFitRegion(source,.015,a,.985,b,W,H);
+    let q=compact?.76:.91,url=c.toDataURL('image/jpeg',q),maxLen=compact?2_700_000:4_500_000;
+    while(url.length>maxLen&&q>.64){q-=.06;url=c.toDataURL('image/jpeg',q)}
+    return url
+  })
+}
+
 function sleepMs(ms){return new Promise(r=>setTimeout(r,ms))}
 function cloudErrorIsQuota(msg){return /429|account limited|10,?000 neurons|free allocation|3036/i.test(String(msg||''))}
 function cloudErrorIsLicense(msg){return /agree|license|acceptable use|meta|5016/i.test(String(msg||''))}
@@ -1125,6 +1139,57 @@ function cloudPayloadQuality(body){
   s-=warnings.filter(x=>/does not match|Printed item count|Printed pieces|manual review/i.test(x)).length*18;
   return s
 }
+
+async function postCloudReceiptSegments(images,timeoutMs){
+  const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),timeoutMs);
+  try{
+    let res;
+    try{
+      res=await fetch(CLOUD_RECEIPT_ENDPOINT,{
+        method:'POST',
+        headers:{'content-type':'application/json'},
+        body:JSON.stringify({images,mode:'segments'}),
+        signal:ctl.signal,
+        cache:'no-store'
+      })
+    }catch(e){
+      const err=new Error(e?.name==='AbortError'?'Cloud segment request timeout':(e?.message||'Network request failed'));
+      err.status=0;throw err
+    }
+    let body=null;try{body=await res.json()}catch{}
+    if(!res.ok||!body?.ok){
+      const err=new Error(body?.error||`Cloud segment reader HTTP ${res.status}`);
+      err.status=res.status;err.body=body;throw err
+    }
+    return body
+  }finally{clearTimeout(timer)}
+}
+async function trySegmentCloudReceipt(primaryBody){
+  const src=currentCanvas||sourceCanvas;
+  if(!src)return primaryBody;
+  const images=buildCloudSegmentImages(src,false);
+  if(images.length!==2)return primaryBody;
+
+  $('#ocrMeterBar').style.width='72%';
+  $('#ocrStatus').textContent=lang==='ar'
+    ?'لم يكتمل جدول الأصناف؛ جارٍ قراءة نصفَي الفاتورة بدقة أعلى…'
+    :'Item table incomplete; reading two overlapping receipt segments at higher resolution…';
+  setLocalAIStatus('loading',lang==='ar'
+    ?'مرحلة إنقاذ تلقائية: نصفان متداخلان يُقرآن بالتوازي.'
+    :'Automatic rescue: two overlapping segments are read in parallel.',78);
+
+  try{
+    const segmentBody=await postCloudReceiptSegments(images,30000);
+    if(cloudPayloadQuality(segmentBody)>cloudPayloadQuality(primaryBody)){
+      segmentBody.meta={...(segmentBody.meta||{}),segment_retry:true};
+      return segmentBody
+    }
+  }catch(e){
+    console.warn('Segment rescue failed',e)
+  }
+  return primaryBody
+}
+
 async function tryAlternateCloudReceipt(primaryBody){
   const altSource=currentCanvas||sourceCanvas;
   if(!altSource)return primaryBody;
@@ -1184,6 +1249,14 @@ async function runCloudReceiptReader(){
     || (Number(br.printed_piece_count||0)>0 && bi.length>Number(br.printed_piece_count||0)+2);
   if(suspiciousPrimary)body=await tryAlternateCloudReceipt(body);
 
+  // Last-resort generic table rescue. Only failed/suspicious receipts pay for it.
+  const rr=body?.receipt||{},ri=Array.isArray(rr.items)?rr.items:[];
+  const stillSuspicious=body?.accepted===false
+    || ri.length===0
+    || (ri.length===1&&rr.total!=null&&Number(ri[0]?.line_total||0)>0&&Number(rr.total)>Number(ri[0].line_total)*1.35)
+    || (Number(rr.printed_piece_count||0)>0&&Math.abs(ri.reduce((s,x)=>s+(Number(x.quantity)||0),0)-Number(rr.printed_piece_count))>.001);
+  if(stillSuspicious)body=await trySegmentCloudReceipt(body);
+
   $('#ocrMeterBar').style.width='88%';
   const parsed=cloudReceiptToParsed(body);
   if(!parsed.store&&!parsed.itemRows.length&&parsed.total==null)throw new Error('Cloud reader returned no usable fields');
@@ -1204,8 +1277,9 @@ async function runCloudReceiptReader(){
   const retried=body?.meta?.client_retry===true;
   const repaired=body?.meta?.repair_used===true;
   const adaptive=body?.meta?.adaptive_retry===true||body?.meta?.alternate_layout===true;
+  const segmented=body?.meta?.segment_retry===true||body?.meta?.segment_rescue===true;
   const partial=body?.complete===false;
-  const suffix=(adaptive?(lang==='ar'?' • نجحت القراءة المرنة':' • adaptive layout succeeded'):'')+(repaired?(lang==='ar'?' • تم إصلاح القراءة تلقائيًا':' • auto-repair applied'):'')+(retried?(lang==='ar'?' • نجحت المحاولة التلقائية الثانية':' • automatic retry succeeded'):'')+time+sid;
+  const suffix=(segmented?(lang==='ar'?' • نجحت قراءة الأجزاء عالية الدقة':' • high-resolution segment rescue succeeded'):'')+(adaptive?(lang==='ar'?' • نجحت القراءة المرنة':' • adaptive layout succeeded'):'')+(repaired?(lang==='ar'?' • تم إصلاح القراءة تلقائيًا':' • auto-repair applied'):'')+(retried?(lang==='ar'?' • نجحت المحاولة التلقائية الثانية':' • automatic retry succeeded'):'')+time+sid;
   $('#ocrStatus').textContent=(partial
     ?(lang==='ar'?'تم ملء الحقول الموثوقة. راجع فقط الحقول التي بقيت فارغة.':'Reliable fields were filled. Review only fields that remain blank.')
     :t('scanDone'))+suffix;
@@ -1512,6 +1586,6 @@ $('#restoreInput').onchange=async e=>{
 clearForm(false);applyLang();ensurePersistentStorage();restoreDraft();setLocalAIStatus('loading',lang==='ar'?'جارٍ التحقق من اتصال Cloudflare AI…':'Checking Cloudflare AI connection…',5);setTimeout(checkCloudReaderHealth,250);
 </script>
 
-<footer class="app-version-footer" id="appVersionFooter" data-version="4.4.8">الإصدار 4.4.8</footer>
+<footer class="app-version-footer" id="appVersionFooter" data-version="4.4.9">الإصدار 4.4.9</footer>
 </body>
 </html>
