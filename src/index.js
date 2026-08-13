@@ -1,6 +1,6 @@
 const PRIMARY_MODEL = '@cf/google/gemma-4-26b-a4b-it';
 const VERIFY_MODEL = '@cf/moonshotai/kimi-k2.6';
-const VERSION = '4.1.0';
+const VERSION = '4.1.1';
 
 const RECEIPT_SCHEMA = {
   type: 'object',
@@ -191,6 +191,15 @@ function needsVerify(r){
   return !r.merchant_name_en||!r.date||!r.items.length||r.total==null||r.confidence.merchant<.72||r.confidence.items<.76||r.confidence.totals<.78||
     (r.printed_item_count!=null&&Math.round(r.printed_item_count)!==r.items.length)||r.warnings.some(x=>/does not match|implausibly/i.test(x));
 }
+
+function isAccepted(r){
+  const s=score(r);
+  if(!r.merchant_name_en||!r.date||!r.items.length||r.total==null)return false;
+  if(r.printed_item_count!=null&&Math.round(r.printed_item_count)!==r.items.length)return false;
+  if(r.warnings.some(x=>/does not match|implausibly/i.test(x)))return false;
+  if(r.confidence.merchant<.72||r.confidence.items<.76||r.confidence.totals<.78)return false;
+  return s>=72;
+}
 function better(a,b){
   if(!b)return a;
   const ac=score(a),bc=score(b);if(bc>ac+2)return b;if(ac>bc+2)return a;
@@ -222,7 +231,7 @@ async function analyze(env,images){
   if(needsVerify(first)){
     try{const second=await verifyRead(env,images,first);first=better(first,second);verified=true}catch(e){first.warnings.push(`Verification pass failed: ${e.message}`)}
   }
-  return {receipt:first,score:score(first),verified};
+  return {receipt:first,score:score(first),verified,accepted:isAccepted(first)};
 }
 function validImage(v){return typeof v==='string'&&v.startsWith('data:image/')&&v.length<8_000_000}
 
@@ -237,7 +246,7 @@ export default {
         const body=await request.json();if(!validImage(body?.image))return new Response(JSON.stringify({ok:false,error:'A valid original receipt image is required'}),{status:400,headers:jsonHeaders()});
         const images={image:body.image,header:validImage(body.header)?body.header:null,items:validImage(body.items)?body.items:null,totals:validImage(body.totals)?body.totals:null};
         const started=Date.now(),result=await analyze(env,images);
-        return new Response(JSON.stringify({ok:true,receipt:result.receipt,score:result.score,meta:{engine:'Cloudflare Workers AI',primary_model:PRIMARY_MODEL,verify_model:result.verified?VERIFY_MODEL:null,verified:result.verified,version:VERSION,elapsed_ms:Date.now()-started}}),{headers:jsonHeaders()});
+        const scanId=crypto.randomUUID();return new Response(JSON.stringify({ok:true,accepted:result.accepted,receipt:result.receipt,score:result.score,meta:{scan_id:scanId,engine:'Cloudflare Workers AI',primary_model:PRIMARY_MODEL,verify_model:result.verified?VERIFY_MODEL:null,verified:result.verified,version:VERSION,elapsed_ms:Date.now()-started}}),{headers:jsonHeaders()});
       }catch(error){console.error('Receipt analysis failed',error);return new Response(JSON.stringify({ok:false,error:error?.message||'Receipt analysis failed'}),{status:500,headers:jsonHeaders()});}
     }
     return env.ASSETS.fetch(request);
