@@ -1,5 +1,5 @@
 const MODEL = '@cf/meta/llama-3.2-11b-vision-instruct';
-const VERSION = '4.4.3';
+const VERSION = '4.4.4';
 
 const PROMPT = `You are a literal OCR transcriber specialized in many different UAE receipt and tax-invoice layouts.
 
@@ -98,14 +98,14 @@ function merchantCandidateScore(name,index=0,preferred=false){
   if(preferred)score+=18;
 
   // Strong customer-facing business signals.
-  if(/\b(pharmacy|laundry|laundromat|dry\s*clean|restaurant|cafe|coffee|bakery|supermarket|hypermarket|grocery|market|salon|barber|clinic|hospital|optical|boutique|store|shop|mart|garage|workshop|tailor|cafeteria|roastery)\b/i.test(s))score+=62;
+  if(/\b(pharmacy|laundry|laundromat|dry\s*clean|restaurant|cafe|coffee|bakery|supermarket|hypermarket|grocery|market|salon|barber|clinic|hospital|optical|boutique|store|shop|mart|garage|workshop|tailor|cafeteria|roastery)\b/i.test(s))score+=82;
   else if(/\b(trading|services|medical|dental|electronics|furniture|fashion|jewellery|jewelry|flowers|florist|stationery|typing|printing|car\s*wash|rent\s*a\s*car)\b/i.test(s))score+=28;
 
   if(/\bbranch\b/i.test(s))score+=9;
   if(/\b(sole\s+proprietorship|establishment)\b/i.test(s))score+=5;
 
   // Strong signals that a line is a parent/legal/administrative entity rather than the outlet.
-  if(/\bfacilit(?:y|ies)\s+management\b/i.test(s))score-=72;
+  if(/\bfacilit(?:y|ies)\s+management\b/i.test(s))score-=105;
   if(/\b(property|properties|real\s*estate)\s+management\b/i.test(s))score-=48;
   if(/\b(holding|holdings|investment|investments)\b/i.test(s))score-=42;
   if(/\bmanagement\b/i.test(s))score-=24;
@@ -227,15 +227,97 @@ function parseProtocol(rawText){
   out.store=chooseMerchant(out.store,out.storeCandidates);
   return {out,lines,raw};
 }
+
+function itemSuspicionScore(item){
+  const n=txt(item?.name||'').toLowerCase();
+  let s=0;
+  if(!n)s+=100;
+  if(/\b(customer|bill|cashier|order|invoice|trn|mobile|phone|time|date|balance|discount|service\s*fee|gross|total|vat|tax|cash|visa|online|change|amounts?|point|booked|advance)\b/i.test(n))s+=70;
+  if(/\b(thank|terms?|condition|street|building|mall|branch|pharmacy|laundry)\b/i.test(n))s+=25;
+  if((item?.line_total==null)&&(item?.unit_price==null))s+=45;
+  if(Number(item?.quantity||1)<=0||Number(item?.quantity||1)>100)s+=30;
+  if(n.length<2)s+=30;
+  return s;
+}
+function rowMoney(item){
+  if(item?.line_total!=null)return r2(item.line_total);
+  if(item?.unit_price!=null)return r2(Number(item.unit_price)*(Number(item.quantity)||1));
+  return null;
+}
+function chooseBestItemSubset(items,expectedCount,targets){
+  if(!Number.isInteger(expectedCount)||expectedCount<=0||items.length<=expectedCount||items.length>12)return null;
+  const usable=items.map((x,i)=>({item:x,i,money:rowMoney(x),sus:itemSuspicionScore(x)}));
+  const validTargets=(targets||[]).filter(v=>v!=null&&Number.isFinite(Number(v))).map(Number);
+  if(!validTargets.length)return null;
+
+  let best=null;
+  const pick=(start,left,chosen)=>{
+    if(left===0){
+      const rows=chosen.map(i=>usable[i]);
+      if(rows.some(r=>r.money==null))return;
+      const sum=r2(rows.reduce((s,r)=>s+Number(r.money||0),0));
+      const diff=Math.min(...validTargets.map(t=>Math.abs(sum-t)));
+      const suspicion=rows.reduce((s,r)=>s+r.sus,0);
+      const score=diff*1000+suspicion;
+      if(!best||score<best.score)best={indices:chosen.slice(),sum,diff,suspicion,score};
+      return;
+    }
+    for(let i=start;i<=usable.length-left;i++){
+      chosen.push(i);pick(i+1,left-1,chosen);chosen.pop();
+    }
+  };
+  pick(0,expectedCount,[]);
+  if(!best)return null;
+
+  // Only prune when the selected rows are financially convincing.
+  const tolerance=Math.max(.08,Math.min(.30,Math.max(...validTargets)*.006));
+  if(best.diff>tolerance)return null;
+  return best.indices.map(i=>items[i]);
+}
+function reconcileItemRows(r,warnings){
+  const original=r.items||[];
+  if(!original.length)return;
+
+  const quantitySum=Math.round(original.reduce((s,x)=>s+(Number(x.quantity)||0),0)*100)/100;
+
+  // Common layout: T.Pcs / Total Qty was incorrectly emitted as COUNT.
+  if(r.count!=null&&r.count!==original.length&&Math.abs(r.count-quantitySum)<.001){
+    r._pieceCount=r.count;
+    r.count=null;
+    warnings.push('Printed count interpreted as total pieces/quantity, not item-row count');
+    return;
+  }
+
+  // If the receipt explicitly says N item rows but OCR produced extras,
+  // choose the N-row subset that reconciles with labeled financial totals.
+  if(r.count!=null&&r.count>0&&original.length>r.count){
+    const targets=[];
+    if(r.subtotal!=null)targets.push(r.subtotal);
+    if(r.total!=null)targets.push(r.total);
+    if(r.total!=null&&r.tax!=null)targets.push(r2(r.total-r.tax));
+
+    const chosen=chooseBestItemSubset(original,r.count,targets);
+    if(chosen&&chosen.length===r.count){
+      const removed=original.length-chosen.length;
+      r.items=chosen;
+      warnings.push(`Removed ${removed} OCR row${removed===1?'':'s'} that did not match the printed item count and financial totals`);
+    }
+  }
+}
+
 function validate(parsed){
   const r=parsed.out, warnings=[...r.warnings];
+  reconcileItemRows(r,warnings);
   const itemSum=r2(r.items.reduce((s,x)=>s+(x.line_total??0),0));
   const quantitySum=Math.round(r.items.reduce((s,x)=>s+(Number(x.quantity)||0),0)*100)/100;
-  let pieceCount=null;
+  let pieceCount=r._pieceCount??null;
   if(r.count!=null&&r.count!==r.items.length){
-    // Some receipts print T.Pcs / total pieces; if it equals the sum of quantities, it is NOT an item-row count.
-    if(Math.abs(r.count-quantitySum)<.001){pieceCount=r.count;r.count=null;warnings.push('Printed count interpreted as total pieces/quantity, not item-row count');}
-    else warnings.push(`Printed item count is ${r.count}, but ${r.items.length} rows were extracted`);
+    if(Math.abs(r.count-quantitySum)<.001){
+      pieceCount=r.count;r.count=null;
+      warnings.push('Printed count interpreted as total pieces/quantity, not item-row count');
+    } else {
+      warnings.push(`Printed item count is ${r.count}, but ${r.items.length} rows were extracted`);
+    }
   }
   if(r.subtotal!=null&&r.tax!=null&&r.total!=null&&Math.abs(r.subtotal+r.tax-r.total)>.06)warnings.push('Subtotal + VAT does not match Grand Total');
   if(r.rate!=null&&r.rate>0&&r.rate<30&&r.subtotal!=null&&r.tax!=null&&Math.abs(r.subtotal*r.rate/100-r.tax)>.06)warnings.push('VAT amount does not match printed VAT rate');
