@@ -103,7 +103,7 @@ button,input,textarea,select{font:inherit}button{cursor:pointer}.app{max-width:1
             <div class="ai-local-head"><div class="ai-local-title"><span>🧠</span><span data-i18n="localAIReader">القارئ الذكي المحلي</span></div><span class="ai-local-badge" id="aiLocalBadge" data-i18n="aiChecking">جارٍ التحقق…</span></div>
             <div class="ai-local-detail" id="aiLocalDetail" data-i18n="aiLocalNote">يعمل داخل الهاتف بدون API أو اشتراك. في أول تشغيل فقط يتم تنزيل النموذج وحفظه في ذاكرة المتصفح.</div>
             <div class="ai-local-meter" id="aiLocalMeter"><i id="aiLocalMeterBar"></i></div>
-            <div class="ai-local-tech"><span id="aiDeviceBadge">Cloudflare</span><span>Workers AI • Universal Tile Receipt OCR</span><span data-i18n="aiPrivate">معالجة سحابية آمنة</span></div>
+            <div class="ai-local-tech"><span id="aiDeviceBadge">Cloudflare</span><span>Workers AI • Document OCR + Smart Structure</span><span data-i18n="aiPrivate">معالجة سحابية آمنة</span></div>
           </div>
         </div>
         <div class="footer-note" data-i18n="ocrNote">لأفضل نتيجة: اجعل الفاتورة كاملة داخل الصورة وبإضاءة متساوية. تتم معالجة التباين والقص تلقائيًا، ويمكنك مراجعة كل البيانات قبل الحفظ.</div>
@@ -535,44 +535,41 @@ function cloudReceiptToParsed(payload){
     store:String(r.merchant_name_en||'').trim(),date:r.date||'',category:inferCategory(`${r.merchant_name_en||''} ${(r.items||[]).map(x=>x.name||'').join(' ')}`),
     subtotal:r.subtotal??null,tax:r.tax??null,total:r.total??null,itemRows:items,items:items.length,itemsExpected:items.length,
     score:Number(payload?.score??0)||Math.min(100,vals*14),fields:vals,vatEvidence:Number(r.tax||0)>0,totalReliable:r.total!=null,
-    localAI:true,engine:'Cloudflare AI • Universal Tile Receipt OCR',warnings:Array.isArray(r.warnings)?r.warnings:[],readerMeta:payload?.meta||null,accepted:payload?.accepted!==false
+    localAI:true,engine:'Cloudflare AI • Document OCR + Smart Structure',warnings:Array.isArray(r.warnings)?r.warnings:[],readerMeta:payload?.meta||null,accepted:payload?.accepted!==false
   }
 }
 async function checkCloudReaderHealth(){
   try{
     const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),5500),res=await fetch('/api/health',{cache:'no-store',signal:ctl.signal});clearTimeout(timer);
     if(!res.ok)throw new Error(`HTTP ${res.status}`);const j=await res.json();
-    const hv=j?.version||'?';setLocalAIStatus('ready',lang==='ar'?`Cloudflare AI متصل وجاهز — Worker ${hv}.`:`Cloudflare AI connected — Worker ${hv}.`,100);return j
+    const hv=j?.version||'?';setLocalAIStatus('ready',lang==='ar'?`Cloudflare Document OCR متصل وجاهز — Worker ${hv}.`:`Cloudflare Document OCR connected — Worker ${hv}.`,100);return j
   }catch(e){
     setLocalAIStatus('fallback',lang==='ar'?'القارئ السحابي غير متصل على هذا الرابط؛ سيُستخدم القارئ المحلي الاحتياطي.':'Cloud reader is not connected on this URL; local fallback will be used.');return null
   }
 }
-function cloudCropCanvas(source,x0,y0,x1,y1,w,h){
+function cloudSegmentCanvas(source,y0,y1,compact=false){
+  const x0=.08,x1=.92;
   const sx=Math.max(0,Math.round(source.width*x0)),sy=Math.max(0,Math.round(source.height*y0));
   const sw=Math.max(1,Math.round(source.width*(x1-x0))),sh=Math.max(1,Math.round(source.height*(y1-y0)));
-  const c=document.createElement('canvas');c.width=w;c.height=h;
-  const g=c.getContext('2d');g.fillStyle='#fff';g.fillRect(0,0,w,h);
+  const W=compact?720:980,H=compact?540:700;
+  const c=document.createElement('canvas');c.width=W;c.height=H;
+  const g=c.getContext('2d');g.fillStyle='#fff';g.fillRect(0,0,W,H);
   g.imageSmoothingEnabled=true;g.imageSmoothingQuality='high';
-  const scale=Math.min(w/sw,h/sh),dw=Math.round(sw*scale),dh=Math.round(sh*scale),dx=Math.round((w-dw)/2),dy=Math.round((h-dh)/2);
+  const scale=Math.min(W/sw,H/sh),dw=Math.round(sw*scale),dh=Math.round(sh*scale);
+  const dx=Math.round((W-dw)/2),dy=Math.round((H-dh)/2);
   g.drawImage(source,sx,sy,sw,sh,dx,dy,dw,dh);
   return c
 }
-function buildCloudReceiptComposite(source,compact=false){
-  if(!source)return null;
-  // Layout-agnostic OCR: four overlapping sequential slices cover the entire receipt.
-  // No assumption about where header/items/totals are located.
-  const S=compact?430:560,W=S*2,H=S*2;
-  const slices=[[0,.00,1,.36],[0,.24,1,.60],[0,.48,1,.84],[0,.70,1,1.00]];
-  const out=document.createElement('canvas');out.width=W;out.height=H;
-  const g=out.getContext('2d');g.fillStyle='#fff';g.fillRect(0,0,W,H);
-  slices.forEach((r,i)=>{
-    const tile=cloudCropCanvas(source,r[0],r[1],r[2],r[3],S,S);
-    const x=(i%2)*S,y=Math.floor(i/2)*S;g.drawImage(tile,x,y,S,S);
-  });
-  g.fillStyle='#17324d';g.fillRect(S-3,0,6,H);g.fillRect(0,S-3,W,6);
-  let q=compact?.72:.86,url=out.toDataURL('image/jpeg',q),maxLen=compact?2_100_000:3_100_000;
-  while(url.length>maxLen&&q>.58){q-=.06;url=out.toDataURL('image/jpeg',q)}
-  return url
+function buildCloudReceiptSegments(source,compact=false){
+  if(!source)return [];
+  // Three overlapping vertical segments keep text large while covering arbitrary receipt layouts.
+  const bands=[[.00,.43],[.28,.75],[.58,1.00]];
+  return bands.map(([a,b])=>{
+    const c=cloudSegmentCanvas(source,a,b,compact);
+    let q=compact?.72:.88,url=c.toDataURL('image/jpeg',q),max=compact?1_350_000:2_100_000;
+    while(url.length>max&&q>.58){q-=.06;url=c.toDataURL('image/jpeg',q)}
+    return url
+  })
 }
 
 function sleepMs(ms){return new Promise(r=>setTimeout(r,ms))}
@@ -584,12 +581,12 @@ function cloudErrorIsRetriable(msg,status=0,body=null){
   if(body?.retriable===true)return true;
   return /load failed|failed to fetch|network|timeout|timed out|abort|out of capacity|3040|3007|3008|temporar/i.test(s)||[408,413,500,502,503,504].includes(Number(status));
 }
-async function postCloudReceipt(image,timeoutMs){
+async function postCloudReceipt(images,timeoutMs){
   const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),timeoutMs);
   try{
     let res;
     try{
-      res=await fetch(CLOUD_RECEIPT_ENDPOINT,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({image}),signal:ctl.signal,cache:'no-store'});
+      res=await fetch(CLOUD_RECEIPT_ENDPOINT,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({images}),signal:ctl.signal,cache:'no-store'});
     }catch(e){
       const err=new Error(e?.name==='AbortError'?'Cloud request timeout':(e?.message||'Network request failed'));
       err.status=0;err.body=null;throw err;
@@ -597,9 +594,7 @@ async function postCloudReceipt(image,timeoutMs){
     let body=null;try{body=await res.json()}catch{}
     if(!res.ok||!body?.ok){
       const err=new Error(body?.error||`Cloud reader HTTP ${res.status}`);
-      err.status=res.status;err.body=body;
-      if(body?.license_required)err.message=`Meta license activation required: ${err.message}`;
-      throw err;
+      err.status=res.status;err.body=body;throw err;
     }
     return body;
   }finally{clearTimeout(timer)}
@@ -608,54 +603,55 @@ async function postCloudReceipt(image,timeoutMs){
 async function runCloudReceiptReader(){
   const focus=currentCanvas||sourceCanvas;if(!focus)throw new Error('No receipt image');
   clearRecognitionFieldsForNewImage();
-  const primaryImage=buildCloudReceiptComposite(focus,false);
-  if(!primaryImage)throw new Error('Could not prepare receipt image');
-  $('#ocrMeter').style.display='block';$('#ocrMeterBar').style.width='24%';
-  $('#ocrStatus').textContent=lang==='ar'?'جارٍ قراءة الفاتورة كاملة بدون افتراض تصميم ثابت…':'Reading the complete receipt without assuming a fixed layout…';
-  setLocalAIStatus('loading',lang==='ar'?'القارئ العام متعدد التصاميم يعمل الآن…':'Universal multi-layout receipt reader is working…',34);
+  const primaryImages=buildCloudReceiptSegments(focus,false);
+  if(!primaryImages.length)throw new Error('Could not prepare receipt image');
+
+  $('#ocrMeter').style.display='block';$('#ocrMeterBar').style.width='18%';
+  $('#ocrStatus').textContent=lang==='ar'?'جارٍ استخراج نص الفاتورة من 3 أجزاء عالية الدقة…':'Extracting receipt text from 3 high-resolution segments…';
+  setLocalAIStatus('loading',lang==='ar'?'Cloudflare Document OCR يقرأ الفاتورة كاملة…':'Cloudflare Document OCR is reading the complete receipt…',28);
 
   let body;
   try{
-    body=await postCloudReceipt(primaryImage,22000);
+    body=await postCloudReceipt(primaryImages,26000);
   }catch(firstErr){
     if(!cloudErrorIsRetriable(firstErr?.message,firstErr?.status,firstErr?.body))throw firstErr;
-    $('#ocrMeterBar').style.width='46%';
-    $('#ocrStatus').textContent=lang==='ar'?'حدث انقطاع مؤقت؛ إعادة محاولة تلقائية بصورة أخف…':'Temporary interruption; retrying automatically with a lighter image…';
-    setLocalAIStatus('loading',lang==='ar'?'إعادة محاولة تلقائية — لا حاجة لإعادة التصوير.':'Automatic retry — no need to retake the receipt.',52);
-    await sleepMs(450);
-    const compactImage=buildCloudReceiptComposite(focus,true);
-    body=await postCloudReceipt(compactImage,17000);
+    $('#ocrMeterBar').style.width='44%';
+    $('#ocrStatus').textContent=lang==='ar'?'حدث انقطاع مؤقت؛ إعادة محاولة تلقائية بحجم أخف…':'Temporary interruption; retrying automatically with lighter segments…';
+    setLocalAIStatus('loading',lang==='ar'?'إعادة محاولة تلقائية — لا حاجة لإعادة التصوير.':'Automatic retry — no need to retake the receipt.',50);
+    await sleepMs(350);
+    const compactImages=buildCloudReceiptSegments(focus,true);
+    body=await postCloudReceipt(compactImages,22000);
     body.meta={...(body.meta||{}),client_retry:true};
   }
 
-  $('#ocrMeterBar').style.width='88%';
+  $('#ocrMeterBar').style.width='90%';
   const parsed=cloudReceiptToParsed(body);
   if(!parsed.store&&!parsed.itemRows.length&&parsed.total==null)throw new Error('Cloud reader returned no usable fields');
   parsed.itemsExpected=Number(body?.receipt?.printed_item_count)||parsed.itemsExpected;
 
   if(body?.accepted===false){
     clearRecognitionFieldsForNewImage();
-    parsed.warnings=[...(parsed.warnings||[]),lang==='ar'?'تم رفض القراءة لأنها لم تجتز التحقق البنيوي.':'Reading rejected because it failed structural validation.'];
+    parsed.warnings=[...(parsed.warnings||[]),lang==='ar'?'تم رفض القراءة لأنها لم تجتز التحقق الحسابي.':'Reading rejected because it failed arithmetic validation.'];
     showScanResult(parsed);$('#ocrMeterBar').style.width='100%';
     const sid=body?.meta?.scan_id?` • Scan ${body.meta.scan_id}`:'';
-    $('#ocrStatus').textContent=(lang==='ar'?'لم تُعبأ الحقول لأن النتيجة غير موثوقة. صوّر الفاتورة بشكل مستقيم وواضح.':'Fields were left blank because the result was not trustworthy. Retake a straight, clear photo.')+sid;
+    $('#ocrStatus').textContent=(lang==='ar'?'لم تُعبأ الحقول لأن بعض الأصناف أو الإجماليات لم تتطابق.':'Fields were left blank because item rows or totals did not reconcile.')+sid;
     setLocalAIStatus('error',lang==='ar'?'تم رفض نتيجة غير موثوقة بدل تعبئة بيانات خاطئة.':'Unreliable result rejected instead of filling wrong data.');
     return null
   }
 
   applyParsedReceipt(parsed);showScanResult(parsed);saveDraftNow(true);$('#ocrMeterBar').style.width='100%';
   const ms=Number(body?.meta?.elapsed_ms||0),sid=body?.meta?.scan_id?` • Scan ${body.meta.scan_id}`:'',time=ms?` • ${(ms/1000).toFixed(1)}s`:'';
-  const retried=body?.meta?.client_retry===true;
-  const partial=body?.complete===false;
-  const suffix=(retried?(lang==='ar'?' • نجحت المحاولة التلقائية الثانية':' • automatic retry succeeded'):'')+time+sid;
+  const retried=body?.meta?.client_retry===true,partial=body?.complete===false;
+  const suffix=(retried?(lang==='ar'?' • نجحت إعادة المحاولة':' • retry succeeded'):'')+time+sid;
   $('#ocrStatus').textContent=(partial
-    ?(lang==='ar'?'تم ملء الحقول الموثوقة. راجع فقط الحقول التي بقيت فارغة.':'Reliable fields were filled. Review only fields that remain blank.')
+    ?(lang==='ar'?'تم ملء الحقول الموثوقة؛ راجع فقط أي حقل بقي فارغًا.':'Reliable fields were filled; review only fields that remain blank.')
     :t('scanDone'))+suffix;
   setLocalAIStatus('ready',(partial
-    ?(lang==='ar'?'اكتملت البيانات الأساسية؛ راجع فقط أي حقل فارغ.':'Core receipt data completed; review only blank fields.')
-    :(lang==='ar'?'اكتملت قراءة الفاتورة عبر القارئ العام للفواتير.':'Universal receipt reading complete.'))+(retried?(lang==='ar'?' نجحت إعادة المحاولة التلقائية.':' Automatic retry succeeded.'):'')+time,100);
+    ?(lang==='ar'?'اكتملت القراءة الأساسية عبر Document OCR؛ راجع فقط الحقول الفارغة.':'Core Document OCR reading completed; review only blank fields.')
+    :(lang==='ar'?'اكتملت قراءة الفاتورة عبر Cloudflare Document OCR.':'Cloudflare Document OCR reading complete.'))+time,100);
   return parsed
 }
+
 async function runSmartReceiptReader(){
   if(!currentCanvas||smartReaderBusy)return;
   smartReaderBusy=true;
@@ -668,7 +664,7 @@ async function runSmartReceiptReader(){
     clearRecognitionFieldsForNewImage();
     const detail=String(e?.message||'').slice(0,220);
     const quota=/429|account limited|10,?000 neurons|free allocation/i.test(detail);
-    const license=/agree|license|acceptable use|meta/i.test(detail);
+    const license=false;
     if(license){
       $('#ocrStatus').innerHTML=lang==='ar'
         ?`يحتاج قارئ Llama Vision إلى تفعيل مرة واحدة. <a href="/api/license" style="color:#17324d;font-weight:900;text-decoration:underline">اضغط هنا للموافقة وتفعيل القارئ</a>`
@@ -926,6 +922,6 @@ $('#exportBtn').onclick=()=>{const payload={version:2,exportedAt:new Date().toIS
 clearForm(false);applyLang();ensurePersistentStorage();restoreDraft();setLocalAIStatus('loading',lang==='ar'?'جارٍ التحقق من اتصال Cloudflare AI…':'Checking Cloudflare AI connection…',5);setTimeout(checkCloudReaderHealth,250);
 </script>
 
-<footer class="app-version-footer" id="appVersionFooter" data-version="4.5.0">الإصدار 4.5.0</footer>
+<footer class="app-version-footer" id="appVersionFooter" data-version="4.6.0">الإصدار 4.6.0</footer>
 </body>
 </html>
