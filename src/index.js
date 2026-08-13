@@ -1,4 +1,4 @@
-const VERSION = '4.6.0';
+const VERSION = '4.6.1';
 const STRUCT_MODEL = '@cf/zai-org/glm-4.7-flash';
 
 const STRUCT_PROMPT = `You receive OCR TEXT extracted from 3 overlapping segments of ONE UAE receipt/tax invoice.
@@ -321,7 +321,7 @@ export default {
     if(url.pathname==='/api/health'){
       return new Response(JSON.stringify({
         ok:true,version:VERSION,
-        engine:'Cloudflare Document OCR + Smart Structuring',
+        engine:'Cloudflare Document OCR + Smart Structuring • Single Composite',
         ocr:'AI.toMarkdown → Gemma 4',
         structurer:STRUCT_MODEL,
         meta_license_required:false
@@ -348,7 +348,7 @@ export default {
           ok:true,...checked,
           meta:{
             version:VERSION,scan_id:scanId,elapsed_ms:Date.now()-started,
-            engine:'Cloudflare Document OCR + Smart Structuring',
+            engine:'Cloudflare Document OCR + Smart Structuring • Single Composite',
             ocr_engine:'AI.toMarkdown / Gemma 4',
             structurer:STRUCT_MODEL,
             segments:images.length,
