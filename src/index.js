@@ -1,5 +1,5 @@
 const MODEL = '@cf/meta/llama-3.2-11b-vision-instruct';
-const VERSION = '4.3.3';
+const VERSION = '4.3.4';
 
 const PROMPT = `You are a literal OCR transcriber for UAE receipts. Read the supplied composite image.
 
@@ -11,7 +11,7 @@ The composite contains three FULL-WIDTH horizontal panels from the SAME receipt:
 Do NOT return JSON. Return ONLY plain text lines using this exact protocol:
 
 STORE|English merchant name
-DATE|YYYY-MM-DD
+DATE_RAW|date exactly as printed on the receipt
 COUNT|number
 VAT_RATE|number
 SUBTOTAL|number
@@ -24,7 +24,10 @@ Rules:
 1. Emit ONE ITEM line for EVERY visible purchasable row. If "Total item: 3" is visible, there must be exactly 3 ITEM lines.
 2. Copy item names literally. Never translate or spell-correct. Use an empty field if one language is absent.
 3. Never include VAT, totals, balance, dates, TRN, order number or headings as items.
-4. DATE is the invoice/transaction Date, not Delivery Date or Print Time.
+4. DATE_RAW must be copied EXACTLY in the same numeric order printed on the receipt.
+   Example: if the receipt shows 02-08-2026, output DATE_RAW|02-08-2026.
+   NEVER convert 02-08-2026 to 2026-02-08 and NEVER swap day/month.
+   Do not infer an American MM-DD-YYYY order.
 5. STORE is only the English business name, excluding address/phone/TRN/TAX INVOICE/JOB ORDER.
 6. Read decimal amounts character by character. 12.00, 0.60 and 12.60 are different.
 7. If a value is unreadable, leave that field empty rather than guessing.
@@ -98,7 +101,7 @@ function parseProtocol(rawText){
   for(const line of lines){
     const p=line.split('|').map(x=>x.trim()), key=(p[0]||'').toUpperCase().replace(/\s+/g,'_');
     if(key==='STORE'){out.store=merchant(p.slice(1).join('|'));continue}
-    if(key==='DATE'){out.date=validDate(p[1]);continue}
+    if(key==='DATE_RAW'||key==='DATE'){out.date=validDate(p[1]);continue}
     if(key==='COUNT'){const n=num(p[1]);out.count=n!=null&&n>0?Math.round(n):null;continue}
     if(key==='VAT_RATE'){const n=num(p[1]);out.rate=n!=null&&n>=0?n:null;continue}
     if(key==='SUBTOTAL'){out.subtotal=r2(p[1]);continue}
@@ -126,7 +129,7 @@ function parseProtocol(rawText){
     if(biz)out.store=merchant(biz.replace(/^(?:STORE|MERCHANT|BUSINESS)\s*(?:\||:|=|-)?\s*/i,''));
   }
   if(!out.date){
-    const m=raw.match(/(?:^|\n)\s*(?:DATE|INVOICE_DATE|INVOICE DATE)\s*(?:\||:|=|-)\s*([^\n]+)/im);
+    const m=raw.match(/(?:^|\n)\s*(?:DATE_RAW|DATE|INVOICE_DATE|INVOICE DATE)\s*(?:\||:|=|-)\s*([^\n]+)/im);
     if(m)out.date=validDate(m[1]);
   }
   if(out.count==null){
@@ -216,7 +219,7 @@ export default {
   async fetch(request,env){
     const url=new URL(request.url);
     if(url.pathname==='/api/health'){
-      return new Response(JSON.stringify({ok:true,engine:'Cloudflare Workers AI • Llama Line OCR',model:MODEL,version:VERSION}),{headers:headers()});
+      return new Response(JSON.stringify({ok:true,engine:'Cloudflare Workers AI • Llama Line OCR DMY',model:MODEL,version:VERSION}),{headers:headers()});
     }
     if(url.pathname==='/api/receipt'){
       if(request.method!=='POST')return new Response(JSON.stringify({ok:false,error:'Method not allowed'}),{status:405,headers:headers()});
@@ -227,7 +230,7 @@ export default {
         const result=await readReceipt(env,image);
         return new Response(JSON.stringify({
           ok:true,...result,
-          meta:{engine:'Cloudflare Workers AI • Llama Line OCR',model:MODEL,version:VERSION,scan_id:scanId,elapsed_ms:Date.now()-started,images:1,inference_calls:1}
+          meta:{engine:'Cloudflare Workers AI • Llama Line OCR DMY',model:MODEL,version:VERSION,scan_id:scanId,elapsed_ms:Date.now()-started,images:1,inference_calls:1}
         }),{headers:headers()});
       }catch(e){
         console.error('receipt-reader',e);
