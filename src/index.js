@@ -1,5 +1,5 @@
 const MODEL = '@cf/meta/llama-3.2-11b-vision-instruct';
-const VERSION = '4.4.9';
+const VERSION = '4.5.1';
 
 const PROMPT = `You are a literal OCR transcriber specialized in many different UAE receipt and tax-invoice layouts.
 
@@ -385,70 +385,109 @@ function itemSuspicionScore(item){
   if(n.length<2)s+=30;
   return s;
 }
+function rowMoneyOptions(item){
+  const q=Math.max(1,Number(item?.quantity)||1),opts=[],seen=new Set();
+  const push=(value,mode,penalty=0)=>{
+    value=r2(value);if(value==null||value<0)return;
+    const key=value.toFixed(2);if(seen.has(key))return;seen.add(key);
+    opts.push({value,mode,penalty})
+  };
+  if(item?.line_total!=null)push(item.line_total,'line_total',0);
+  if(item?.unit_price!=null){
+    push(Number(item.unit_price)*q,'unit_times_qty',.15);
+    // Many POS/laundry receipts print one AED amount column that is already the row total.
+    push(Number(item.unit_price),'single_money_column',q>1?.35:.20);
+  }
+  return opts;
+}
 function rowMoney(item){
-  if(item?.line_total!=null)return r2(item.line_total);
-  if(item?.unit_price!=null)return r2(Number(item.unit_price)*(Number(item.quantity)||1));
-  return null;
+  const opts=rowMoneyOptions(item);return opts.length?opts[0].value:null;
+}
+function normalizeRowMoneyChoice(item,choice){
+  const x={...item},q=Math.max(1,Number(x.quantity)||1);
+  if(!choice)return x;
+  const total=r2(choice.value);
+  if(choice.mode==='single_money_column'){
+    x.line_total=total;x.unit_price=r2(total/q);
+  }else if(choice.mode==='unit_times_qty'){
+    x.line_total=total;if(x.unit_price==null)x.unit_price=r2(total/q);
+  }else{
+    x.line_total=total;
+    if(x.unit_price==null)x.unit_price=r2(total/q);
+    if(q>1&&Math.abs(Number(x.unit_price||0)-Number(total))<=.01)x.unit_price=r2(total/q);
+  }
+  return x
+}
+function bestMoneyAssignment(rows,targets){
+  const validTargets=(targets||[]).filter(v=>v!=null&&Number.isFinite(Number(v))).map(Number);
+  if(!rows.length||!validTargets.length)return null;
+  let states=[{sum:0,choices:[],penalty:0}];
+  for(const r of rows){
+    const opts=rowMoneyOptions(r.item||r);if(!opts.length)return null;
+    const next=[];
+    for(const st of states)for(const o of opts){
+      next.push({sum:r2(st.sum+o.value),choices:[...st.choices,o],penalty:st.penalty+(o.penalty||0)})
+    }
+    const by=new Map();
+    for(const st of next){
+      const k=Math.round(st.sum*100),old=by.get(k);
+      if(!old||st.penalty<old.penalty)by.set(k,st)
+    }
+    states=[...by.values()];
+    if(states.length>700){
+      states.sort((a,b)=>{
+        const ad=Math.min(...validTargets.map(t=>Math.abs(a.sum-t))),bd=Math.min(...validTargets.map(t=>Math.abs(b.sum-t)));
+        return (ad+a.penalty*.02)-(bd+b.penalty*.02)
+      });
+      states=states.slice(0,700)
+    }
+  }
+  let best=null;
+  for(const st of states){
+    const diff=Math.min(...validTargets.map(t=>Math.abs(st.sum-t))),score=diff*1000+st.penalty;
+    if(!best||score<best.score)best={...st,diff,score}
+  }
+  return best
 }
 function chooseBestItemSubset(items,expectedCount,targets){
   if(!Number.isInteger(expectedCount)||expectedCount<=0||items.length<=expectedCount||items.length>12)return null;
-  const usable=items.map((x,i)=>({item:x,i,money:rowMoney(x),sus:itemSuspicionScore(x)}));
+  const usable=items.map((x,i)=>({item:x,i,sus:itemSuspicionScore(x)}));
   const validTargets=(targets||[]).filter(v=>v!=null&&Number.isFinite(Number(v))).map(Number);
   if(!validTargets.length)return null;
-
   let best=null;
   const pick=(start,left,chosen)=>{
     if(left===0){
-      const rows=chosen.map(i=>usable[i]);
-      if(rows.some(r=>r.money==null))return;
-      const sum=r2(rows.reduce((s,r)=>s+Number(r.money||0),0));
-      const diff=Math.min(...validTargets.map(t=>Math.abs(sum-t)));
-      const suspicion=rows.reduce((s,r)=>s+r.sus,0);
-      const score=diff*1000+suspicion;
-      if(!best||score<best.score)best={indices:chosen.slice(),sum,diff,suspicion,score};
-      return;
+      const rows=chosen.map(i=>usable[i]),money=bestMoneyAssignment(rows,validTargets);if(!money)return;
+      const suspicion=rows.reduce((s,r)=>s+r.sus,0),score=money.diff*1000+suspicion+money.penalty;
+      if(!best||score<best.score)best={indices:chosen.slice(),money,score};return
     }
-    for(let i=start;i<=usable.length-left;i++){
-      chosen.push(i);pick(i+1,left-1,chosen);chosen.pop();
-    }
+    for(let i=start;i<=usable.length-left;i++){chosen.push(i);pick(i+1,left-1,chosen);chosen.pop()}
   };
   pick(0,expectedCount,[]);
   if(!best)return null;
-
-  // Only prune when the selected rows are financially convincing.
-  const tolerance=Math.max(.08,Math.min(.30,Math.max(...validTargets)*.006));
-  if(best.diff>tolerance)return null;
-  return best.indices.map(i=>items[i]);
+  const tolerance=Math.max(.08,Math.min(.35,Math.max(...validTargets)*.006));
+  if(best.money.diff>tolerance)return null;
+  return best.indices.map((i,j)=>normalizeRowMoneyChoice(items[i],best.money.choices[j]))
 }
 
 function chooseBestPieceSubset(items,pieceTarget,targets){
   if(!Number.isInteger(pieceTarget)||pieceTarget<=0||items.length<2||items.length>14)return null;
   const validTargets=(targets||[]).filter(v=>v!=null&&Number.isFinite(Number(v))).map(Number);
   if(!validTargets.length)return null;
-  const rows=items.map((x,i)=>({
-    i,item:x,qty:Number(x.quantity)||1,money:rowMoney(x),sus:itemSuspicionScore(x)
-  }));
-  let best=null;
-  const maxMask=1<<rows.length;
+  const rows=items.map((x,i)=>({i,item:x,qty:Number(x.quantity)||1,sus:itemSuspicionScore(x)}));
+  let best=null;const maxMask=1<<rows.length;
   for(let mask=1;mask<maxMask;mask++){
-    let q=0,sum=0,sus=0,count=0,ok=true,idx=[];
-    for(let i=0;i<rows.length;i++){
-      if(!(mask&(1<<i)))continue;
-      const r=rows[i];q+=r.qty;count++;sus+=r.sus;idx.push(i);
-      if(r.money==null){ok=false;break}
-      sum+=Number(r.money);
-    }
-    if(!ok||Math.abs(q-pieceTarget)>.001)continue;
-    sum=r2(sum);
-    const diff=Math.min(...validTargets.map(t=>Math.abs(sum-t)));
-    // Prefer exact money first, then fewer suspicious rows; do NOT blindly prefer more/fewer rows.
-    const score=diff*1000+sus+count*.15;
-    if(!best||score<best.score)best={indices:idx,diff,sum,score,count};
+    let q=0,sus=0,count=0,selected=[];
+    for(let i=0;i<rows.length;i++){if(!(mask&(1<<i)))continue;q+=rows[i].qty;count++;sus+=rows[i].sus;selected.push(rows[i])}
+    if(Math.abs(q-pieceTarget)>.001)continue;
+    const money=bestMoneyAssignment(selected,validTargets);if(!money)continue;
+    const score=money.diff*1000+sus+count*.15+money.penalty;
+    if(!best||score<best.score)best={selected,money,score}
   }
   if(!best)return null;
-  const tolerance=Math.max(.08,Math.min(.35,Math.max(...validTargets)*.006));
-  if(best.diff>tolerance)return null;
-  return best.indices.map(i=>items[i]);
+  const tolerance=Math.max(.08,Math.min(.40,Math.max(...validTargets)*.007));
+  if(best.money.diff>tolerance)return null;
+  return best.selected.map((r,j)=>normalizeRowMoneyChoice(r.item,best.money.choices[j]))
 }
 
 function reconcileItemRows(r,warnings){
@@ -708,7 +747,7 @@ export default {
   async fetch(request,env){
     const url=new URL(request.url);
     if(url.pathname==='/api/health'){
-      return new Response(JSON.stringify({ok:true,engine:'Cloudflare Workers AI • Universal Receipt OCR + Segment Rescue',model:MODEL,version:VERSION,base:'4.4.0'}),{headers:headers()});
+      return new Response(JSON.stringify({ok:true,engine:'Cloudflare Workers AI • Stable OCR + Hybrid Verification',model:MODEL,version:VERSION,base:'4.4.0'}),{headers:headers()});
     }
     if(url.pathname==='/api/receipt'){
       if(request.method!=='POST')return new Response(JSON.stringify({ok:false,error:'Method not allowed'}),{status:405,headers:headers()});
@@ -725,7 +764,7 @@ export default {
         const result=mode==='segments'?await readReceiptSegments(env,images):await readReceipt(env,image,mode);
         return new Response(JSON.stringify({
           ok:true,...result,
-          meta:{engine:'Cloudflare Workers AI • Universal Receipt OCR + Segment Rescue',model:MODEL,version:VERSION,base:'4.4.0',scan_id:scanId,elapsed_ms:Date.now()-started,images:mode==='segments'?2:1,inference_calls:mode==='segments'?(result.segment_calls||2):(mode==='alternate'?1:(result.repair_used?2:1)),repair_used:!!result.repair_used,alternate_layout:mode==='alternate',segment_rescue:mode==='segments',segment_ms:result.segment_ms||0}
+          meta:{engine:'Cloudflare Workers AI • Stable OCR + Hybrid Verification',model:MODEL,version:VERSION,base:'4.4.0',scan_id:scanId,elapsed_ms:Date.now()-started,images:mode==='segments'?2:1,inference_calls:mode==='segments'?(result.segment_calls||2):(mode==='alternate'?1:(result.repair_used?2:1)),repair_used:!!result.repair_used,alternate_layout:mode==='alternate',segment_rescue:mode==='segments',segment_ms:result.segment_ms||0}
         }),{headers:headers()});
       }catch(e){
         console.error('receipt-reader',e);
