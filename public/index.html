@@ -146,7 +146,7 @@ button,input,textarea,select{font:inherit}button{cursor:pointer}.app{max-width:1
             <div class="ai-local-head"><div class="ai-local-title"><span>🧠</span><span data-i18n="localAIReader">القارئ الذكي المحلي</span></div><span class="ai-local-badge" id="aiLocalBadge" data-i18n="aiChecking">جارٍ التحقق…</span></div>
             <div class="ai-local-detail" id="aiLocalDetail" data-i18n="aiLocalNote">يعمل داخل الهاتف بدون API أو اشتراك. في أول تشغيل فقط يتم تنزيل النموذج وحفظه في ذاكرة المتصفح.</div>
             <div class="ai-local-meter" id="aiLocalMeter"><i id="aiLocalMeterBar"></i></div>
-            <div class="ai-local-tech"><span id="aiDeviceBadge">Cloudflare</span><span>Workers AI • Universal Receipt OCR</span><span data-i18n="aiPrivate">معالجة سحابية آمنة</span></div>
+            <div class="ai-local-tech"><span id="aiDeviceBadge">Cloudflare</span><span>Workers AI • Universal Receipt OCR + Auto Repair</span><span data-i18n="aiPrivate">معالجة سحابية آمنة</span></div>
           </div>
         </div>
         <div class="footer-note" data-i18n="ocrNote">لأفضل نتيجة: اجعل الفاتورة كاملة داخل الصورة وبإضاءة متساوية. تتم معالجة التباين والقص تلقائيًا، ويمكنك مراجعة كل البيانات قبل الحفظ.</div>
@@ -682,7 +682,7 @@ function cloudReceiptToParsed(payload){
     store:String(r.merchant_name_en||'').trim(),date:r.date||'',category:inferCategory(`${r.merchant_name_en||''} ${(r.items||[]).map(x=>x.name||'').join(' ')}`),
     subtotal:r.subtotal??null,tax:r.tax??null,total:r.total??null,itemRows:items,items:items.length,itemsExpected:items.length,
     score:Number(payload?.score??0)||Math.min(100,vals*14),fields:vals,vatEvidence:Number(r.tax||0)>0,totalReliable:r.total!=null,
-    localAI:true,engine:'Cloudflare AI • Universal Receipt OCR',warnings:Array.isArray(r.warnings)?r.warnings:[],readerMeta:payload?.meta||null,accepted:payload?.accepted!==false
+    localAI:true,engine:'Cloudflare AI • Universal Receipt OCR + Auto Repair',warnings:Array.isArray(r.warnings)?r.warnings:[],readerMeta:payload?.meta||null,accepted:payload?.accepted!==false
   }
 }
 async function checkCloudReaderHealth(){
@@ -766,7 +766,7 @@ async function runCloudReceiptReader(){
 
   let body;
   try{
-    body=await postCloudReceipt(primaryImage,22000);
+    body=await postCloudReceipt(primaryImage,30000);
   }catch(firstErr){
     if(!cloudErrorIsRetriable(firstErr?.message,firstErr?.status,firstErr?.body))throw firstErr;
     $('#ocrMeterBar').style.width='46%';
@@ -796,8 +796,9 @@ async function runCloudReceiptReader(){
   applyParsedReceipt(parsed);showScanResult(parsed);saveDraftNow(true);$('#ocrMeterBar').style.width='100%';
   const ms=Number(body?.meta?.elapsed_ms||0),sid=body?.meta?.scan_id?` • Scan ${body.meta.scan_id}`:'',time=ms?` • ${(ms/1000).toFixed(1)}s`:'';
   const retried=body?.meta?.client_retry===true;
+  const repaired=body?.meta?.repair_used===true;
   const partial=body?.complete===false;
-  const suffix=(retried?(lang==='ar'?' • نجحت المحاولة التلقائية الثانية':' • automatic retry succeeded'):'')+time+sid;
+  const suffix=(repaired?(lang==='ar'?' • تم إصلاح القراءة تلقائيًا':' • auto-repair applied'):'')+(retried?(lang==='ar'?' • نجحت المحاولة التلقائية الثانية':' • automatic retry succeeded'):'')+time+sid;
   $('#ocrStatus').textContent=(partial
     ?(lang==='ar'?'تم ملء الحقول الموثوقة. راجع فقط الحقول التي بقيت فارغة.':'Reliable fields were filled. Review only fields that remain blank.')
     :t('scanDone'))+suffix;
@@ -1076,6 +1077,6 @@ $('#exportBtn').onclick=()=>{const payload={version:2,exportedAt:new Date().toIS
 clearForm(false);applyLang();ensurePersistentStorage();restoreDraft();setLocalAIStatus('loading',lang==='ar'?'جارٍ التحقق من اتصال Cloudflare AI…':'Checking Cloudflare AI connection…',5);setTimeout(checkCloudReaderHealth,250);
 </script>
 
-<footer class="app-version-footer" id="appVersionFooter" data-version="4.4.4">الإصدار 4.4.4</footer>
+<footer class="app-version-footer" id="appVersionFooter" data-version="4.4.5">الإصدار 4.4.5</footer>
 </body>
 </html>
