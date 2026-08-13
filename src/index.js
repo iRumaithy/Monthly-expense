@@ -1,7 +1,86 @@
 const OCR_MODEL = '@cf/moondream/moondream3.1-9B-A2B';
 const FALLBACK_MODEL = '@cf/meta/llama-3.2-11b-vision-instruct';
 const MODEL = OCR_MODEL;
-const VERSION = '4.5.2';
+
+const LEGACY_PROMPT = `You are a literal OCR transcriber specialized in many different UAE receipt and tax-invoice layouts.
+
+The composite contains three FULL-WIDTH horizontal panels from the SAME receipt:
+- TOP: merchant/header and invoice date.
+- MIDDLE: item/service table.
+- BOTTOM: totals/VAT/payment summary.
+
+Do NOT return JSON. Return ONLY plain text protocol lines:
+
+STORE|best customer-facing merchant/trade/store name
+STORE_CANDIDATE|major English business/organization name from the header
+STORE_CANDIDATE|another major English business/organization name if present
+DATE_RAW|invoice/transaction date exactly as printed
+COUNT|number of DISTINCT ITEM ROWS only when explicitly printed as Total item / No. of items
+VAT_RATE|number
+SUBTOTAL|amount before VAT/tax
+VAT|tax amount
+TOTAL|final payable/gross total
+ITEM|English item text|Arabic item text|quantity|unit price|line total
+ITEM|English item text|Arabic item text|quantity|unit price|line total
+
+MERCHANT RULES:
+1. STORE means the CUSTOMER-FACING OUTLET/TRADE NAME that actually issued the receipt, not necessarily the first legal company name.
+2. Emit every major English organization/trade name in the header as STORE_CANDIDATE in TOP-TO-BOTTOM visual order.
+3. If a parent/owner/management/holding company appears above a pharmacy, laundry, restaurant, shop, branch, clinic, market, salon, etc., choose the customer-facing outlet as STORE.
+   Generic example: "ABC Facilities Management L.L.C." above "CITY PHARMACY - BRANCH" => STORE is CITY PHARMACY - BRANCH.
+4. Exclude addresses, mall/location text, municipality/building names, phone, TRN, TAX INVOICE, invoice number, customer name and payment system names from STORE.
+
+DATE RULES:
+5. DATE_RAW must be copied EXACTLY in the same order printed. Never swap day and month.
+   Example: 02-08-2026 => DATE_RAW|02-08-2026.
+   A text date such as 21 Jul 2026 => DATE_RAW|21 Jul 2026.
+6. Use the transaction/invoice date, not Delivery Date, due date or Print Time.
+
+ITEM RULES:
+7. Emit ONE ITEM line for every distinct purchasable row.
+8. Copy English and Arabic item names literally. Never translate or spell-correct.
+9. quantity, unit_price and line_total must belong to the SAME row.
+10. COUNT is ONLY a printed count of distinct item rows. Do NOT use T.Pcs, Total Pieces, Total Qty or total quantity as COUNT.
+11. Never include VAT, totals, balance, dates, TRN, invoice/order/customer numbers or table headings as ITEM rows.
+
+TOTAL RULES:
+12. SUBTOTAL is the amount before VAT/tax. Labels vary: Excl.VAT, Subtotal, Net W/Out Tax, G.Amt or similar.
+13. VAT is the tax amount, not the percentage.
+14. TOTAL is the final amount payable. Labels vary: Grand Total, Total, Gross, Amount Due, Adv when it clearly equals subtotal + tax, or similar.
+15. Read decimal points character-by-character. 12.00, 0.60 and 12.60 are different.
+16. If a field is unreadable, leave it empty rather than guessing.
+17. No markdown, no commentary and no code fences. Only protocol lines.`;
+
+const LEGACY_REPAIR_PROMPT = `You are a second-pass OCR verifier for the SAME UAE receipt image.
+The first pass was incomplete or internally inconsistent.
+
+Read the receipt again independently. Focus on the actual item/service table and the labeled financial summary.
+Do NOT copy examples, instructions, placeholders or field descriptions into values.
+
+Return ONLY:
+STORE|actual customer-facing merchant name visibly printed on the receipt
+DATE_RAW|invoice/transaction date exactly as printed
+COUNT|distinct item-row count only when explicitly printed as Total item / No. of Items / # of Items
+PIECES|total pieces / T.Pcs / Total Qty only when explicitly printed
+VAT_RATE|percentage
+SUBTOTAL|amount before tax
+VAT|tax amount
+TOTAL|final payable/gross/net amount
+ITEM|English item text|Arabic item text|quantity|unit price|line total
+
+Rules:
+1. STORE must be ACTUAL text visible on the receipt. NEVER output phrases such as "best customer-facing merchant/trade/store name", "store name", "merchant name", or any instruction text.
+2. Read every DISTINCT purchase row. Do not output totals, customer details, dates, payment methods, terms or balances as items.
+3. Common subtotal labels include Excl.VAT, VATable Sales, Taxable Sales, Subtotal, Net W/Out Tax, G.Amt and Net Amount Before Tax.
+4. VAT labels include VAT Amount, VAT 5%, Tax.
+5. Common final-total labels include Grand Total, Gross, Net Amount, Total, Amount Due and final paid amount.
+6. T.Pcs / Total Pieces / Total Qty is PIECES, not COUNT.
+7. Keep dates in the printed order. Never swap day and month.
+8. Copy item names literally; do not translate or spell-correct.
+9. If only one money value is printed for a row, use it as line total.
+10. Read decimals exactly. If unclear, leave blank instead of guessing.
+11. No JSON, markdown, explanation or code fences.`;
+const VERSION = '4.5.3';
 
 const PROMPT = `Read the COMPLETE receipt/tax invoice image literally. The receipt may be thermal paper, POS, pharmacy, laundry, restaurant, screenshot, digital job order, Arabic/English, narrow, wide, long, or short.
 
@@ -693,69 +772,84 @@ function chooseBestChecked(candidates){
   }
   return best
 }
-async function readReceipt(env,image,mode='primary'){
-  const candidates=[];
-  let calls=0;
+async function readLegacyReceipt(env,image){
+  const firstResult=await env.AI.run(FALLBACK_MODEL,{
+    prompt:LEGACY_PROMPT,
+    image,
+    max_tokens:1000,
+    temperature:0,
+    stream:false
+  });
+  const firstRaw=responseText(firstResult);
+  if(!firstRaw)throw new Error('Legacy Llama reader returned no text');
 
-  try{
-    const raw=await runMoondream(env,image,PROMPT,5000);calls++;
-    const checked=validate(parseProtocol(raw));
-    checked.transcript_lines=raw.split(/\n+/).filter(Boolean).length;
-    checked.transcript_preview=raw.slice(0,2200);
-    checked.primary_engine='moondream';
-    candidates.push(checked);
-    if(checked.accepted&&checked.complete&&!shouldRepair(checked)){
-      checked.inference_calls=calls;
-      checked.models_used=[OCR_MODEL];
-      return checked
-    }
-  }catch(e){console.warn('moondream-primary',e)}
+  const primary=validate(parseProtocol(firstRaw));
+  primary.transcript_lines=firstRaw.split(/\n+/).filter(Boolean).length;
+  primary.transcript_preview=firstRaw.slice(0,1400);
+  primary.repair_used=false;
+  primary.primary_engine='llama-stable';
+  primary.inference_calls=1;
+  primary.models_used=[FALLBACK_MODEL];
 
-  try{
-    const raw=await runMoondream(env,image,REPAIR_PROMPT,5400);calls++;
-    const checked=validate(parseProtocol(raw));
-    checked.transcript_lines=raw.split(/\n+/).filter(Boolean).length;
-    checked.transcript_preview=raw.slice(0,2200);
-    checked.primary_engine='moondream-recheck';
-    candidates.push(checked);
-    const best=chooseBestChecked(candidates);
-    if(best?.accepted&&!shouldRepair(best)){
-      best.inference_calls=calls;
-      best.models_used=[OCR_MODEL];
-      best.repair_used=true;
-      return best
-    }
-  }catch(e){console.warn('moondream-recheck',e)}
+  if(!shouldRepair(primary))return primary;
 
-  try{
-    const raw=await runLlamaFallback(env,image);calls++;
-    const checked=validate(parseProtocol(raw));
-    checked.transcript_lines=raw.split(/\n+/).filter(Boolean).length;
-    checked.transcript_preview=raw.slice(0,2200);
-    checked.primary_engine='llama-fallback';
-    candidates.push(checked)
-  }catch(e){console.warn('llama-fallback',e)}
+  const secondResult=await env.AI.run(FALLBACK_MODEL,{
+    prompt:LEGACY_REPAIR_PROMPT,
+    image,
+    max_tokens:1200,
+    temperature:0,
+    stream:false
+  });
+  const secondRaw=responseText(secondResult);
+  if(!secondRaw)return primary;
 
-  const best=chooseBestChecked(candidates);
-  if(!best)throw new Error('All receipt OCR engines returned no usable extraction');
-  best.inference_calls=calls;
-  best.models_used=[OCR_MODEL,FALLBACK_MODEL];
-  best.repair_used=calls>1;
+  const repaired=validate(parseProtocol(secondRaw));
+  repaired.transcript_lines=secondRaw.split(/\n+/).filter(Boolean).length;
+  repaired.transcript_preview=secondRaw.slice(0,1500);
+  repaired.repair_used=true;
+  repaired.primary_engine='llama-stable-repair';
+  repaired.inference_calls=2;
+  repaired.models_used=[FALLBACK_MODEL];
+
+  let best=checkedQuality(repaired)>checkedQuality(primary)?repaired:primary;
+  if(best===repaired)best=fillMissingFromPrimary(best,primary);
+  best.repair_used=true;
+  best.inference_calls=2;
+  best.models_used=[FALLBACK_MODEL];
   return best
+}
+
+async function readUniversalReceipt(env,image){
+  // One focused Moondream pass only. This is deliberately a fallback,
+  // so a slow universal model can never block receipts that the stable reader handles.
+  const raw=await runMoondream(env,image,PROMPT,1800);
+  const checked=validate(parseProtocol(raw));
+  checked.transcript_lines=raw.split(/\n+/).filter(Boolean).length;
+  checked.transcript_preview=raw.slice(0,2000);
+  checked.primary_engine='moondream-universal';
+  checked.repair_used=false;
+  checked.inference_calls=1;
+  checked.models_used=[OCR_MODEL];
+  return checked
+}
+
+async function readReceipt(env,image,mode='legacy'){
+  if(mode==='universal')return await readUniversalReceipt(env,image);
+  return await readLegacyReceipt(env,image)
 }
 
 export default {
   async fetch(request,env){
     const url=new URL(request.url);
     if(url.pathname==='/api/health'){
-      return new Response(JSON.stringify({ok:true,engine:'Cloudflare Workers AI • Moondream OCR Ensemble',model:OCR_MODEL,fallback:FALLBACK_MODEL,version:VERSION,base:'4.4.0'}),{headers:headers()});
+      return new Response(JSON.stringify({ok:true,engine:'Stable Llama Primary + Moondream Universal Fallback',primary:FALLBACK_MODEL,fallback:OCR_MODEL,version:VERSION,base:'4.4.0'}),{headers:headers()});
     }
     if(url.pathname==='/api/receipt'){
       if(request.method!=='POST')return new Response(JSON.stringify({ok:false,error:'Method not allowed'}),{status:405,headers:headers()});
       const started=Date.now(),scanId=crypto.randomUUID().slice(0,8);
       try{
         const body=await request.json(),image=body?.image,
-          mode=body?.mode==='segments'?'segments':(body?.mode==='alternate'?'alternate':'primary'),
+          mode=body?.mode==='segments'?'segments':(body?.mode==='universal'?'universal':'legacy'),
           images=Array.isArray(body?.images)?body.images:[];
         if(mode==='segments'){
           if(images.length!==2||!images.every(validImage))return new Response(JSON.stringify({ok:false,error:'Two receipt segment images are required'}),{status:400,headers:headers()});
@@ -765,7 +859,7 @@ export default {
         const result=mode==='segments'?await readReceiptSegments(env,images):await readReceipt(env,image,mode);
         return new Response(JSON.stringify({
           ok:true,...result,
-          meta:{engine:'Cloudflare Workers AI • Moondream OCR Ensemble',model:OCR_MODEL,fallback:FALLBACK_MODEL,version:VERSION,base:'4.4.0',scan_id:scanId,elapsed_ms:Date.now()-started,images:1,inference_calls:result.inference_calls||1,repair_used:!!result.repair_used,models_used:result.models_used||[OCR_MODEL]}
+          meta:{engine:mode==='universal'?'Cloudflare Workers AI • Moondream Universal Fallback':'Cloudflare Workers AI • Stable Llama Primary',model:mode==='universal'?OCR_MODEL:FALLBACK_MODEL,fallback:OCR_MODEL,version:VERSION,base:'4.4.0',scan_id:scanId,elapsed_ms:Date.now()-started,images:1,inference_calls:result.inference_calls||1,repair_used:!!result.repair_used,models_used:result.models_used||[mode==='universal'?OCR_MODEL:FALLBACK_MODEL]}
         }),{headers:headers()});
       }catch(e){
         console.error('receipt-reader',e);
