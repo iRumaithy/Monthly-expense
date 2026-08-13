@@ -170,7 +170,7 @@ button,input,textarea,select{font:inherit}button{cursor:pointer}.app{max-width:1
             <div class="ai-local-head"><div class="ai-local-title"><span>🧠</span><span data-i18n="localAIReader">القارئ الذكي المحلي</span></div><span class="ai-local-badge" id="aiLocalBadge" data-i18n="aiChecking">جارٍ التحقق…</span></div>
             <div class="ai-local-detail" id="aiLocalDetail" data-i18n="aiLocalNote">يعمل داخل الهاتف بدون API أو اشتراك. في أول تشغيل فقط يتم تنزيل النموذج وحفظه في ذاكرة المتصفح.</div>
             <div class="ai-local-meter" id="aiLocalMeter"><i id="aiLocalMeterBar"></i></div>
-            <div class="ai-local-tech"><span id="aiDeviceBadge">Cloudflare</span><span>Workers AI • Stable OCR + Hybrid Verification</span><span data-i18n="aiPrivate">معالجة سحابية آمنة</span></div>
+            <div class="ai-local-tech"><span id="aiDeviceBadge">Cloudflare</span><span>Workers AI • Moondream 3.1 OCR Ensemble</span><span data-i18n="aiPrivate">معالجة سحابية آمنة</span></div>
           </div>
         </div>
         <div class="footer-note" data-i18n="ocrNote">لأفضل نتيجة: اجعل الفاتورة كاملة داخل الصورة وبإضاءة متساوية. تتم معالجة التباين والقص تلقائيًا، ويمكنك مراجعة كل البيانات قبل الحفظ.</div>
@@ -1005,7 +1005,7 @@ function cloudReceiptToParsed(payload){
     store:canonicalMerchant,date:r.date||'',category:inferCategory(`${canonicalMerchant} ${(r.items||[]).map(x=>x.name||'').join(' ')}`),
     subtotal:r.subtotal??null,tax:r.tax??null,total:r.total??null,itemRows:items,items:items.length,itemsExpected:items.length,
     score:Number(payload?.score??0)||Math.min(100,vals*14),fields:vals,vatEvidence:Number(r.tax||0)>0,totalReliable:r.total!=null,
-    localAI:true,engine:'Cloudflare AI • Stable OCR + Hybrid Verification',warnings:Array.isArray(r.warnings)?r.warnings:[],readerMeta:payload?.meta||null,accepted:payload?.accepted!==false
+    localAI:true,engine:'Cloudflare AI • Moondream 3.1 OCR Ensemble',warnings:Array.isArray(r.warnings)?r.warnings:[],readerMeta:payload?.meta||null,accepted:payload?.accepted!==false
   }
 }
 async function checkCloudReaderHealth(){
@@ -1026,6 +1026,21 @@ function cloudCropCanvas(source,x0,y0,x1,y1,w,h){
   g.drawImage(source,sx,sy,sw,sh,0,0,w,h);
   return c
 }
+function buildCloudFullReceiptImage(source,compact=false){
+  if(!source)return null;
+  const maxW=compact?1200:1900,maxH=compact?2000:3000;
+  const scale=Math.min(1,maxW/source.width,maxH/source.height);
+  const w=Math.max(1,Math.round(source.width*scale)),h=Math.max(1,Math.round(source.height*scale));
+  const c=document.createElement('canvas');c.width=w;c.height=h;
+  const g=c.getContext('2d');g.fillStyle='#fff';g.fillRect(0,0,w,h);
+  g.imageSmoothingEnabled=true;g.imageSmoothingQuality='high';
+  g.drawImage(source,0,0,w,h);
+  let q=compact?.80:.94,url=c.toDataURL('image/jpeg',q);
+  const maxLen=compact?3_900_000:6_600_000;
+  while(url.length>maxLen&&q>.67){q-=.05;url=c.toDataURL('image/jpeg',q)}
+  return url
+}
+
 function buildCloudReceiptComposite(source,compact=false){
   if(!source)return null;
   const W=compact?900:1200;
@@ -1287,7 +1302,7 @@ async function tryLocalHybridReceiptRescue(body,cloudParsed){
 async function runCloudReceiptReader(){
   const focus=sourceCanvas||currentCanvas;if(!focus)throw new Error('No receipt image');
   clearRecognitionFieldsForNewImage();
-  const primaryImage=buildCloudReceiptComposite(focus,false);
+  const primaryImage=buildCloudFullReceiptImage(focus,false);
   if(!primaryImage)throw new Error('Could not prepare receipt image');
   $('#ocrMeter').style.display='block';$('#ocrMeterBar').style.width='24%';
   $('#ocrStatus').textContent=lang==='ar'?'جارٍ تحليل تصميم الفاتورة واسم النشاط والأصناف…':'Analyzing receipt layout, merchant and items…';
@@ -1302,7 +1317,7 @@ async function runCloudReceiptReader(){
     $('#ocrStatus').textContent=lang==='ar'?'حدث انقطاع مؤقت؛ إعادة محاولة تلقائية بصورة أخف…':'Temporary interruption; retrying automatically with a lighter image…';
     setLocalAIStatus('loading',lang==='ar'?'إعادة محاولة تلقائية — لا حاجة لإعادة التصوير.':'Automatic retry — no need to retake the receipt.',52);
     await sleepMs(450);
-    const compactImage=buildCloudReceiptComposite(focus,true);
+    const compactImage=buildCloudFullReceiptImage(focus,true);
     body=await postCloudReceipt(compactImage,17000);
     body.meta={...(body.meta||{}),client_retry:true};
   }
@@ -1315,9 +1330,7 @@ async function runCloudReceiptReader(){
     || br.total==null
     || bi.length===0
     || (Number(br.printed_piece_count||0)>0 && bi.length>Number(br.printed_piece_count||0)+2);
-  if(suspiciousPrimary)body=await tryAlternateCloudReceipt(body);
-
-  // Segment Rescue was removed from the live path in 4.5.1 because repeated tests
+// Segment Rescue was removed from the live path in 4.5.2 because repeated tests
   // showed that it added latency without fixing the two difficult receipt layouts.
   // Rejected receipts now proceed directly to the local arithmetic OCR verifier.
   $('#ocrMeterBar').style.width='88%';
@@ -1326,20 +1339,12 @@ async function runCloudReceiptReader(){
   parsed.itemsExpected=Number(body?.receipt?.printed_item_count)||parsed.itemsExpected;
 
   if(body?.accepted===false){
-    const hybrid=await tryLocalHybridReceiptRescue(body,parsed);
-    if(hybrid){
-      applyParsedReceipt(hybrid);showScanResult(hybrid);saveDraftNow(true);$('#ocrMeterBar').style.width='100%';
-      const sid=body?.meta?.scan_id?` • Scan ${body.meta.scan_id}`:'';
-      $('#ocrStatus').textContent=(lang==='ar'?'تمت قراءة الفاتورة بنجاح عبر التحقق الهجين السحابي + المحلي.':'Receipt recovered successfully using cloud + local hybrid verification.')+sid;
-      setLocalAIStatus('ready',lang==='ar'?'تمت مطابقة صفوف الأصناف محليًا مع الإجماليات المطبوعة — النتيجة موثوقة.':'Local item rows matched the printed totals — verified result.',100);
-      return hybrid
-    }
     clearRecognitionFieldsForNewImage();
-    parsed.warnings=[...(parsed.warnings||[]),lang==='ar'?'تم رفض القراءة لأنها لم تجتز التحقق البنيوي والمحلي.':'Reading rejected because it failed cloud and local structural validation.'];
+    parsed.warnings=[...(parsed.warnings||[]),lang==='ar'?'لم تتطابق القراءة بعد تشغيل قارئ OCR المتخصص والقارئ الاحتياطي.':'Extraction did not reconcile after dedicated OCR and ensemble fallback.'];
     showScanResult(parsed);$('#ocrMeterBar').style.width='100%';
     const sid=body?.meta?.scan_id?` • Scan ${body.meta.scan_id}`:'';
-    $('#ocrStatus').textContent=(lang==='ar'?'لم تُعبأ الحقول لأن النتيجة لم تتطابق حتى بعد التحقق المحلي.':'Fields were left blank because the result still did not reconcile after local verification.')+sid;
-    setLocalAIStatus('error',lang==='ar'?'تم رفض نتيجة غير موثوقة بدل تعبئة بيانات خاطئة.':'Unreliable result rejected instead of filling wrong data.');
+    $('#ocrStatus').textContent=(lang==='ar'?'لم تُعبأ الحقول لأن القراءة لم تجتز التحقق الحسابي.':'Fields were left blank because the extraction failed arithmetic verification.')+sid;
+    setLocalAIStatus('error',lang==='ar'?'تم رفض بيانات غير متطابقة بدل تعبئتها بشكل خاطئ.':'Non-reconciling data was rejected instead of being filled incorrectly.');
     return null
   }
 
@@ -1656,6 +1661,6 @@ $('#restoreInput').onchange=async e=>{
 clearForm(false);applyLang();ensurePersistentStorage();restoreDraft();setLocalAIStatus('loading',lang==='ar'?'جارٍ التحقق من اتصال Cloudflare AI…':'Checking Cloudflare AI connection…',5);setTimeout(checkCloudReaderHealth,250);
 </script>
 
-<footer class="app-version-footer" id="appVersionFooter" data-version="4.5.1">الإصدار 4.5.1</footer>
+<footer class="app-version-footer" id="appVersionFooter" data-version="4.5.2">الإصدار 4.5.2</footer>
 </body>
 </html>
