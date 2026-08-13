@@ -1,84 +1,60 @@
-const MODEL = '@cf/meta/llama-3.2-11b-vision-instruct';
-const VERSION = '4.5.1';
+const OCR_MODEL = '@cf/moondream/moondream3.1-9B-A2B';
+const FALLBACK_MODEL = '@cf/meta/llama-3.2-11b-vision-instruct';
+const MODEL = OCR_MODEL;
+const VERSION = '4.5.2';
 
-const PROMPT = `You are a literal OCR transcriber specialized in many different UAE receipt and tax-invoice layouts.
+const PROMPT = `Read the COMPLETE receipt/tax invoice image literally. The receipt may be thermal paper, POS, pharmacy, laundry, restaurant, screenshot, digital job order, Arabic/English, narrow, wide, long, or short.
 
-The composite contains three FULL-WIDTH horizontal panels from the SAME receipt:
-- TOP: merchant/header and invoice date.
-- MIDDLE: item/service table.
-- BOTTOM: totals/VAT/payment summary.
-
-Do NOT return JSON. Return ONLY plain text protocol lines:
-
-STORE|best customer-facing merchant/trade/store name
-STORE_CANDIDATE|major English business/organization name from the header
-STORE_CANDIDATE|another major English business/organization name if present
-DATE_RAW|invoice/transaction date exactly as printed
-COUNT|number of DISTINCT ITEM ROWS only when explicitly printed as Total item / No. of items
-VAT_RATE|number
-SUBTOTAL|amount before VAT/tax
+Return ONLY protocol lines:
+STORE|actual customer-facing merchant/outlet/trade name
+STORE_CANDIDATE|another prominent business/legal name if visible
+DATE_RAW|invoice/transaction/order date exactly as printed
+COUNT|explicit number of DISTINCT purchase/service rows only
+PIECES|explicit T.Pcs / Total Pieces / Total Qty only
+VAT_RATE|explicit tax percentage
+SUBTOTAL|pre-tax / VATable / Excl.VAT amount
 VAT|tax amount
-TOTAL|final payable/gross total
-ITEM|English item text|Arabic item text|quantity|unit price|line total
-ITEM|English item text|Arabic item text|quantity|unit price|line total
-
-MERCHANT RULES:
-1. STORE means the CUSTOMER-FACING OUTLET/TRADE NAME that actually issued the receipt, not necessarily the first legal company name.
-2. Emit every major English organization/trade name in the header as STORE_CANDIDATE in TOP-TO-BOTTOM visual order.
-3. If a parent/owner/management/holding company appears above a pharmacy, laundry, restaurant, shop, branch, clinic, market, salon, etc., choose the customer-facing outlet as STORE.
-   Generic example: "ABC Facilities Management L.L.C." above "CITY PHARMACY - BRANCH" => STORE is CITY PHARMACY - BRANCH.
-4. Exclude addresses, mall/location text, municipality/building names, phone, TRN, TAX INVOICE, invoice number, customer name and payment system names from STORE.
-
-DATE RULES:
-5. DATE_RAW must be copied EXACTLY in the same order printed. Never swap day and month.
-   Example: 02-08-2026 => DATE_RAW|02-08-2026.
-   A text date such as 21 Jul 2026 => DATE_RAW|21 Jul 2026.
-6. Use the transaction/invoice date, not Delivery Date, due date or Print Time.
-
-ITEM RULES:
-7. Emit ONE ITEM line for every distinct purchasable row.
-8. Copy English and Arabic item names literally. Never translate or spell-correct.
-9. quantity, unit_price and line_total must belong to the SAME row.
-10. COUNT is ONLY a printed count of distinct item rows. Do NOT use T.Pcs, Total Pieces, Total Qty or total quantity as COUNT.
-11. Never include VAT, totals, balance, dates, TRN, invoice/order/customer numbers or table headings as ITEM rows.
-
-TOTAL RULES:
-12. SUBTOTAL is the amount before VAT/tax. Labels vary: Excl.VAT, Subtotal, Net W/Out Tax, G.Amt or similar.
-13. VAT is the tax amount, not the percentage.
-14. TOTAL is the final amount payable. Labels vary: Grand Total, Total, Gross, Amount Due, Adv when it clearly equals subtotal + tax, or similar.
-15. Read decimal points character-by-character. 12.00, 0.60 and 12.60 are different.
-16. If a field is unreadable, leave it empty rather than guessing.
-17. No markdown, no commentary and no code fences. Only protocol lines.`;
-
-const REPAIR_PROMPT = `You are a second-pass OCR verifier for the SAME UAE receipt image.
-The first pass was incomplete or internally inconsistent.
-
-Read the receipt again independently. Focus on the actual item/service table and the labeled financial summary.
-Do NOT copy examples, instructions, placeholders or field descriptions into values.
-
-Return ONLY:
-STORE|actual customer-facing merchant name visibly printed on the receipt
-DATE_RAW|invoice/transaction date exactly as printed
-COUNT|distinct item-row count only when explicitly printed as Total item / No. of Items / # of Items
-PIECES|total pieces / T.Pcs / Total Qty only when explicitly printed
-VAT_RATE|percentage
-SUBTOTAL|amount before tax
-VAT|tax amount
-TOTAL|final payable/gross/net amount
+TOTAL|final payable / gross / net amount
 ITEM|English item text|Arabic item text|quantity|unit price|line total
 
 Rules:
-1. STORE must be ACTUAL text visible on the receipt. NEVER output phrases such as "best customer-facing merchant/trade/store name", "store name", "merchant name", or any instruction text.
-2. Read every DISTINCT purchase row. Do not output totals, customer details, dates, payment methods, terms or balances as items.
-3. Common subtotal labels include Excl.VAT, VATable Sales, Taxable Sales, Subtotal, Net W/Out Tax, G.Amt and Net Amount Before Tax.
-4. VAT labels include VAT Amount, VAT 5%, Tax.
-5. Common final-total labels include Grand Total, Gross, Net Amount, Total, Amount Due and final paid amount.
-6. T.Pcs / Total Pieces / Total Qty is PIECES, not COUNT.
-7. Keep dates in the printed order. Never swap day and month.
-8. Copy item names literally; do not translate or spell-correct.
-9. If only one money value is printed for a row, use it as line total.
-10. Read decimals exactly. If unclear, leave blank instead of guessing.
-11. No JSON, markdown, explanation or code fences.`;
+1. Inspect the entire image from top to bottom. Do not assume fixed locations.
+2. Read EVERY distinct purchase/service row. Never stop after the first row.
+3. Keep quantity, unit price and line total from the SAME row.
+4. If the receipt has ONE amount/AED column, that value is the LINE TOTAL. Leave unit price blank if it is not printed.
+5. T.Pcs / Total Pieces / Total Qty is PIECES, not COUNT.
+6. Do not include headings, invoice/order/customer numbers, payment methods, balances, dates, totals, VAT, or terms as ITEM rows.
+7. STORE must be actual visible text. Prefer the customer-facing outlet over a parent/management company.
+8. Preserve DATE_RAW exactly. Never swap day and month.
+9. Copy item names literally. Preserve both English and Arabic when both are printed. Never invent a translation.
+10. Common pre-tax labels: VATable Sales, Taxable Sales, Excl.VAT, G.Amt, Subtotal, Net W/Out Tax.
+11. Common tax labels: VAT Amount, VAT 5%, Tax.
+12. Common final labels: Net Amount, Gross, Grand Total, Total, Amount Due, Adv when it is clearly the final paid amount.
+13. Decimal accuracy is critical.
+14. If uncertain, leave a field blank rather than guessing.
+15. No JSON, markdown, commentary, examples or code fences.`;
+
+const REPAIR_PROMPT = `Re-read the COMPLETE receipt image independently because the previous extraction did not reconcile.
+
+Return ONLY protocol lines:
+STORE|actual customer-facing merchant/outlet
+DATE_RAW|printed transaction/invoice/order date
+COUNT|explicit distinct item-row count
+PIECES|explicit total pieces/quantity
+VAT_RATE|explicit percentage
+SUBTOTAL|pre-tax/VATable amount
+VAT|tax amount
+TOTAL|final payable amount
+ITEM|English text|Arabic text|quantity|unit price|line total
+
+Prioritize:
+- finding ALL item/service rows;
+- distinguishing row count from total pieces;
+- treating a single amount column as line total;
+- preserving exact date order;
+- reconciling item rows with printed financial totals.
+
+Never guess. No JSON, markdown, commentary or examples.`;
 
 const ALT_LAYOUT_PROMPT = `You are a literal OCR transcriber for a UAE receipt/tax invoice of ANY layout.
 
@@ -682,72 +658,97 @@ async function readReceiptSegments(env,images){
   return checked;
 }
 
-async function readReceipt(env,image,mode='primary'){
-  if(mode==='alternate'){
-    const altResult=await env.AI.run(MODEL,{
-      prompt:ALT_LAYOUT_PROMPT,
-      image,
-      max_tokens:1450,
-      temperature:0,
-      stream:false
-    });
-    const altRaw=responseText(altResult);
-    if(!altRaw)throw new Error('Alternate vision pass returned no text');
-    const alt=validate(parseProtocol(altRaw));
-    alt.transcript_lines=altRaw.split(/\n+/).filter(Boolean).length;
-    alt.transcript_preview=altRaw.slice(0,1400);
-    alt.repair_used=false;
-    alt.alternate_layout=true;
-    return alt;
-  }
-
-  const firstResult=await env.AI.run(MODEL,{
+async function runMoondream(env,image,question,maxTokens=4600){
+  const result=await env.AI.run(OCR_MODEL,{
+    task:'query',
+    image,
+    question,
+    reasoning:false,
+    temperature:0,
+    top_p:.05,
+    max_tokens:maxTokens,
+    stream:false
+  });
+  const text=responseText(result);
+  if(!text)throw new Error('Moondream OCR returned no text');
+  return text
+}
+async function runLlamaFallback(env,image){
+  const result=await env.AI.run(FALLBACK_MODEL,{
     prompt:PROMPT,
     image,
-    max_tokens:1000,
+    max_tokens:1900,
     temperature:0,
     stream:false
   });
-  const firstRaw=responseText(firstResult);
-  if(!firstRaw)throw new Error('Vision model returned no text');
-  const primary=validate(parseProtocol(firstRaw));
-  primary.transcript_lines=firstRaw.split(/\n+/).filter(Boolean).length;
-  primary.transcript_preview=firstRaw.slice(0,1200);
-  primary.repair_used=false;
-  primary.alternate_layout=false;
+  const text=responseText(result);
+  if(!text)throw new Error('Fallback vision model returned no text');
+  return text
+}
+function chooseBestChecked(candidates){
+  let best=null,bestScore=-1e9;
+  for(const c of candidates.filter(Boolean)){
+    const s=checkedQuality(c);
+    if(s>bestScore){best=c;bestScore=s}
+  }
+  return best
+}
+async function readReceipt(env,image,mode='primary'){
+  const candidates=[];
+  let calls=0;
 
-  if(!shouldRepair(primary))return primary;
+  try{
+    const raw=await runMoondream(env,image,PROMPT,5000);calls++;
+    const checked=validate(parseProtocol(raw));
+    checked.transcript_lines=raw.split(/\n+/).filter(Boolean).length;
+    checked.transcript_preview=raw.slice(0,2200);
+    checked.primary_engine='moondream';
+    candidates.push(checked);
+    if(checked.accepted&&checked.complete&&!shouldRepair(checked)){
+      checked.inference_calls=calls;
+      checked.models_used=[OCR_MODEL];
+      return checked
+    }
+  }catch(e){console.warn('moondream-primary',e)}
 
-  const secondResult=await env.AI.run(MODEL,{
-    prompt:REPAIR_PROMPT,
-    image,
-    max_tokens:1200,
-    temperature:0,
-    stream:false
-  });
-  const secondRaw=responseText(secondResult);
-  if(!secondRaw)return primary;
+  try{
+    const raw=await runMoondream(env,image,REPAIR_PROMPT,5400);calls++;
+    const checked=validate(parseProtocol(raw));
+    checked.transcript_lines=raw.split(/\n+/).filter(Boolean).length;
+    checked.transcript_preview=raw.slice(0,2200);
+    checked.primary_engine='moondream-recheck';
+    candidates.push(checked);
+    const best=chooseBestChecked(candidates);
+    if(best?.accepted&&!shouldRepair(best)){
+      best.inference_calls=calls;
+      best.models_used=[OCR_MODEL];
+      best.repair_used=true;
+      return best
+    }
+  }catch(e){console.warn('moondream-recheck',e)}
 
-  const repaired=validate(parseProtocol(secondRaw));
-  repaired.transcript_lines=secondRaw.split(/\n+/).filter(Boolean).length;
-  repaired.transcript_preview=secondRaw.slice(0,1200);
-  repaired.repair_used=true;
-  repaired.alternate_layout=false;
+  try{
+    const raw=await runLlamaFallback(env,image);calls++;
+    const checked=validate(parseProtocol(raw));
+    checked.transcript_lines=raw.split(/\n+/).filter(Boolean).length;
+    checked.transcript_preview=raw.slice(0,2200);
+    checked.primary_engine='llama-fallback';
+    candidates.push(checked)
+  }catch(e){console.warn('llama-fallback',e)}
 
-  let best=checkedQuality(repaired)>checkedQuality(primary)?repaired:primary;
-  if(best===repaired)best=fillMissingFromPrimary(best,primary);
-  best.repair_used=true;
-  best.primary_score=primary.score;
-  best.repair_score=repaired.score;
-  best.alternate_layout=false;
-  return best;
+  const best=chooseBestChecked(candidates);
+  if(!best)throw new Error('All receipt OCR engines returned no usable extraction');
+  best.inference_calls=calls;
+  best.models_used=[OCR_MODEL,FALLBACK_MODEL];
+  best.repair_used=calls>1;
+  return best
 }
 
 export default {
   async fetch(request,env){
     const url=new URL(request.url);
     if(url.pathname==='/api/health'){
-      return new Response(JSON.stringify({ok:true,engine:'Cloudflare Workers AI • Stable OCR + Hybrid Verification',model:MODEL,version:VERSION,base:'4.4.0'}),{headers:headers()});
+      return new Response(JSON.stringify({ok:true,engine:'Cloudflare Workers AI • Moondream OCR Ensemble',model:OCR_MODEL,fallback:FALLBACK_MODEL,version:VERSION,base:'4.4.0'}),{headers:headers()});
     }
     if(url.pathname==='/api/receipt'){
       if(request.method!=='POST')return new Response(JSON.stringify({ok:false,error:'Method not allowed'}),{status:405,headers:headers()});
@@ -759,12 +760,12 @@ export default {
         if(mode==='segments'){
           if(images.length!==2||!images.every(validImage))return new Response(JSON.stringify({ok:false,error:'Two receipt segment images are required'}),{status:400,headers:headers()});
         }else if(!validImage(image)){
-          return new Response(JSON.stringify({ok:false,error:'One composite receipt image is required'}),{status:400,headers:headers()});
+          return new Response(JSON.stringify({ok:false,error:'One complete receipt image is required'}),{status:400,headers:headers()});
         }
         const result=mode==='segments'?await readReceiptSegments(env,images):await readReceipt(env,image,mode);
         return new Response(JSON.stringify({
           ok:true,...result,
-          meta:{engine:'Cloudflare Workers AI • Stable OCR + Hybrid Verification',model:MODEL,version:VERSION,base:'4.4.0',scan_id:scanId,elapsed_ms:Date.now()-started,images:mode==='segments'?2:1,inference_calls:mode==='segments'?(result.segment_calls||2):(mode==='alternate'?1:(result.repair_used?2:1)),repair_used:!!result.repair_used,alternate_layout:mode==='alternate',segment_rescue:mode==='segments',segment_ms:result.segment_ms||0}
+          meta:{engine:'Cloudflare Workers AI • Moondream OCR Ensemble',model:OCR_MODEL,fallback:FALLBACK_MODEL,version:VERSION,base:'4.4.0',scan_id:scanId,elapsed_ms:Date.now()-started,images:1,inference_calls:result.inference_calls||1,repair_used:!!result.repair_used,models_used:result.models_used||[OCR_MODEL]}
         }),{headers:headers()});
       }catch(e){
         console.error('receipt-reader',e);
