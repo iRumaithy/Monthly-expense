@@ -1,20 +1,23 @@
 const MODEL = '@cf/meta/llama-3.2-11b-vision-instruct';
-const VERSION = '4.4.0';
+const VERSION = '4.5.0';
 
-const PROMPT = `You are a literal OCR transcriber specialized in many different UAE receipt and tax-invoice layouts.
+const PROMPT = `You are a literal OCR transcriber specialized in MANY DIFFERENT UAE receipt and tax-invoice layouts.
 
-The composite contains three FULL-WIDTH horizontal panels from the SAME receipt:
-- TOP: merchant/header and invoice date.
-- MIDDLE: item/service table.
-- BOTTOM: totals/VAT/payment summary.
+The supplied image is a 2x2 UNIVERSAL COMPOSITE made from FOUR OVERLAPPING VERTICAL SLICES of the SAME receipt:
+- TOP LEFT = top section
+- TOP RIGHT = upper-middle section
+- BOTTOM LEFT = lower-middle section
+- BOTTOM RIGHT = bottom section
+The slices overlap intentionally. Never output the same item twice just because it appears in two slices.
 
 Do NOT return JSON. Return ONLY plain text protocol lines:
 
+HEADER_LINE|prominent English header/business line
+HEADER_LINE|another prominent English header/business line
 STORE|best customer-facing merchant/trade/store name
-STORE_CANDIDATE|major English business/organization name from the header
-STORE_CANDIDATE|another major English business/organization name if present
 DATE_RAW|invoice/transaction date exactly as printed
-COUNT|number of DISTINCT ITEM ROWS only when explicitly printed as Total item / No. of items
+COUNT|number of DISTINCT ITEM ROWS only if the receipt explicitly labels number of items/rows
+PIECES|total pieces / T.Pcs / total quantity only if explicitly printed
 VAT_RATE|number
 SUBTOTAL|amount before VAT/tax
 VAT|tax amount
@@ -23,32 +26,28 @@ ITEM|English item text|Arabic item text|quantity|unit price|line total
 ITEM|English item text|Arabic item text|quantity|unit price|line total
 
 MERCHANT RULES:
-1. STORE means the CUSTOMER-FACING OUTLET/TRADE NAME that actually issued the receipt, not necessarily the first legal company name.
-2. Emit every major English organization/trade name in the header as STORE_CANDIDATE in TOP-TO-BOTTOM visual order.
-3. If a parent/owner/management/holding company appears above a pharmacy, laundry, restaurant, shop, branch, clinic, market, salon, etc., choose the customer-facing outlet as STORE.
-   Generic example: "ABC Facilities Management L.L.C." above "CITY PHARMACY - BRANCH" => STORE is CITY PHARMACY - BRANCH.
-4. Exclude addresses, mall/location text, municipality/building names, phone, TRN, TAX INVOICE, invoice number, customer name and payment system names from STORE.
+1. Transcribe EVERY prominent English business/organization/outlet line near the receipt header as HEADER_LINE, in visual top-to-bottom order.
+2. STORE is the CUSTOMER-FACING OUTLET/TRADE NAME that issued the receipt. A parent owner, facilities-management company, landlord, municipality, payment provider or legal administrator is NOT the store when a pharmacy/laundry/shop/restaurant/etc. name is also visible.
+3. Example: FACILITIES MANAGEMENT above ALAIN PHARMACY - BRANCH => STORE is ALAIN PHARMACY - BRANCH, but emit both as HEADER_LINE.
+4. Exclude address, phone, TRN, TAX INVOICE, customer name, bill number, QR labels and payment-system names from STORE.
 
 DATE RULES:
-5. DATE_RAW must be copied EXACTLY in the same order printed. Never swap day and month.
-   Example: 02-08-2026 => DATE_RAW|02-08-2026.
-   A text date such as 21 Jul 2026 => DATE_RAW|21 Jul 2026.
-6. Use the transaction/invoice date, not Delivery Date, due date or Print Time.
+5. DATE_RAW must be copied EXACTLY as printed. Never swap day and month. 02-08-2026 stays 02-08-2026. Text dates such as 21 Jul 2026 stay in that order.
+6. Use transaction/invoice date, not delivery/due/print time.
 
 ITEM RULES:
-7. Emit ONE ITEM line for every distinct purchasable row.
-8. Copy English and Arabic item names literally. Never translate or spell-correct.
-9. quantity, unit_price and line_total must belong to the SAME row.
-10. COUNT is ONLY a printed count of distinct item rows. Do NOT use T.Pcs, Total Pieces, Total Qty or total quantity as COUNT.
-11. Never include VAT, totals, balance, dates, TRN, invoice/order/customer numbers or table headings as ITEM rows.
+7. Emit one ITEM line for EVERY DISTINCT purchasable row. If a row appears in overlapping slices, output it ONCE.
+8. Copy item names literally; do not translate or spell-correct. Keep English and Arabic in their own fields when visible.
+9. quantity and amount must belong to the same row. If only one monetary column exists, put it in line total and leave unit price empty.
+10. COUNT means number of item ROWS only. T.Pcs / Total Pieces / Total Qty belongs in PIECES, never COUNT.
+11. Exclude VAT, subtotal, totals, balance, advance, booked-by, terms and conditions, dates, TRN, invoice/customer/order numbers and table headings from ITEM rows.
 
 TOTAL RULES:
-12. SUBTOTAL is the amount before VAT/tax. Labels vary: Excl.VAT, Subtotal, Net W/Out Tax, G.Amt or similar.
-13. VAT is the tax amount, not the percentage.
-14. TOTAL is the final amount payable. Labels vary: Grand Total, Total, Gross, Amount Due, Adv when it clearly equals subtotal + tax, or similar.
-15. Read decimal points character-by-character. 12.00, 0.60 and 12.60 are different.
-16. If a field is unreadable, leave it empty rather than guessing.
-17. No markdown, no commentary and no code fences. Only protocol lines.`;
+12. SUBTOTAL labels vary: Excl.VAT, Subtotal, Net W/Out Tax, G.Amt, Net Amount or similar.
+13. VAT is tax amount, not percentage.
+14. TOTAL is final payable/gross amount. Labels vary: Grand Total, Gross, Total, Amount Due, Adv when it represents the final paid amount. Bal.Amt/Outstanding may be remaining balance and should not replace a clearly printed gross/final total.
+15. Read decimals exactly. If unreadable, leave the field empty instead of guessing.
+16. No markdown, no commentary, no code fences. Only protocol lines.`;
 
 function headers(extra={}) {
   return {'content-type':'application/json; charset=utf-8','cache-control':'no-store',...extra};
@@ -92,20 +91,57 @@ function merchant(v){
 function merchantKey(v){
   return txt(v).toLowerCase().replace(/[^a-z0-9]+/g,' ').replace(/\s+/g,' ').trim();
 }
+function nameKey(v){
+  return txt(v).toLowerCase()
+    .replace(/[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]/g,' ')
+    .replace(/\b(?:men|women|man|woman|male|female)\b/g,' ')
+    .replace(/[^a-z0-9]+/g,' ').replace(/\s+/g,' ').trim();
+}
+function tokenSimilarity(a,b){
+  const A=new Set(nameKey(a).split(' ').filter(x=>x.length>1)),B=new Set(nameKey(b).split(' ').filter(x=>x.length>1));
+  if(!A.size||!B.size)return 0;let hit=0;for(const x of A)if(B.has(x))hit++;
+  return hit/Math.max(A.size,B.size);
+}
+function sameMoney(a,b,tol=.03){
+  return a!=null&&b!=null&&Math.abs(Number(a)-Number(b))<=tol;
+}
+function mergeDuplicateItems(rows){
+  const out=[];
+  for(const row of rows||[]){
+    if(!row?.name)continue;
+    let found=-1;
+    for(let i=0;i<out.length;i++){
+      const x=out[i];
+      const qsame=Number(x.quantity||1)===Number(row.quantity||1);
+      const moneySame=(sameMoney(x.line_total,row.line_total,.04)||sameMoney(x.unit_price,row.unit_price,.04));
+      const sim=Math.max(tokenSimilarity(x.name_en||x.name,row.name_en||row.name),tokenSimilarity(x.name,row.name));
+      const complement=(!x.name_en&&row.name_en)||(!x.name_ar&&row.name_ar);
+      if(qsame&&moneySame&&(sim>=.55||complement)){found=i;break}
+    }
+    if(found<0){out.push({...row});continue}
+    const x=out[found];
+    if(!x.name_en&&row.name_en)x.name_en=row.name_en;
+    if(!x.name_ar&&row.name_ar)x.name_ar=row.name_ar;
+    if(!x.unit_price&&row.unit_price)x.unit_price=row.unit_price;
+    if(!x.line_total&&row.line_total)x.line_total=row.line_total;
+    x.name=x.name_en&&x.name_ar?`${x.name_en} — ${x.name_ar}`:(x.name_en||x.name_ar||x.name);
+  }
+  return out;
+}
 function merchantCandidateScore(name,index=0,preferred=false){
   const s=txt(name),k=merchantKey(s); if(!k||!/^[\s\S]*[a-z]{2}/i.test(k))return -999;
   let score=10 + Math.min(12,index*3);
   if(preferred)score+=18;
 
   // Strong customer-facing business signals.
-  if(/\b(pharmacy|laundry|laundromat|dry\s*clean|restaurant|cafe|coffee|bakery|supermarket|hypermarket|grocery|market|salon|barber|clinic|hospital|optical|boutique|store|shop|mart|garage|workshop|tailor|cafeteria|roastery)\b/i.test(s))score+=62;
+  if(/\b(pharmacy|laundry|laundromat|dry\s*clean|restaurant|cafe|coffee|bakery|supermarket|hypermarket|grocery|market|salon|barber|clinic|hospital|optical|boutique|store|shop|mart|garage|workshop|tailor|cafeteria|roastery|medical\s+center|medical\s+centre)\b/i.test(s))score+=72;
   else if(/\b(trading|services|medical|dental|electronics|furniture|fashion|jewellery|jewelry|flowers|florist|stationery|typing|printing|car\s*wash|rent\s*a\s*car)\b/i.test(s))score+=28;
 
   if(/\bbranch\b/i.test(s))score+=9;
   if(/\b(sole\s+proprietorship|establishment)\b/i.test(s))score+=5;
 
   // Strong signals that a line is a parent/legal/administrative entity rather than the outlet.
-  if(/\bfacilit(?:y|ies)\s+management\b/i.test(s))score-=72;
+  if(/\bfacilit(?:y|ies)\s+management\b/i.test(s))score-=110;
   if(/\b(property|properties|real\s*estate)\s+management\b/i.test(s))score-=48;
   if(/\b(holding|holdings|investment|investments)\b/i.test(s))score-=42;
   if(/\bmanagement\b/i.test(s))score-=24;
@@ -157,15 +193,17 @@ function cleanLine(s){
 }
 function parseProtocol(rawText){
   const raw=txt(rawText).replace(/```(?:text|txt)?/gi,'').replace(/```/g,'');
-  const out={store:null,storeCandidates:[],date:null,count:null,rate:null,subtotal:null,tax:null,total:null,items:[],warnings:[]};
+  const out={store:null,storeCandidates:[],headerLines:[],date:null,count:null,pieceCount:null,rate:null,subtotal:null,tax:null,total:null,items:[],warnings:[]};
   const lines=raw.split(/\n+/).map(cleanLine).filter(Boolean);
 
   for(const line of lines){
     const p=line.split('|').map(x=>x.trim()), key=(p[0]||'').toUpperCase().replace(/\s+/g,'_');
+    if(key==='HEADER_LINE'){const h=merchant(p.slice(1).join('|'));if(h)out.headerLines.push(h);continue}
     if(key==='STORE'){out.store=merchant(p.slice(1).join('|'));continue}
     if(key==='STORE_CANDIDATE'){const c=merchant(p.slice(1).join('|'));if(c)out.storeCandidates.push(c);continue}
     if(key==='DATE_RAW'||key==='DATE'){out.date=validDate(p[1]);continue}
     if(key==='COUNT'){const n=num(p[1]);out.count=n!=null&&n>0?Math.round(n):null;continue}
+    if(key==='PIECES'){const n=num(p[1]);out.pieceCount=n!=null&&n>0?Math.round(n):null;continue}
     if(key==='VAT_RATE'){const n=num(p[1]);out.rate=n!=null&&n>=0?n:null;continue}
     if(key==='SUBTOTAL'){out.subtotal=r2(p[1]);continue}
     if(key==='VAT'){out.tax=r2(p[1]);continue}
@@ -192,10 +230,10 @@ function parseProtocol(rawText){
     if(biz)out.store=merchant(biz.replace(/^(?:STORE|MERCHANT|BUSINESS)\s*(?:\||:|=|-)?\s*/i,''));
   }
   for(const line of lines){
-    if(/^STORE_CANDIDATE\s*\|/i.test(line))continue;
+    if(/^(?:STORE_CANDIDATE|HEADER_LINE)\s*\|/i.test(line))continue;
     if(/\b(?:pharmacy|laundry|laundromat|restaurant|cafe|coffee|bakery|supermarket|hypermarket|grocery|market|salon|barber|clinic|hospital|optical|boutique|store|shop|trading|facilities management|holding|management)\b/i.test(line)
       && !/\b(?:tax invoice|invoice|receipt|trn|telephone|mobile|customer|bill no|order no)\b/i.test(line)){
-      const c=merchant(line.replace(/^(?:STORE|MERCHANT|BUSINESS)\s*(?:\||:|=|-)?\s*/i,''));
+      const c=merchant(line.replace(/^(?:STORE|MERCHANT|BUSINESS|HEADER_LINE)\s*(?:\||:|=|-)?\s*/i,''));
       if(c)out.storeCandidates.push(c);
     }
   }
@@ -224,42 +262,68 @@ function parseProtocol(rawText){
     if(m)out.subtotal=r2(m[1]);
   }
 
-  out.store=chooseMerchant(out.store,out.storeCandidates);
+  out.store=chooseMerchant(out.store,[...out.headerLines,...out.storeCandidates]);
   return {out,lines,raw};
 }
 function validate(parsed){
   const r=parsed.out, warnings=[...r.warnings];
-  const itemSum=r2(r.items.reduce((s,x)=>s+(x.line_total??0),0));
-  const quantitySum=Math.round(r.items.reduce((s,x)=>s+(Number(x.quantity)||0),0)*100)/100;
-  let pieceCount=null;
-  if(r.count!=null&&r.count!==r.items.length){
-    // Some receipts print T.Pcs / total pieces; if it equals the sum of quantities, it is NOT an item-row count.
-    if(Math.abs(r.count-quantitySum)<.001){pieceCount=r.count;r.count=null;warnings.push('Printed count interpreted as total pieces/quantity, not item-row count');}
-    else warnings.push(`Printed item count is ${r.count}, but ${r.items.length} rows were extracted`);
-  }
-  if(r.subtotal!=null&&r.tax!=null&&r.total!=null&&Math.abs(r.subtotal+r.tax-r.total)>.06)warnings.push('Subtotal + VAT does not match Grand Total');
-  if(r.rate!=null&&r.rate>0&&r.rate<30&&r.subtotal!=null&&r.tax!=null&&Math.abs(r.subtotal*r.rate/100-r.tax)>.06)warnings.push('VAT amount does not match printed VAT rate');
-  if(r.items.length&&r.total!=null&&Math.abs(itemSum-r.total)>.18&&!(r.subtotal!=null&&Math.abs(itemSum-r.subtotal)<=.18))warnings.push('Item row sum does not match labeled totals');
 
-  // Exact financial reconciliation only when total + printed VAT rate support it.
+  // Merge duplicates caused by overlapping tiles or bilingual duplicate rows.
+  r.items=mergeDuplicateItems(r.items).filter(x=>{
+    const price=x.line_total??x.unit_price;
+    if(price==null||Number(price)<0)return false;
+    if(summaryName(x.name))return false;
+    if(/terms?\s*(?:and|&)\s*conditions?|booked\s*by|advance\s*balance|store\s*timing|change\s*back|customer\s*name|cashier|thank\s*you/i.test(x.name))return false;
+    return true;
+  });
+
+  const quantitySum=Math.round(r.items.reduce((s,x)=>s+(Number(x.quantity)||0),0)*100)/100;
+  const itemSum=r2(r.items.reduce((s,x)=>s+(x.line_total??0),0));
+  let pieceCount=r.pieceCount??null;
+
+  // If the model mistakenly placed T.Pcs / total quantity in COUNT, recover automatically.
+  if(r.count!=null&&r.count!==r.items.length){
+    if(Math.abs(r.count-quantitySum)<.01){
+      pieceCount=pieceCount??r.count;
+      r.count=null;
+      warnings.push('Printed count interpreted as total pieces/quantity, not item-row count');
+    }else{
+      warnings.push(`Printed item-row count is ${r.count}, but ${r.items.length} rows were extracted`);
+    }
+  }
+
+  if(r.subtotal!=null&&r.tax!=null&&r.total!=null&&Math.abs(r.subtotal+r.tax-r.total)>.06)
+    warnings.push('Subtotal + VAT does not match Grand Total');
+  if(r.rate!=null&&r.rate>0&&r.rate<30&&r.subtotal!=null&&r.tax!=null&&Math.abs(r.subtotal*r.rate/100-r.tax)>.06)
+    warnings.push('VAT amount does not match printed VAT rate');
+
+  const itemMatchesSubtotal=r.items.length&&r.subtotal!=null&&Math.abs(itemSum-r.subtotal)<=.18;
+  const itemMatchesTotal=r.items.length&&r.total!=null&&Math.abs(itemSum-r.total)<=.18;
+  if(r.items.length&&r.total!=null&&!itemMatchesSubtotal&&!itemMatchesTotal)
+    warnings.push('Item row sum does not match labeled totals');
+
+  // Exact financial reconciliation only when Grand Total and printed VAT rate support it.
   if(r.total!=null&&r.rate!=null&&r.rate>0&&r.rate<30){
-    const ds=r2(r.total/(1+r.rate/100)), dt=r2(r.total-ds);
+    const ds=r2(r.total/(1+r.rate/100)),dt=r2(r.total-ds);
     const bad=r.subtotal==null||r.tax==null||Math.abs((r.subtotal+r.tax)-r.total)>.05||Math.abs(r.subtotal*r.rate/100-r.tax)>.05;
-    if(bad && (r.subtotal==null||Math.abs(r.subtotal-ds)<=.15) && (r.tax==null||Math.abs(r.tax-dt)<=.15)){
+    if(bad&&(r.subtotal==null||Math.abs(r.subtotal-ds)<=.15)&&(r.tax==null||Math.abs(r.tax-dt)<=.15)){
       r.subtotal=ds;r.tax=dt;warnings.push('Financial fields reconciled from Grand Total and printed VAT rate');
     }
   }
 
-  const fields=[r.store,r.date,r.subtotal,r.tax,r.total,r.count].filter(v=>v!==null&&v!=='').length;
+  const fields=[r.store,r.date,r.subtotal,r.tax,r.total,r.count??pieceCount].filter(v=>v!==null&&v!==undefined&&v!=='').length;
   let score=0;
   if(r.store)score+=18;if(r.date)score+=14;if(r.items.length)score+=34;if(r.total!=null)score+=18;
   if(r.subtotal!=null)score+=6;if(r.tax!=null)score+=5;
   if(r.count!=null&&r.count===r.items.length)score+=5;
+  if(pieceCount!=null&&Math.abs(pieceCount-quantitySum)<.01)score+=5;
   score=Math.min(100,score);
 
-  const itemCountOk=(r.count==null||r.count===r.items.length);
-  const financeOk=r.total!=null&&!warnings.some(x=>/does not match labeled|Subtotal \+ VAT/i.test(x));
-  const accepted=r.items.length>0&&itemCountOk&&financeOk;
+  const rowCountOk=(r.count==null||r.count===r.items.length);
+  const arithmeticEvidence=itemMatchesSubtotal||itemMatchesTotal;
+  const financeOk=r.total!=null&&!warnings.some(x=>/Subtotal \+ VAT does not match/i.test(x));
+  // A printed row count is only one validation signal. Correct financial row sum can prove the rows even when COUNT is absent/misclassified.
+  const accepted=r.items.length>0&&financeOk&&(rowCountOk||arithmeticEvidence);
   const complete=accepted&&!!r.store&&!!r.date;
   if(accepted&&!r.store)warnings.push('Merchant name needs manual review');
   if(accepted&&!r.date)warnings.push('Invoice date needs manual review');
@@ -268,8 +332,8 @@ function validate(parsed){
     receipt:{
       merchant_name_en:r.store,date:r.date,printed_item_count:r.count,printed_piece_count:pieceCount,vat_rate_percent:r.rate,
       currency:'AED',subtotal:r.subtotal,tax:r.tax,total:r.total,items:r.items,
-      confidence:{merchant:r.store?.length?0.82:0,date:r.date?0.85:0,items:r.items.length?0.82:0,totals:r.total!=null?0.9:0},
-      warnings:[...new Set(warnings)].slice(0,14),item_sum:itemSum
+      confidence:{merchant:r.store?.length?0.84:0,date:r.date?0.86:0,items:r.items.length?0.84:0,totals:r.total!=null?0.9:0},
+      warnings:[...new Set(warnings)].slice(0,14),item_sum:itemSum,quantity_sum:quantitySum
     },
     score,accepted,complete,fields
   };
@@ -297,7 +361,7 @@ export default {
   async fetch(request,env){
     const url=new URL(request.url);
     if(url.pathname==='/api/health'){
-      return new Response(JSON.stringify({ok:true,engine:'Cloudflare Workers AI • Universal Receipt OCR',model:MODEL,version:VERSION}),{headers:headers()});
+      return new Response(JSON.stringify({ok:true,engine:'Cloudflare Workers AI • Universal Tile Receipt OCR',model:MODEL,version:VERSION}),{headers:headers()});
     }
     if(url.pathname==='/api/receipt'){
       if(request.method!=='POST')return new Response(JSON.stringify({ok:false,error:'Method not allowed'}),{status:405,headers:headers()});
@@ -308,7 +372,7 @@ export default {
         const result=await readReceipt(env,image);
         return new Response(JSON.stringify({
           ok:true,...result,
-          meta:{engine:'Cloudflare Workers AI • Universal Receipt OCR',model:MODEL,version:VERSION,scan_id:scanId,elapsed_ms:Date.now()-started,images:1,inference_calls:1}
+          meta:{engine:'Cloudflare Workers AI • Universal Tile Receipt OCR',model:MODEL,version:VERSION,scan_id:scanId,elapsed_ms:Date.now()-started,images:1,inference_calls:1}
         }),{headers:headers()});
       }catch(e){
         console.error('receipt-reader',e);
