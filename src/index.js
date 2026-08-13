@@ -1,5 +1,5 @@
 const MODEL = '@cf/meta/llama-3.2-11b-vision-instruct';
-const VERSION = '4.4.4';
+const VERSION = '4.4.5';
 
 const PROMPT = `You are a literal OCR transcriber specialized in many different UAE receipt and tax-invoice layouts.
 
@@ -50,6 +50,36 @@ TOTAL RULES:
 16. If a field is unreadable, leave it empty rather than guessing.
 17. No markdown, no commentary and no code fences. Only protocol lines.`;
 
+const REPAIR_PROMPT = `You are a second-pass OCR verifier for the SAME UAE receipt image.
+The first pass was incomplete or internally inconsistent.
+
+Read the receipt again independently. Focus on the actual item/service table and the labeled financial summary.
+Do NOT copy examples, instructions, placeholders or field descriptions into values.
+
+Return ONLY:
+STORE|actual customer-facing merchant name visibly printed on the receipt
+DATE_RAW|invoice/transaction date exactly as printed
+COUNT|distinct item-row count only when explicitly printed as Total item / No. of Items / # of Items
+PIECES|total pieces / T.Pcs / Total Qty only when explicitly printed
+VAT_RATE|percentage
+SUBTOTAL|amount before tax
+VAT|tax amount
+TOTAL|final payable/gross/net amount
+ITEM|English item text|Arabic item text|quantity|unit price|line total
+
+Rules:
+1. STORE must be ACTUAL text visible on the receipt. NEVER output phrases such as "best customer-facing merchant/trade/store name", "store name", "merchant name", or any instruction text.
+2. Read every DISTINCT purchase row. Do not output totals, customer details, dates, payment methods, terms or balances as items.
+3. Common subtotal labels include Excl.VAT, VATable Sales, Taxable Sales, Subtotal, Net W/Out Tax, G.Amt and Net Amount Before Tax.
+4. VAT labels include VAT Amount, VAT 5%, Tax.
+5. Common final-total labels include Grand Total, Gross, Net Amount, Total, Amount Due and final paid amount.
+6. T.Pcs / Total Pieces / Total Qty is PIECES, not COUNT.
+7. Keep dates in the printed order. Never swap day and month.
+8. Copy item names literally; do not translate or spell-correct.
+9. If only one money value is printed for a row, use it as line total.
+10. Read decimals exactly. If unclear, leave blank instead of guessing.
+11. No JSON, markdown, explanation or code fences.`;
+
 function headers(extra={}) {
   return {'content-type':'application/json; charset=utf-8','cache-control':'no-store',...extra};
 }
@@ -84,8 +114,13 @@ function validDate(v){
   return `${String(y).padStart(4,'0')}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
 }
 function merchant(v){
-  let s=txt(v).replace(/[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]+/g,' ').replace(/\s+/g,' ').trim();
+  let s=txt(v)
+    .replace(/[*_#`~]+/g,' ')
+    .replace(/[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]+/g,' ')
+    .replace(/\s+/g,' ').trim();
   s=s.replace(/\b(?:TAX\s*INVOICE|INVOICE|RECEIPT|JOB\s*ORDER|TRN|MOB(?:ILE)?|TEL(?:EPHONE)?)\b.*$/i,'').trim();
+  if(/^(?:best\s+)?customer[-\s]*facing\s+(?:merchant|outlet|trade|store)|^(?:store|merchant|business)\s*name$|actual\s+(?:store|merchant)\s+name|name\s+visibly\s+printed/i.test(s))return null;
+  if(/\b(?:best customer-facing merchant\/trade\/store name|customer-facing merchant\/trade\/store name)\b/i.test(s))return null;
   return /[A-Za-z]{3}/.test(s)?s:null;
 }
 
@@ -157,7 +192,7 @@ function cleanLine(s){
 }
 function parseProtocol(rawText){
   const raw=txt(rawText).replace(/```(?:text|txt)?/gi,'').replace(/```/g,'');
-  const out={store:null,storeCandidates:[],date:null,count:null,rate:null,subtotal:null,tax:null,total:null,items:[],warnings:[]};
+  const out={store:null,storeCandidates:[],date:null,count:null,pieces:null,rate:null,subtotal:null,tax:null,total:null,items:[],warnings:[]};
   const lines=raw.split(/\n+/).map(cleanLine).filter(Boolean);
 
   for(const line of lines){
@@ -166,6 +201,7 @@ function parseProtocol(rawText){
     if(key==='STORE_CANDIDATE'){const c=merchant(p.slice(1).join('|'));if(c)out.storeCandidates.push(c);continue}
     if(key==='DATE_RAW'||key==='DATE'){out.date=validDate(p[1]);continue}
     if(key==='COUNT'){const n=num(p[1]);out.count=n!=null&&n>0?Math.round(n):null;continue}
+    if(key==='PIECES'){const n=num(p[1]);out.pieces=n!=null&&n>0?Math.round(n):null;continue}
     if(key==='VAT_RATE'){const n=num(p[1]);out.rate=n!=null&&n>=0?n:null;continue}
     if(key==='SUBTOTAL'){out.subtotal=r2(p[1]);continue}
     if(key==='VAT'){out.tax=r2(p[1]);continue}
@@ -212,15 +248,15 @@ function parseProtocol(rawText){
     if(m)out.rate=num(m[1]);
   }
   if(out.total==null){
-    const m=raw.match(/(?:GRAND\s*TOTAL|TOTAL)\s*[:=|\-]?\s*(\d+(?:[.,]\d{1,2})?)/i);
+    const m=raw.match(/(?:GRAND\s*TOTAL|NET\s*AMOUNT|GROSS|AMOUNT\s*DUE|FINAL\s*TOTAL|TOTAL)\s*[:=|\-]?\s*(\d+(?:[.,]\d{1,2})?)/i);
     if(m)out.total=r2(m[1]);
   }
   if(out.tax==null){
-    const m=raw.match(/\bVAT(?!_RATE)(?:\s*\d+(?:\.\d+)?\s*%)?\s*[:=|\-]?\s*(\d+(?:[.,]\d{1,2})?)/i);
+    const m=raw.match(/\b(?:VAT\s*AMOUNT|VAT(?!_RATE)(?:\s*\d+(?:\.\d+)?\s*%)?|TAX)\s*[:=|\-]?\s*(\d+(?:[.,]\d{1,2})?)/i);
     if(m)out.tax=r2(m[1]);
   }
   if(out.subtotal==null){
-    const m=raw.match(/(?:SUBTOTAL|EXCL\.?\s*VAT)\s*[:=|\-]?\s*(\d+(?:[.,]\d{1,2})?)/i);
+    const m=raw.match(/(?:VATABLE\s*SALES|TAXABLE\s*SALES|SUBTOTAL|SUB\s*TOTAL|EXCL\.?\s*VAT|NET\s*W\/?OUT\s*TAX|NET\s*WITHOUT\s*TAX|G\.?\s*AMT)\s*[:=|\-]?\s*(\d+(?:[.,]\d{1,2})?)/i);
     if(m)out.subtotal=r2(m[1]);
   }
 
@@ -274,13 +310,76 @@ function chooseBestItemSubset(items,expectedCount,targets){
   if(best.diff>tolerance)return null;
   return best.indices.map(i=>items[i]);
 }
+
+function chooseBestPieceSubset(items,pieceTarget,targets){
+  if(!Number.isInteger(pieceTarget)||pieceTarget<=0||items.length<2||items.length>14)return null;
+  const validTargets=(targets||[]).filter(v=>v!=null&&Number.isFinite(Number(v))).map(Number);
+  if(!validTargets.length)return null;
+  const rows=items.map((x,i)=>({
+    i,item:x,qty:Number(x.quantity)||1,money:rowMoney(x),sus:itemSuspicionScore(x)
+  }));
+  let best=null;
+  const maxMask=1<<rows.length;
+  for(let mask=1;mask<maxMask;mask++){
+    let q=0,sum=0,sus=0,count=0,ok=true,idx=[];
+    for(let i=0;i<rows.length;i++){
+      if(!(mask&(1<<i)))continue;
+      const r=rows[i];q+=r.qty;count++;sus+=r.sus;idx.push(i);
+      if(r.money==null){ok=false;break}
+      sum+=Number(r.money);
+    }
+    if(!ok||Math.abs(q-pieceTarget)>.001)continue;
+    sum=r2(sum);
+    const diff=Math.min(...validTargets.map(t=>Math.abs(sum-t)));
+    // Prefer exact money first, then fewer suspicious rows; do NOT blindly prefer more/fewer rows.
+    const score=diff*1000+sus+count*.15;
+    if(!best||score<best.score)best={indices:idx,diff,sum,score,count};
+  }
+  if(!best)return null;
+  const tolerance=Math.max(.08,Math.min(.35,Math.max(...validTargets)*.006));
+  if(best.diff>tolerance)return null;
+  return best.indices.map(i=>items[i]);
+}
+
 function reconcileItemRows(r,warnings){
   const original=r.items||[];
   if(!original.length)return;
 
-  const quantitySum=Math.round(original.reduce((s,x)=>s+(Number(x.quantity)||0),0)*100)/100;
+  const targets=[];
+  if(r.subtotal!=null)targets.push(r.subtotal);
+  if(r.total!=null&&r.tax!=null)targets.push(r2(r.total-r.tax));
+  if(r.total!=null)targets.push(r.total);
 
-  // Common layout: T.Pcs / Total Qty was incorrectly emitted as COUNT.
+  let quantitySum=Math.round(original.reduce((s,x)=>s+(Number(x.quantity)||0),0)*100)/100;
+
+  // Explicit PIECES from a repair pass.
+  if(r.pieces!=null&&r.pieces>0&&original.length>1){
+    const chosen=chooseBestPieceSubset(original,r.pieces,targets);
+    if(chosen&&chosen.length<original.length){
+      r.items=chosen;
+      warnings.push(`Removed ${original.length-chosen.length} OCR rows using printed pieces and financial totals`);
+      return;
+    }
+  }
+
+  // The first pass may have incorrectly used T.Pcs / Total Qty as COUNT.
+  // If any subset has summed quantity == printed number AND matches the subtotal,
+  // reinterpret the number as pieces and keep that financially valid subset.
+  if(r.count!=null&&r.count>0&&original.length>1){
+    const chosenByPieces=chooseBestPieceSubset(original,r.count,targets);
+    if(chosenByPieces&&(
+      original.length!==r.count ||
+      Math.abs(quantitySum-r.count)>.001
+    )){
+      r.items=chosenByPieces;
+      r._pieceCount=r.count;
+      r.count=null;
+      warnings.push('Printed count reinterpreted as total pieces/quantity using item quantities and financial totals');
+      return;
+    }
+  }
+
+  // Simple case: extracted quantities already prove this is a pieces count.
   if(r.count!=null&&r.count!==original.length&&Math.abs(r.count-quantitySum)<.001){
     r._pieceCount=r.count;
     r.count=null;
@@ -288,14 +387,8 @@ function reconcileItemRows(r,warnings){
     return;
   }
 
-  // If the receipt explicitly says N item rows but OCR produced extras,
-  // choose the N-row subset that reconciles with labeled financial totals.
+  // True item-row count with extra OCR rows.
   if(r.count!=null&&r.count>0&&original.length>r.count){
-    const targets=[];
-    if(r.subtotal!=null)targets.push(r.subtotal);
-    if(r.total!=null)targets.push(r.total);
-    if(r.total!=null&&r.tax!=null)targets.push(r2(r.total-r.tax));
-
     const chosen=chooseBestItemSubset(original,r.count,targets);
     if(chosen&&chosen.length===r.count){
       const removed=original.length-chosen.length;
@@ -310,7 +403,7 @@ function validate(parsed){
   reconcileItemRows(r,warnings);
   const itemSum=r2(r.items.reduce((s,x)=>s+(x.line_total??0),0));
   const quantitySum=Math.round(r.items.reduce((s,x)=>s+(Number(x.quantity)||0),0)*100)/100;
-  let pieceCount=r._pieceCount??null;
+  let pieceCount=r._pieceCount??r.pieces??null;
   if(r.count!=null&&r.count!==r.items.length){
     if(Math.abs(r.count-quantitySum)<.001){
       pieceCount=r.count;r.count=null;
@@ -340,8 +433,9 @@ function validate(parsed){
   score=Math.min(100,score);
 
   const itemCountOk=(r.count==null||r.count===r.items.length);
-  const financeOk=r.total!=null&&!warnings.some(x=>/does not match labeled|Subtotal \+ VAT/i.test(x));
-  const accepted=r.items.length>0&&itemCountOk&&financeOk;
+  const financeOk=r.total!=null&&!warnings.some(x=>/does not match labeled|Subtotal \+ VAT|VAT amount does not match/i.test(x));
+  const pieceOk=pieceCount==null||Math.abs(pieceCount-quantitySum)<.001;
+  const accepted=r.items.length>0&&itemCountOk&&pieceOk&&financeOk;
   const complete=accepted&&!!r.store&&!!r.date;
   if(accepted&&!r.store)warnings.push('Merchant name needs manual review');
   if(accepted&&!r.date)warnings.push('Invoice date needs manual review');
@@ -358,28 +452,92 @@ function validate(parsed){
 }
 function validImage(v){return typeof v==='string'&&v.startsWith('data:image/')&&v.length<7_000_000}
 
+
+function checkedQuality(c){
+  if(!c)return -9999;
+  let s=Number(c.score||0);
+  if(c.accepted)s+=120;
+  if(c.complete)s+=18;
+  const r=c.receipt||{};
+  const items=Array.isArray(r.items)?r.items:[];
+  s+=Math.min(30,items.length*4);
+  if(r.merchant_name_en)s+=8;
+  if(r.date)s+=8;
+  if(r.total!=null)s+=8;
+  const warns=Array.isArray(r.warnings)?r.warnings:[];
+  s-=warns.filter(x=>/does not match|needs manual|Printed item count|Printed pieces/i.test(x)).length*12;
+  return s;
+}
+function isPlaceholderStore(v){
+  const s=txt(v).toLowerCase();
+  return /best customer-facing|customer-facing merchant\/trade\/store|store name|merchant name|actual store name/.test(s);
+}
+function shouldRepair(checked){
+  if(!checked||checked.accepted===false)return true;
+  const r=checked.receipt||{},items=Array.isArray(r.items)?r.items:[];
+  if(isPlaceholderStore(r.merchant_name_en))return true;
+  const warns=Array.isArray(r.warnings)?r.warnings:[];
+  if(warns.some(x=>/VAT amount does not match|item row sum does not match|Printed item count|Printed pieces/i.test(x)))return true;
+  const first=items[0],firstMoney=rowMoney(first);
+  if(items.length===1&&r.total!=null&&firstMoney!=null&&Number(r.total)>Number(firstMoney)*1.45)return true;
+  return false;
+}
+function fillMissingFromPrimary(best,primary){
+  if(!best||!primary)return best;
+  const b=best.receipt||{},p=primary.receipt||{};
+  if(!b.merchant_name_en&&!isPlaceholderStore(p.merchant_name_en))b.merchant_name_en=p.merchant_name_en;
+  if(!b.date)b.date=p.date;
+  best.receipt=b;
+  best.complete=best.accepted&&!!b.merchant_name_en&&!!b.date;
+  return best;
+}
+
 async function readReceipt(env,image){
-  const result=await env.AI.run(MODEL,{
+  const firstResult=await env.AI.run(MODEL,{
     prompt:PROMPT,
     image,
     max_tokens:1000,
     temperature:0,
     stream:false
   });
-  const raw=responseText(result);
-  if(!raw)throw new Error('Vision model returned no text');
-  const parsed=parseProtocol(raw);
-  const checked=validate(parsed);
-  checked.transcript_lines=parsed.lines.length;
-  checked.transcript_preview=parsed.raw.slice(0,1200);
-  return checked;
+  const firstRaw=responseText(firstResult);
+  if(!firstRaw)throw new Error('Vision model returned no text');
+  const primary=validate(parseProtocol(firstRaw));
+  primary.transcript_lines=firstRaw.split(/\n+/).filter(Boolean).length;
+  primary.transcript_preview=firstRaw.slice(0,1200);
+  primary.repair_used=false;
+
+  if(!shouldRepair(primary))return primary;
+
+  // One focused second pass only for suspicious/failed receipts.
+  const secondResult=await env.AI.run(MODEL,{
+    prompt:REPAIR_PROMPT,
+    image,
+    max_tokens:1200,
+    temperature:0,
+    stream:false
+  });
+  const secondRaw=responseText(secondResult);
+  if(!secondRaw)return primary;
+
+  const repaired=validate(parseProtocol(secondRaw));
+  repaired.transcript_lines=secondRaw.split(/\n+/).filter(Boolean).length;
+  repaired.transcript_preview=secondRaw.slice(0,1200);
+  repaired.repair_used=true;
+
+  let best=checkedQuality(repaired)>checkedQuality(primary)?repaired:primary;
+  if(best===repaired)best=fillMissingFromPrimary(best,primary);
+  best.repair_used=true;
+  best.primary_score=primary.score;
+  best.repair_score=repaired.score;
+  return best;
 }
 
 export default {
   async fetch(request,env){
     const url=new URL(request.url);
     if(url.pathname==='/api/health'){
-      return new Response(JSON.stringify({ok:true,engine:'Cloudflare Workers AI • Universal Receipt OCR',model:MODEL,version:VERSION,base:'4.4.0'}),{headers:headers()});
+      return new Response(JSON.stringify({ok:true,engine:'Cloudflare Workers AI • Universal Receipt OCR + Auto Repair',model:MODEL,version:VERSION,base:'4.4.0'}),{headers:headers()});
     }
     if(url.pathname==='/api/receipt'){
       if(request.method!=='POST')return new Response(JSON.stringify({ok:false,error:'Method not allowed'}),{status:405,headers:headers()});
@@ -390,7 +548,7 @@ export default {
         const result=await readReceipt(env,image);
         return new Response(JSON.stringify({
           ok:true,...result,
-          meta:{engine:'Cloudflare Workers AI • Universal Receipt OCR',model:MODEL,version:VERSION,base:'4.4.0',scan_id:scanId,elapsed_ms:Date.now()-started,images:1,inference_calls:1}
+          meta:{engine:'Cloudflare Workers AI • Universal Receipt OCR + Auto Repair',model:MODEL,version:VERSION,base:'4.4.0',scan_id:scanId,elapsed_ms:Date.now()-started,images:1,inference_calls:result.repair_used?2:1,repair_used:!!result.repair_used}
         }),{headers:headers()});
       }catch(e){
         console.error('receipt-reader',e);
