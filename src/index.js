@@ -1,214 +1,326 @@
 const MODEL = '@cf/meta/llama-3.2-11b-vision-instruct';
-const VERSION = '4.4.2';
+const VERSION = '4.4.3';
 
-const PROMPT = `You are a literal OCR evidence extractor for UAE receipts and tax invoices of ANY layout.
+const PROMPT = `You are a literal OCR transcriber specialized in many different UAE receipt and tax-invoice layouts.
 
-The supplied composite contains:
-- LEFT: the COMPLETE receipt for overall context.
-- RIGHT TOP / MIDDLE / BOTTOM: three overlapping enlarged detail views covering the receipt from top to bottom.
-These detail panels are ONLY for magnification. Do not assume merchant/date/items/totals are in a fixed panel.
+The composite contains three FULL-WIDTH horizontal panels from the SAME receipt:
+- TOP: merchant/header and invoice date.
+- MIDDLE: item/service table.
+- BOTTOM: totals/VAT/payment summary.
 
-Your job is NOT to decide the final accounting fields. Transcribe the evidence so the Worker can decide locally.
-Return ONLY these plain protocol lines. No JSON, markdown, bullets, commentary, or code fences.
+Do NOT return JSON. Return ONLY plain text protocol lines:
 
-HEADER|prominent English organization / trade / outlet line
-HEADER|another prominent English organization / trade / outlet line
-DATE_LINE|printed label|date exactly as printed
-MONEY|printed label|amount
-PERCENT|printed label|percentage number
-COUNT_LINE|printed label|number
+STORE|best customer-facing merchant/trade/store name
+STORE_CANDIDATE|major English business/organization name from the header
+STORE_CANDIDATE|another major English business/organization name if present
+DATE_RAW|invoice/transaction date exactly as printed
+COUNT|number of DISTINCT ITEM ROWS only when explicitly printed as Total item / No. of items
+VAT_RATE|number
+SUBTOTAL|amount before VAT/tax
+VAT|tax amount
+TOTAL|final payable/gross total
+ITEM|English item text|Arabic item text|quantity|unit price|line total
 ITEM|English item text|Arabic item text|quantity|unit price|line total
 
-GENERAL RULES:
-1. Work with ANY receipt layout: narrow, wide, long, short, Arabic, English, bilingual, pharmacy, laundry, restaurant, supermarket, garage, clinic, etc.
-2. Transcribe evidence literally. Do not translate, summarize, spell-correct, normalize dates, or infer missing numbers.
-3. Remove visual markdown-like decoration from your OUTPUT. Never add **, *, _, #, or backticks.
-4. If the same text appears twice because panels overlap, output it ONCE.
-
-HEADER RULES:
-5. Emit every prominent English business/organization/outlet name near the receipt header as HEADER, in visual top-to-bottom order.
-6. Include both parent/legal entity and customer-facing outlet if both exist. The Worker will choose the actual store.
-7. Exclude address-only lines, phone, TRN, TAX INVOICE, invoice/order/customer number, payment provider and QR labels from HEADER.
+MERCHANT RULES:
+1. STORE means the CUSTOMER-FACING OUTLET/TRADE NAME that actually issued the receipt, not necessarily the first legal company name.
+2. Emit every major English organization/trade name in the header as STORE_CANDIDATE in TOP-TO-BOTTOM visual order.
+3. If a parent/owner/management/holding company appears above a pharmacy, laundry, restaurant, shop, branch, clinic, market, salon, etc., choose the customer-facing outlet as STORE.
+   Generic example: "ABC Facilities Management L.L.C." above "CITY PHARMACY - BRANCH" => STORE is CITY PHARMACY - BRANCH.
+4. Exclude addresses, mall/location text, municipality/building names, phone, TRN, TAX INVOICE, invoice number, customer name and payment system names from STORE.
 
 DATE RULES:
-8. Emit every meaningful printed date as DATE_LINE with its printed label, for example:
-   DATE_LINE|Date|31-07-2026
-   DATE_LINE|Delv.Date|02-08-2026
-9. Preserve the date EXACTLY in printed order. Never swap day and month.
-10. Do not convert 02-08-2026 to 2026-02-08.
-
-MONEY / COUNT RULES:
-11. Emit every labeled monetary summary as MONEY, not only fields you recognize. Examples of labels: Excl.VAT, VAT 5%, Grand Total, Total, Gross, G.Amt, Tax, Adv, Bal.Amt, Net W/Out Tax, Service Fees, Discount, Outstanding Balance.
-12. If a percent is printed, emit PERCENT too, e.g. PERCENT|VAT|5.
-13. Emit printed counters as COUNT_LINE with their exact label: Total item, No. of Items, T.Pcs, Total Qty, etc. Do NOT decide whether it means rows or pieces.
+5. DATE_RAW must be copied EXACTLY in the same order printed. Never swap day and month.
+   Example: 02-08-2026 => DATE_RAW|02-08-2026.
+   A text date such as 21 Jul 2026 => DATE_RAW|21 Jul 2026.
+6. Use the transaction/invoice date, not Delivery Date, due date or Print Time.
 
 ITEM RULES:
-14. Emit ONE ITEM line for EVERY DISTINCT purchasable row.
-15. Keep English and Arabic item names literally. If one language is absent, leave that field empty.
-16. quantity / unit price / line total must belong to the SAME row.
-17. If only one money column exists, put it in line total and leave unit price empty.
-18. Never create ITEM rows from VAT, totals, balance, advance, payment method, dates, TRN, customer/order numbers, table headings, booked-by or terms & conditions.
-19. If any value is unreadable, leave that field empty rather than guessing.`;
+7. Emit ONE ITEM line for every distinct purchasable row.
+8. Copy English and Arabic item names literally. Never translate or spell-correct.
+9. quantity, unit_price and line_total must belong to the SAME row.
+10. COUNT is ONLY a printed count of distinct item rows. Do NOT use T.Pcs, Total Pieces, Total Qty or total quantity as COUNT.
+11. Never include VAT, totals, balance, dates, TRN, invoice/order/customer numbers or table headings as ITEM rows.
 
-function headers(extra={}){return {'content-type':'application/json; charset=utf-8','cache-control':'no-store',...extra}}
+TOTAL RULES:
+12. SUBTOTAL is the amount before VAT/tax. Labels vary: Excl.VAT, Subtotal, Net W/Out Tax, G.Amt or similar.
+13. VAT is the tax amount, not the percentage.
+14. TOTAL is the final amount payable. Labels vary: Grand Total, Total, Gross, Amount Due, Adv when it clearly equals subtotal + tax, or similar.
+15. Read decimal points character-by-character. 12.00, 0.60 and 12.60 are different.
+16. If a field is unreadable, leave it empty rather than guessing.
+17. No markdown, no commentary and no code fences. Only protocol lines.`;
+
+function headers(extra={}) {
+  return {'content-type':'application/json; charset=utf-8','cache-control':'no-store',...extra};
+}
 function txt(v){return v==null?'':String(v).replace(/\r/g,'').trim()}
-function stripMarks(v){return txt(v).replace(/[*_#`~]+/g,' ').replace(/[“”<>]+/g,' ').replace(/\s+/g,' ').trim()}
 function num(v){
   if(v===null||v===undefined||v==='')return null;
-  const s=String(v).replace(/[٠-٩]/g,d=>'٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replace(/[۰-۹]/g,d=>'۰۱۲۳۴۵۶۷۸۹'.indexOf(d))
-    .replace(/٫/g,'.').replace(/٬/g,'').replace(/[^0-9.\-]/g,'');
-  const n=Number(s);return Number.isFinite(n)?n:null
+  const s=String(v)
+    .replace(/[٠-٩]/g,d=>'٠١٢٣٤٥٦٧٨٩'.indexOf(d))
+    .replace(/[۰-۹]/g,d=>'۰۱۲۳۴۵۶۷۸۹'.indexOf(d))
+    .replace(/٫/g,'.').replace(/٬/g,'')
+    .replace(/[^0-9.\-]/g,'');
+  const n=Number(s); return Number.isFinite(n)?n:null;
 }
 function r2(v){const n=num(v);return n==null?null:Math.round((n+Number.EPSILON)*100)/100}
+function clamp(v){const n=Number(v);return Number.isFinite(n)?Math.max(0,Math.min(1,n)):0}
 function validDate(v){
-  let s=txt(v).replace(/[,]+/g,' ').replace(/\s+/g,' ').trim();if(!s)return null;
-  let y,m,d,q;
-  const numeric=s.match(/(?:^|\b)(\d{1,4})[-/.](\d{1,2})[-/.](\d{1,4})(?:\b|$)/);
-  if(numeric){
-    const a=+numeric[1],b=+numeric[2],c=+numeric[3];
-    if(String(numeric[1]).length===4){y=a;m=b;d=c}else if(String(numeric[3]).length===4){d=a;m=b;y=c}
+  let s=txt(v).trim();
+  if(!s)return null;
+  let y,m,d,match;
+  if((match=s.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/))){
+    y=+match[1];m=+match[2];d=+match[3];
+  }else if((match=s.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})$/))){
+    d=+match[1];m=+match[2];y=+match[3];
+  }else{
+    const months={jan:1,january:1,feb:2,february:2,mar:3,march:3,apr:4,april:4,may:5,jun:6,june:6,jul:7,july:7,aug:8,august:8,sep:9,september:9,oct:10,october:10,nov:11,november:11,dec:12,december:12};
+    match=s.match(/^(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})$/);
+    if(match){d=+match[1];m=months[match[2].toLowerCase()];y=+match[3];}
   }
-  if(!y){
-    const mons={jan:1,january:1,feb:2,february:2,mar:3,march:3,apr:4,april:4,may:5,jun:6,june:6,jul:7,july:7,aug:8,august:8,sep:9,september:9,oct:10,october:10,nov:11,november:11,dec:12,december:12};
-    if((q=s.match(/(?:^|\b)(\d{1,2})\s+([A-Za-z]{3,9})\s+(\d{4})(?:\b|$)/))){d=+q[1];m=mons[q[2].toLowerCase()];y=+q[3]}
-    else if((q=s.match(/(?:^|\b)([A-Za-z]{3,9})\s+(\d{1,2})\s+(\d{4})(?:\b|$)/))){m=mons[q[1].toLowerCase()];d=+q[2];y=+q[3]}
-  }
-  if(!y||!m||!d)return null;const z=new Date(Date.UTC(y,m-1,d));
+  if(!y||!m||!d)return null;
+  const z=new Date(Date.UTC(y,m-1,d));
   if(y<2000||y>2100||z.getUTCFullYear()!==y||z.getUTCMonth()!==m-1||z.getUTCDate()!==d)return null;
-  return `${String(y).padStart(4,'0')}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`
+  return `${String(y).padStart(4,'0')}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
 }
 function merchant(v){
-  let s=stripMarks(v).replace(/[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]+/g,' ').replace(/\s+/g,' ').trim();
-  s=s.replace(/^(?:HEADER|STORE|MERCHANT|BUSINESS)\s*(?:\||:|=|-)?\s*/i,'').trim();
-  s=s.replace(/\b(?:TAX\s*INVOICE|INVOICE|RECEIPT|JOB\s*ORDER|TRN|MOB(?:ILE)?|TEL(?:EPHONE)?|BILL\s*NO)\b.*$/i,'').trim();
-  return /[A-Za-z]{3}/.test(s)?s:null
+  let s=txt(v).replace(/[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]+/g,' ').replace(/\s+/g,' ').trim();
+  s=s.replace(/\b(?:TAX\s*INVOICE|INVOICE|RECEIPT|JOB\s*ORDER|TRN|MOB(?:ILE)?|TEL(?:EPHONE)?)\b.*$/i,'').trim();
+  return /[A-Za-z]{3}/.test(s)?s:null;
 }
-function merchantKey(v){return stripMarks(v).toLowerCase().replace(/[^a-z0-9]+/g,' ').replace(/\s+/g,' ').trim()}
-function merchantScore(name,index=0){
-  const s=merchant(name);if(!s)return -999;let score=10+Math.max(0,12-index*2);
-  if(/\b(pharmacy|laundry|laundromat|dry\s*clean|restaurant|cafe|coffee|bakery|supermarket|hypermarket|grocery|market|salon|barber|clinic|hospital|optical|boutique|store|shop|mart|garage|workshop|tailor|cafeteria|roastery|medical\s+(?:center|centre)|car\s*wash)\b/i.test(s))score+=95;
-  else if(/\b(trading|services|electronics|furniture|fashion|jewellery|jewelry|flowers|florist|stationery|typing|printing|rent\s*a\s*car)\b/i.test(s))score+=35;
-  if(/\b(branch|sole\s+proprietorship|establishment)\b/i.test(s))score+=12;
-  if(/\bfacilit(?:y|ies)\s+management\b/i.test(s))score-=125;
-  if(/\b(property|properties|real\s*estate)\s+management\b/i.test(s))score-=75;
-  if(/\b(holding|holdings|investment|investments|management)\b/i.test(s))score-=42;
-  if(/\b(municipality|building|street|road|mall|payment|payments|bank|visa|mastercard)\b/i.test(s))score-=50;
-  if(/\b(tax\s*invoice|invoice|receipt|trn|customer|cashier|bill\s*no|order\s*no)\b/i.test(s))score-=100;
-  if(s.length>=5&&s.length<=100)score+=6;return score
+
+function merchantKey(v){
+  return txt(v).toLowerCase().replace(/[^a-z0-9]+/g,' ').replace(/\s+/g,' ').trim();
 }
-function chooseMerchant(candidates){
-  const all=[],seen=new Set();
-  for(const v of candidates||[]){const s=merchant(v),k=merchantKey(s);if(!s||!k||seen.has(k))continue;seen.add(k);all.push(s)}
-  let best=null,bestScore=-999;all.forEach((s,i)=>{const sc=merchantScore(s,i);if(sc>bestScore){best=s;bestScore=sc}});return best
+function merchantCandidateScore(name,index=0,preferred=false){
+  const s=txt(name),k=merchantKey(s); if(!k||!/^[\s\S]*[a-z]{2}/i.test(k))return -999;
+  let score=10 + Math.min(12,index*3);
+  if(preferred)score+=18;
+
+  // Strong customer-facing business signals.
+  if(/\b(pharmacy|laundry|laundromat|dry\s*clean|restaurant|cafe|coffee|bakery|supermarket|hypermarket|grocery|market|salon|barber|clinic|hospital|optical|boutique|store|shop|mart|garage|workshop|tailor|cafeteria|roastery)\b/i.test(s))score+=62;
+  else if(/\b(trading|services|medical|dental|electronics|furniture|fashion|jewellery|jewelry|flowers|florist|stationery|typing|printing|car\s*wash|rent\s*a\s*car)\b/i.test(s))score+=28;
+
+  if(/\bbranch\b/i.test(s))score+=9;
+  if(/\b(sole\s+proprietorship|establishment)\b/i.test(s))score+=5;
+
+  // Strong signals that a line is a parent/legal/administrative entity rather than the outlet.
+  if(/\bfacilit(?:y|ies)\s+management\b/i.test(s))score-=72;
+  if(/\b(property|properties|real\s*estate)\s+management\b/i.test(s))score-=48;
+  if(/\b(holding|holdings|investment|investments)\b/i.test(s))score-=42;
+  if(/\bmanagement\b/i.test(s))score-=24;
+  if(/\b(head\s*office|corporate|parent\s*company)\b/i.test(s))score-=28;
+  if(/\b(municipality|building|street|road|mall)\b/i.test(s))score-=35;
+  if(/\b(tax\s*invoice|invoice|receipt|trn|customer|cashier|bill\s*no|order\s*no)\b/i.test(s))score-=80;
+
+  // Legal suffixes are neutral, not evidence of being the storefront.
+  if(s.length>=5&&s.length<=100)score+=5;
+  return score;
 }
-function dateLabelScore(label){
-  const s=stripMarks(label).toLowerCase();let score=0;
-  if(/invoice\s*date|transaction\s*date|bill\s*date/.test(s))score+=100;
-  else if(/^date$|^date\s*:/.test(s))score+=90;
-  else if(/date/.test(s))score+=55;
-  if(/delivery|delv|due|expiry|expire|print|pickup|return/.test(s))score-=130;
-  if(/time/.test(s))score-=80;return score
+function chooseMerchant(preferred,candidates){
+  const all=[];
+  const push=(v,pref=false)=>{
+    const s=merchant(v);if(!s)return;
+    const key=merchantKey(s);
+    if(all.some(x=>x.key===key)){if(pref)all.find(x=>x.key===key).preferred=true;return}
+    all.push({name:s,key,preferred:pref,index:all.length});
+  };
+  push(preferred,true);
+  for(const c of candidates||[])push(c,false);
+  if(!all.length)return null;
+  for(const x of all)x.score=merchantCandidateScore(x.name,x.index,x.preferred);
+  all.sort((a,b)=>b.score-a.score);
+  return all[0].name;
 }
-function chooseDate(candidates){
-  let best=null,bestScore=-999;
-  (candidates||[]).forEach((x,i)=>{const d=validDate(x.value);if(!d)return;const sc=dateLabelScore(x.label)-i*.1;if(sc>bestScore){best=d;bestScore=sc}});
-  return best
-}
-function moneyLabel(label){return stripMarks(label).toLowerCase().replace(/\s+/g,' ').trim()}
-function classifyMoney(cands){
-  const rows=(cands||[]).filter(x=>x.amount!=null).map((x,i)=>({...x,label:moneyLabel(x.label),i}));
-  const avoid=/balance|bal\.?\s*amt|outstanding|change|cash|card|visa|online|discount\s*point|service\s*fee|discount/;
-  function best(test,bonus=0){
-    let b=null,bs=-999;for(const x of rows){let s=bonus-iSafe(x.i);if(test(x))s+=100;if(avoid.test(x.label))s-=120;if(s>bs){b=x;bs=s}}return b
-  }
-  function iSafe(i){return Math.min(10,i*.2)}
-  let sub=null,tax=null,total=null,rate=null;
-  for(const x of rows){
-    const l=x.label;
-    if(rate==null){const p=l.match(/(?:vat|tax)[^0-9]{0,5}(\d+(?:\.\d+)?)\s*%/);if(p)rate=num(p[1])}
-    if(!sub&&/(excl\.?\s*vat|net\s*w\/?out\s*tax|net\s*without\s*tax|subtotal|sub\s*total|g\.?\s*amt|net\s*amount)/.test(l))sub=x.amount;
-    if(!tax&&/(vat\s*amount|^tax$|^vat(?:\s*\d+(?:\.\d+)?\s*%)?$)/.test(l))tax=x.amount;
-  }
-  const grand=rows.filter(x=>/(grand\s*total|gross|amount\s*due|final\s*total|total\s*payable|net\s*payable)/.test(x.label)&&!avoid.test(x.label));
-  if(grand.length)total=grand[0].amount;
-  if(total==null){const exact=rows.filter(x=>/^total$/.test(x.label));if(exact.length)total=exact[0].amount}
-  if(total==null&&sub!=null&&tax!=null){const target=r2(sub+tax);const close=rows.find(x=>!avoid.test(x.label)&&Math.abs(x.amount-target)<=.06&&/(adv|paid|total)/.test(x.label));if(close)total=close.amount}
-  if(total==null){const adv=rows.find(x=>/^adv(?:ance)?$/.test(x.label)&&!avoid.test(x.label));if(adv)total=adv.amount}
-  if(rate==null){for(const x of (cands||[])){if(x.percent!=null&&/(vat|tax)/i.test(x.label)){rate=x.percent;break}}}
-  return {subtotal:sub,tax,total,rate}
-}
-function summaryName(s){return /^(?:vat|tax|subtotal|sub\s*total|excl\.?\s*vat|grand\s*total|gross|g\.?\s*amt|total|balance|bal\.?\s*amt|outstanding|amount\s*due|total\s*item|t\.?\s*pcs|cash|card|change|trn|invoice|job\s*order|ضريبة|الإجمالي|الاجمالي|المجموع)/i.test(stripMarks(s))}
-function cleanItem(v){return stripMarks(v).replace(/^[|:;,\-\s]+|[|:;,\-\s]+$/g,'').replace(/\s+/g,' ').trim()}
-function nameKey(v){return cleanItem(v).toLowerCase().replace(/[^\p{L}\p{N}]+/gu,' ').replace(/\s+/g,' ').trim()}
-function tokenSim(a,b){
-  const A=new Set(nameKey(a).split(' ').filter(x=>x.length>1)),B=new Set(nameKey(b).split(' ').filter(x=>x.length>1));if(!A.size||!B.size)return 0;
-  let hit=0;for(const x of A)if(B.has(x))hit++;return hit/Math.max(A.size,B.size)
-}
-function sameMoney(a,b,t=.04){return a!=null&&b!=null&&Math.abs(Number(a)-Number(b))<=t}
-function dedupeItems(rows){
-  const out=[];for(const row of rows||[]){if(!row?.name||summaryName(row.name))continue;let idx=-1;
-    for(let i=0;i<out.length;i++){const x=out[i],q=Number(x.quantity||1)===Number(row.quantity||1),money=sameMoney(x.line_total,row.line_total)||sameMoney(x.unit_price,row.unit_price),sim=Math.max(tokenSim(x.name,row.name),tokenSim(x.name_en||'',row.name_en||''));if(q&&money&&sim>=.50){idx=i;break}}
-    if(idx<0){out.push({...row});continue}const x=out[idx];if(!x.name_en&&row.name_en)x.name_en=row.name_en;if(!x.name_ar&&row.name_ar)x.name_ar=row.name_ar;if(x.unit_price==null&&row.unit_price!=null)x.unit_price=row.unit_price;if(x.line_total==null&&row.line_total!=null)x.line_total=row.line_total;x.name=x.name_en&&x.name_ar?`${x.name_en} — ${x.name_ar}`:(x.name_en||x.name_ar||x.name)
-  }return out
+
+function summaryName(s){
+  return /^(?:vat|tax|subtotal|sub\s*total|excl\.?\s*vat|grand\s*total|total|balance|outstanding|amount\s*due|total\s*item|cash|card|change|trn|invoice|job\s*order|ضريبة|الإجمالي|الاجمالي|المجموع)/i.test(txt(s));
 }
 function responseText(result){
-  if(typeof result==='string')return result;const c=[result?.response,result?.answer,result?.result,result?.choices?.[0]?.message?.content,result?.choices?.[0]?.text];
-  for(const v of c){if(typeof v==='string'&&v.trim())return v;if(Array.isArray(v)){const t=v.map(x=>typeof x==='string'?x:(x?.text||x?.content||'')).join('\n').trim();if(t)return t}}return ''
+  if(typeof result==='string')return result;
+  const candidates=[
+    result?.response, result?.answer, result?.result,
+    result?.choices?.[0]?.message?.content,
+    result?.choices?.[0]?.text
+  ];
+  for(const c of candidates){
+    if(typeof c==='string'&&c.trim())return c;
+    if(Array.isArray(c)){
+      const t=c.map(x=>typeof x==='string'?x:(x?.text||x?.content||'')).join('\n').trim();
+      if(t)return t;
+    }
+  }
+  return '';
+}
+function cleanLine(s){
+  return String(s||'').replace(/^[-*•\s]+/,'').replace(/^`+|`+$/g,'').trim();
 }
 function parseProtocol(rawText){
   const raw=txt(rawText).replace(/```(?:text|txt)?/gi,'').replace(/```/g,'');
-  const lines=raw.split(/\n+/).map(x=>stripMarks(x)).filter(Boolean);
-  const headersOut=[],dates=[],money=[],counts=[],items=[];
+  const out={store:null,storeCandidates:[],date:null,count:null,rate:null,subtotal:null,tax:null,total:null,items:[],warnings:[]};
+  const lines=raw.split(/\n+/).map(cleanLine).filter(Boolean);
+
   for(const line of lines){
-    const p=line.split('|').map(x=>x.trim()),key=(p[0]||'').toUpperCase().replace(/\s+/g,'_');
-    if(key==='HEADER'){const h=merchant(p.slice(1).join('|'));if(h)headersOut.push(h);continue}
-    if(key==='DATE_LINE'){dates.push({label:p[1]||'',value:p.slice(2).join('|')});continue}
-    if(key==='MONEY'){const a=r2(p.slice(2).join('|'));if(a!=null)money.push({label:p[1]||'',amount:a});continue}
-    if(key==='PERCENT'){const q=num(p.slice(2).join('|'));if(q!=null)money.push({label:p[1]||'',percent:q});continue}
-    if(key==='COUNT_LINE'){const q=num(p.slice(2).join('|'));if(q!=null)counts.push({label:p[1]||'',value:Math.round(q)});continue}
+    const p=line.split('|').map(x=>x.trim()), key=(p[0]||'').toUpperCase().replace(/\s+/g,'_');
+    if(key==='STORE'){out.store=merchant(p.slice(1).join('|'));continue}
+    if(key==='STORE_CANDIDATE'){const c=merchant(p.slice(1).join('|'));if(c)out.storeCandidates.push(c);continue}
+    if(key==='DATE_RAW'||key==='DATE'){out.date=validDate(p[1]);continue}
+    if(key==='COUNT'){const n=num(p[1]);out.count=n!=null&&n>0?Math.round(n):null;continue}
+    if(key==='VAT_RATE'){const n=num(p[1]);out.rate=n!=null&&n>=0?n:null;continue}
+    if(key==='SUBTOTAL'){out.subtotal=r2(p[1]);continue}
+    if(key==='VAT'){out.tax=r2(p[1]);continue}
+    if(key==='TOTAL'){out.total=r2(p[1]);continue}
     if(key==='ITEM'){
-      const en=cleanItem(p[1]),ar=cleanItem(p[2]);let qty=num(p[3]),unit=r2(p[4]),total=r2(p[5]);
-      if(!Number.isFinite(qty)||qty<=0||qty>999)qty=1;const name=en&&ar?`${en} — ${ar}`:(en||ar);if(!name||summaryName(name))continue;
-      if(total==null&&unit!=null)total=r2(unit*qty);if(unit==null&&total!=null&&qty)unit=r2(total/qty);
-      items.push({name,name_en:en||null,name_ar:ar||null,quantity:qty,unit_price:unit,line_total:total});continue
+      const en=txt(p[1]), ar=txt(p[2]);
+      let qty=num(p[3]), unit=r2(p[4]), total=r2(p[5]);
+      if(!Number.isFinite(qty)||qty<=0||qty>999)qty=1;
+      const name=en&&ar?`${en} — ${ar}`:(en||ar);
+      if(!name||summaryName(name))continue;
+      if(total==null&&unit!=null)total=r2(unit*qty);
+      if(unit==null&&total!=null&&qty)unit=r2(total/qty);
+      out.items.push({name,name_en:en||null,name_ar:ar||null,quantity:qty,unit_price:unit,line_total:total});
     }
   }
-  const fin=classifyMoney(money),deduped=dedupeItems(items),quantitySum=Math.round(deduped.reduce((s,x)=>s+(Number(x.quantity)||0),0)*100)/100;
-  let rowCount=null,pieces=null;
-  for(const c of counts){const l=stripMarks(c.label).toLowerCase();if(/t\.?\s*pcs|pieces|total\s*qty|total\s*quantity|qty\s*total/.test(l)){pieces=c.value;continue}if(/total\s*item|no\.?\s*of\s*items|number\s*of\s*items|#\s*items|items\s*count/.test(l)){rowCount=c.value;continue}}
-  if(pieces==null){const c=counts.find(x=>Math.abs(x.value-quantitySum)<.01&&x.value!==deduped.length);if(c)pieces=c.value}
-  if(rowCount==null){const c=counts.find(x=>x.value===deduped.length&&!/pcs|pieces|qty|quantity/i.test(x.label));if(c)rowCount=c.value}
-  return {out:{store:chooseMerchant(headersOut),date:chooseDate(dates),count:rowCount,pieces,rate:fin.rate,subtotal:fin.subtotal,tax:fin.tax,total:fin.total,items:deduped,warnings:[],headers:headersOut,dates,money,counts},lines,raw}
+
+  // Conservative label fallbacks if the model slightly misses the protocol delimiter.
+  if(!out.store){
+    const m=raw.match(/(?:^|\n)\s*(?:STORE|MERCHANT|BUSINESS)\s*(?:\||:|=|-)\s*([^\n]+)/im);
+    if(m)out.store=merchant(m[1]);
+  }
+  if(!out.store){
+    const biz=lines.find(x=>/(laundr[yv]|laundromat|restaurant|caf[eé]|coffee|bakery|supermarket|hypermarket|grocery|market|pharmacy|salon|barber|trading|services|automatic|clinic|hospital|optical|shop|store)/i.test(x)&&!/(near|mall|invoice|receipt|tax|trn|phone|mob)/i.test(x));
+    if(biz)out.store=merchant(biz.replace(/^(?:STORE|MERCHANT|BUSINESS)\s*(?:\||:|=|-)?\s*/i,''));
+  }
+  for(const line of lines){
+    if(/^STORE_CANDIDATE\s*\|/i.test(line))continue;
+    if(/\b(?:pharmacy|laundry|laundromat|restaurant|cafe|coffee|bakery|supermarket|hypermarket|grocery|market|salon|barber|clinic|hospital|optical|boutique|store|shop|trading|facilities management|holding|management)\b/i.test(line)
+      && !/\b(?:tax invoice|invoice|receipt|trn|telephone|mobile|customer|bill no|order no)\b/i.test(line)){
+      const c=merchant(line.replace(/^(?:STORE|MERCHANT|BUSINESS)\s*(?:\||:|=|-)?\s*/i,''));
+      if(c)out.storeCandidates.push(c);
+    }
+  }
+  if(!out.date){
+    const m=raw.match(/(?:^|\n)\s*(?:DATE_RAW|DATE|INVOICE_DATE|INVOICE DATE)\s*(?:\||:|=|-)\s*([^\n]+)/im);
+    if(m)out.date=validDate(m[1]);
+  }
+  if(out.count==null){
+    const m=raw.match(/(?:COUNT|TOTAL\s*ITEMS?)\s*(?:\||:|=|-)\s*(\d+)/i);
+    if(m)out.count=num(m[1]);
+  }
+  if(out.rate==null){
+    const m=raw.match(/(?:VAT_RATE|VAT\s*RATE|VAT)\s*(?:\||:|=|-)?\s*(\d+(?:\.\d+)?)\s*%/i);
+    if(m)out.rate=num(m[1]);
+  }
+  if(out.total==null){
+    const m=raw.match(/(?:GRAND\s*TOTAL|TOTAL)\s*[:=|\-]?\s*(\d+(?:[.,]\d{1,2})?)/i);
+    if(m)out.total=r2(m[1]);
+  }
+  if(out.tax==null){
+    const m=raw.match(/\bVAT(?!_RATE)(?:\s*\d+(?:\.\d+)?\s*%)?\s*[:=|\-]?\s*(\d+(?:[.,]\d{1,2})?)/i);
+    if(m)out.tax=r2(m[1]);
+  }
+  if(out.subtotal==null){
+    const m=raw.match(/(?:SUBTOTAL|EXCL\.?\s*VAT)\s*[:=|\-]?\s*(\d+(?:[.,]\d{1,2})?)/i);
+    if(m)out.subtotal=r2(m[1]);
+  }
+
+  out.store=chooseMerchant(out.store,out.storeCandidates);
+  return {out,lines,raw};
 }
 function validate(parsed){
-  const r=parsed.out,warnings=[];const itemSum=r2(r.items.reduce((s,x)=>s+(x.line_total??0),0)),quantitySum=Math.round(r.items.reduce((s,x)=>s+(Number(x.quantity)||0),0)*100)/100;
-  if(r.count!=null&&r.count!==r.items.length)warnings.push(`Printed item-row count is ${r.count}, but ${r.items.length} rows were extracted`);
-  if(r.pieces!=null&&Math.abs(r.pieces-quantitySum)>.01)warnings.push(`Printed pieces are ${r.pieces}, but quantity sum is ${quantitySum}`);
-  if(r.subtotal!=null&&r.tax!=null&&r.total!=null&&Math.abs(r.subtotal+r.tax-r.total)>.07)warnings.push('Subtotal + VAT does not match total');
-  if(r.rate!=null&&r.rate>0&&r.rate<30&&r.subtotal!=null&&r.tax!=null&&Math.abs(r.subtotal*r.rate/100-r.tax)>.07)warnings.push('VAT amount does not match VAT rate');
-  const matchSub=r.items.length&&r.subtotal!=null&&Math.abs(itemSum-r.subtotal)<=.20,matchTotal=r.items.length&&r.total!=null&&Math.abs(itemSum-r.total)<=.20;
-  if(r.items.length&&r.total!=null&&!matchSub&&!matchTotal)warnings.push('Item row sum does not match labeled totals');
-  if(r.total!=null&&r.rate!=null&&r.rate>0&&r.rate<30){const ds=r2(r.total/(1+r.rate/100)),dt=r2(r.total-ds);const bad=r.subtotal==null||r.tax==null||Math.abs((r.subtotal+r.tax)-r.total)>.07;if(bad&&(r.subtotal==null||Math.abs(r.subtotal-ds)<=.18)&&(r.tax==null||Math.abs(r.tax-dt)<=.18)){r.subtotal=ds;r.tax=dt;warnings.push('Financial fields reconciled from total and VAT rate')}}
-  const rowOk=r.count==null||r.count===r.items.length,piecesOk=r.pieces==null||Math.abs(r.pieces-quantitySum)<.01,financeOk=r.total!=null&&!warnings.some(x=>/Subtotal \+ VAT does not match/i.test(x)),arithmetic=matchSub||matchTotal;
-  const pricedRows=r.items.filter(x=>x.line_total!=null).length,allRowsPriced=r.items.length>0&&pricedRows===r.items.length;
-  const itemMoneyOk=!allRowsPriced||r.total==null||arithmetic;
-  const accepted=r.items.length>0&&financeOk&&piecesOk&&itemMoneyOk&&(rowOk||arithmetic),complete=accepted&&!!r.store&&!!r.date;
-  if(accepted&&!r.store)warnings.push('Merchant name needs manual review');if(accepted&&!r.date)warnings.push('Invoice date needs manual review');
-  let score=0;if(r.store)score+=18;if(r.date)score+=14;if(r.items.length)score+=34;if(r.total!=null)score+=18;if(r.subtotal!=null)score+=6;if(r.tax!=null)score+=5;if(rowOk||piecesOk)score+=5;score=Math.min(100,score);
-  return {receipt:{merchant_name_en:r.store,date:r.date,printed_item_count:r.count,printed_piece_count:r.pieces,vat_rate_percent:r.rate,currency:'AED',subtotal:r.subtotal,tax:r.tax,total:r.total,items:r.items,confidence:{merchant:r.store?0.88:0,date:r.date?0.88:0,items:r.items.length?0.86:0,totals:r.total!=null?0.92:0},warnings:[...new Set(warnings)].slice(0,14),item_sum:itemSum,quantity_sum:quantitySum},score,accepted,complete,fields:[r.store,r.date,r.subtotal,r.tax,r.total,r.items.length].filter(v=>v!==null&&v!==undefined&&v!=='').length}
+  const r=parsed.out, warnings=[...r.warnings];
+  const itemSum=r2(r.items.reduce((s,x)=>s+(x.line_total??0),0));
+  const quantitySum=Math.round(r.items.reduce((s,x)=>s+(Number(x.quantity)||0),0)*100)/100;
+  let pieceCount=null;
+  if(r.count!=null&&r.count!==r.items.length){
+    // Some receipts print T.Pcs / total pieces; if it equals the sum of quantities, it is NOT an item-row count.
+    if(Math.abs(r.count-quantitySum)<.001){pieceCount=r.count;r.count=null;warnings.push('Printed count interpreted as total pieces/quantity, not item-row count');}
+    else warnings.push(`Printed item count is ${r.count}, but ${r.items.length} rows were extracted`);
+  }
+  if(r.subtotal!=null&&r.tax!=null&&r.total!=null&&Math.abs(r.subtotal+r.tax-r.total)>.06)warnings.push('Subtotal + VAT does not match Grand Total');
+  if(r.rate!=null&&r.rate>0&&r.rate<30&&r.subtotal!=null&&r.tax!=null&&Math.abs(r.subtotal*r.rate/100-r.tax)>.06)warnings.push('VAT amount does not match printed VAT rate');
+  if(r.items.length&&r.total!=null&&Math.abs(itemSum-r.total)>.18&&!(r.subtotal!=null&&Math.abs(itemSum-r.subtotal)<=.18))warnings.push('Item row sum does not match labeled totals');
+
+  // Exact financial reconciliation only when total + printed VAT rate support it.
+  if(r.total!=null&&r.rate!=null&&r.rate>0&&r.rate<30){
+    const ds=r2(r.total/(1+r.rate/100)), dt=r2(r.total-ds);
+    const bad=r.subtotal==null||r.tax==null||Math.abs((r.subtotal+r.tax)-r.total)>.05||Math.abs(r.subtotal*r.rate/100-r.tax)>.05;
+    if(bad && (r.subtotal==null||Math.abs(r.subtotal-ds)<=.15) && (r.tax==null||Math.abs(r.tax-dt)<=.15)){
+      r.subtotal=ds;r.tax=dt;warnings.push('Financial fields reconciled from Grand Total and printed VAT rate');
+    }
+  }
+
+  const fields=[r.store,r.date,r.subtotal,r.tax,r.total,r.count].filter(v=>v!==null&&v!=='').length;
+  let score=0;
+  if(r.store)score+=18;if(r.date)score+=14;if(r.items.length)score+=34;if(r.total!=null)score+=18;
+  if(r.subtotal!=null)score+=6;if(r.tax!=null)score+=5;
+  if(r.count!=null&&r.count===r.items.length)score+=5;
+  score=Math.min(100,score);
+
+  const itemCountOk=(r.count==null||r.count===r.items.length);
+  const financeOk=r.total!=null&&!warnings.some(x=>/does not match labeled|Subtotal \+ VAT/i.test(x));
+  const accepted=r.items.length>0&&itemCountOk&&financeOk;
+  const complete=accepted&&!!r.store&&!!r.date;
+  if(accepted&&!r.store)warnings.push('Merchant name needs manual review');
+  if(accepted&&!r.date)warnings.push('Invoice date needs manual review');
+
+  return {
+    receipt:{
+      merchant_name_en:r.store,date:r.date,printed_item_count:r.count,printed_piece_count:pieceCount,vat_rate_percent:r.rate,
+      currency:'AED',subtotal:r.subtotal,tax:r.tax,total:r.total,items:r.items,
+      confidence:{merchant:r.store?.length?0.82:0,date:r.date?0.85:0,items:r.items.length?0.82:0,totals:r.total!=null?0.9:0},
+      warnings:[...new Set(warnings)].slice(0,14),item_sum:itemSum
+    },
+    score,accepted,complete,fields
+  };
 }
 function validImage(v){return typeof v==='string'&&v.startsWith('data:image/')&&v.length<7_000_000}
+
 async function readReceipt(env,image){
-  const result=await env.AI.run(MODEL,{prompt:PROMPT,image,max_tokens:1400,temperature:0,stream:false});
-  const raw=responseText(result);if(!raw)throw new Error('Vision model returned no text');const parsed=parseProtocol(raw),checked=validate(parsed);checked.transcript_lines=parsed.lines.length;checked.transcript_preview=parsed.raw.slice(0,1500);return checked
+  const result=await env.AI.run(MODEL,{
+    prompt:PROMPT,
+    image,
+    max_tokens:1000,
+    temperature:0,
+    stream:false
+  });
+  const raw=responseText(result);
+  if(!raw)throw new Error('Vision model returned no text');
+  const parsed=parseProtocol(raw);
+  const checked=validate(parsed);
+  checked.transcript_lines=parsed.lines.length;
+  checked.transcript_preview=parsed.raw.slice(0,1200);
+  return checked;
 }
-export default {async fetch(request,env){
-  const url=new URL(request.url);
-  if(url.pathname==='/api/health')return new Response(JSON.stringify({ok:true,engine:'Cloudflare Workers AI • Universal Evidence OCR',model:MODEL,version:VERSION,base:'4.4.0'}),{headers:headers()});
-  if(url.pathname==='/api/receipt'){
-    if(request.method!=='POST')return new Response(JSON.stringify({ok:false,error:'Method not allowed'}),{status:405,headers:headers()});
-    const started=Date.now(),scanId=crypto.randomUUID().slice(0,8);try{const body=await request.json(),image=body?.image;if(!validImage(image))return new Response(JSON.stringify({ok:false,error:'One composite receipt image is required'}),{status:400,headers:headers()});const result=await readReceipt(env,image);return new Response(JSON.stringify({ok:true,...result,meta:{engine:'Cloudflare Workers AI • Universal Evidence OCR',model:MODEL,version:VERSION,base:'4.4.0',scan_id:scanId,elapsed_ms:Date.now()-started,images:1,inference_calls:1}}),{headers:headers()})}catch(e){console.error('receipt-reader',e);const msg=e?.message||'Receipt analysis failed',retriable=/load failed|timeout|timed out|out of capacity|3040|3007|3008|temporar|aborted/i.test(msg);return new Response(JSON.stringify({ok:false,error:msg,retriable,meta:{version:VERSION,scan_id:scanId,elapsed_ms:Date.now()-started}}),{status:500,headers:headers()})}
+
+export default {
+  async fetch(request,env){
+    const url=new URL(request.url);
+    if(url.pathname==='/api/health'){
+      return new Response(JSON.stringify({ok:true,engine:'Cloudflare Workers AI • Universal Receipt OCR',model:MODEL,version:VERSION,base:'4.4.0'}),{headers:headers()});
+    }
+    if(url.pathname==='/api/receipt'){
+      if(request.method!=='POST')return new Response(JSON.stringify({ok:false,error:'Method not allowed'}),{status:405,headers:headers()});
+      const started=Date.now(),scanId=crypto.randomUUID().slice(0,8);
+      try{
+        const body=await request.json(),image=body?.image;
+        if(!validImage(image))return new Response(JSON.stringify({ok:false,error:'One composite receipt image is required'}),{status:400,headers:headers()});
+        const result=await readReceipt(env,image);
+        return new Response(JSON.stringify({
+          ok:true,...result,
+          meta:{engine:'Cloudflare Workers AI • Universal Receipt OCR',model:MODEL,version:VERSION,base:'4.4.0',scan_id:scanId,elapsed_ms:Date.now()-started,images:1,inference_calls:1}
+        }),{headers:headers()});
+      }catch(e){
+        console.error('receipt-reader',e);
+        const msg=e?.message||'Receipt analysis failed';
+        const retriable=/load failed|timeout|timed out|out of capacity|3040|3007|3008|temporar|aborted/i.test(msg);
+        return new Response(JSON.stringify({ok:false,error:msg,retriable,meta:{version:VERSION,scan_id:scanId,elapsed_ms:Date.now()-started}}),{status:500,headers:headers()});
+      }
+    }
+    if(url.pathname==='/api/license'){
+      const html=`<!doctype html><html lang="ar" dir="rtl"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Llama License</title><body style="font-family:-apple-system,Arial;padding:32px;line-height:1.8;max-width:720px;margin:auto"><h2>رخصة Meta Llama</h2><p>إذا سبق أن وافقت على رخصة Meta لنفس حساب Cloudflare فلا تحتاج الموافقة مرة أخرى.</p><p><a href="https://ai.cloudflare.com/" target="_blank">فتح Workers AI</a></p><p><a href="/">العودة للموقع</a></p></body></html>`;
+      return new Response(html,{headers:{'content-type':'text/html; charset=utf-8'}});
+    }
+    return env.ASSETS.fetch(request);
   }
-  if(url.pathname==='/api/license'){const h=`<!doctype html><html lang="ar" dir="rtl"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><body style="font-family:-apple-system,Arial;padding:32px;line-height:1.8"><h2>رخصة Meta Llama</h2><p>الإصدار ${VERSION} مبني على محرك 4.4.0 نفسه. إذا سبق أن وافقت على الرخصة فلا تحتاج الموافقة مرة أخرى.</p><p><a href="https://ai.cloudflare.com/" target="_blank">فتح Workers AI</a></p><p><a href="/">العودة للموقع</a></p></body></html>`;return new Response(h,{headers:{'content-type':'text/html; charset=utf-8'}})}
-  return env.ASSETS.fetch(request)
-}};
+};
