@@ -1,5 +1,5 @@
 const MODEL = '@cf/meta/llama-3.2-11b-vision-instruct';
-const VERSION = '4.4.6';
+const VERSION = '4.4.7';
 
 const PROMPT = `You are a literal OCR transcriber specialized in many different UAE receipt and tax-invoice layouts.
 
@@ -203,7 +203,7 @@ function chooseMerchant(preferred,candidates){
 }
 
 function summaryName(s){
-  return /^(?:vat|tax|subtotal|sub\s*total|excl\.?\s*vat|grand\s*total|total|balance|outstanding|amount\s*due|total\s*item|cash|card|change|trn|invoice|job\s*order|ضريبة|الإجمالي|الاجمالي|المجموع)/i.test(txt(s));
+  return /^(?:vat|tax|subtotal|sub\s*total|vata?ble\s*sales|taxable\s*sales|net\s*w\/?out\s*tax|net\s*amount|gross|g\.?\s*amt|excl\.?\s*vat|grand\s*total|total|balance|bal\.?\s*amt|outstanding|amount\s*due|total\s*item|t\.?\s*pcs|cash|card|visa|online|change|trn|invoice|job\s*order|ضريبة|الإجمالي|الاجمالي|المجموع)/i.test(txt(s));
 }
 function responseText(result){
   if(typeof result==='string')return result;
@@ -435,6 +435,19 @@ function reconcileItemRows(r,warnings){
 function validate(parsed){
   const r=parsed.out, warnings=[...r.warnings];
   reconcileItemRows(r,warnings);
+
+  // Some VAT invoices legitimately have VAT Amount = 0.00 (zero-rated/exempt items),
+  // and vision models may still emit a generic 5% VAT rate.
+  // Trust the printed money: if subtotal == total and VAT amount == 0,
+  // treat the effective VAT rate as 0 instead of rejecting the entire receipt.
+  if(r.subtotal!=null&&r.tax!=null&&r.total!=null
+     && Math.abs(Number(r.tax))<=0.005
+     && Math.abs(Number(r.subtotal)-Number(r.total))<=0.06){
+    if(r.rate!=null&&Number(r.rate)>0){
+      warnings.push('Ignored conflicting VAT rate because printed VAT amount is 0.00 and subtotal equals total');
+    }
+    r.rate=0;
+  }
   const itemSum=r2(r.items.reduce((s,x)=>s+(x.line_total??0),0));
   const quantitySum=Math.round(r.items.reduce((s,x)=>s+(Number(x.quantity)||0),0)*100)/100;
   let pieceCount=r._pieceCount??r.pieces??null;
