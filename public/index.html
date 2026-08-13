@@ -17,6 +17,38 @@ button,input,textarea,select{font:inherit}button{cursor:pointer}.app{max-width:1
 .btn{border:0;border-radius:14px;padding:11px 15px;font-weight:800;transition:.2s;display:inline-flex;align-items:center;justify-content:center;gap:8px}.btn:hover{transform:translateY(-1px)}.btn:disabled{opacity:.55;cursor:not-allowed;transform:none}.btn-primary{background:var(--navy);color:white}.btn-soft{background:#f7ead8;color:var(--navy)}.btn-ghost{background:rgba(255,255,255,.12);color:white;border:1px solid rgba(255,255,255,.22)}.btn-danger{background:#fff0ef;color:var(--danger)}
 .nav{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:14px 0 20px}.nav button{background:rgba(255,250,242,.8);border:1px solid var(--line);padding:14px;border-radius:16px;font-weight:900;color:var(--navy)}.nav button.active{background:var(--navy);color:white;border-color:var(--navy);box-shadow:0 8px 22px rgba(23,50,77,.18)}
 .page{display:none}.page.active{display:block}.grid{display:grid;gap:16px}.grid-4{grid-template-columns:repeat(4,1fr)}.grid-2{grid-template-columns:1.1fr .9fr}.card{background:rgba(255,250,242,.95);border:1px solid var(--line);border-radius:var(--radius);padding:18px;box-shadow:var(--shadow)}
+
+.dashboard-month-browser{
+  display:grid;grid-template-columns:auto minmax(170px,1fr) minmax(180px,280px) auto auto;
+  gap:10px;align-items:center;margin-bottom:16px;padding:12px 14px;
+  background:linear-gradient(135deg,rgba(255,250,242,.98),rgba(239,226,206,.72));
+}
+.dashboard-month-browser .month-nav-btn{
+  width:46px;height:46px;border:1px solid var(--line);border-radius:14px;
+  background:#fffaf2;color:var(--navy);font-size:24px;font-weight:950;
+  display:flex;align-items:center;justify-content:center;
+}
+.dashboard-month-browser .month-nav-btn:disabled{opacity:.35;cursor:not-allowed}
+.dashboard-month-browser .month-display{min-width:0}
+.dashboard-month-browser .month-display small{display:block;color:var(--muted);font-weight:800;font-size:11px;margin-bottom:3px}
+.dashboard-month-browser .month-display strong{display:block;color:var(--navy);font-size:20px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dashboard-month-browser select{min-width:0;height:46px}
+.dashboard-month-browser .current-month-btn{height:46px;white-space:nowrap}
+@media(max-width:760px){
+  .dashboard-month-browser{
+    grid-template-columns:46px 1fr 46px;
+    grid-template-areas:
+      "prev display next"
+      "select select select"
+      "current current current";
+  }
+  #dashPrevMonth{grid-area:prev}
+  #dashMonthDisplay{grid-area:display;text-align:center}
+  #dashNextMonth{grid-area:next}
+  #dashboardMonthSelect{grid-area:select;width:100%}
+  #dashCurrentMonth{grid-area:current;width:100%}
+}
+
 .stat{position:relative;overflow:hidden}.stat:after{content:"";position:absolute;width:92px;height:92px;border-radius:50%;background:var(--surface2);opacity:.55;left:-30px;bottom:-35px}.stat .label{font-size:13px;color:var(--muted);font-weight:800}.stat .value{font-size:28px;color:var(--navy);font-weight:950;margin-top:7px}.stat .sub{font-size:12px;color:var(--success);margin-top:4px}.section-title{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}.section-title h2{margin:0;color:var(--navy);font-size:20px}.section-title small{color:var(--muted)}
 .chart-wrap{height:270px;position:relative}.chart-wrap canvas{width:100%;height:100%}.form-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}.field{display:flex;flex-direction:column;gap:7px}.field.full{grid-column:1/-1}label{font-weight:850;color:var(--navy);font-size:14px}.input{width:100%;border:1px solid var(--line);background:#fffdf8;border-radius:13px;padding:13px 14px;outline:none;color:var(--text)}.input:focus{border-color:var(--navy2);box-shadow:0 0 0 3px rgba(35,79,116,.10)}
 .scanner{border:1.5px dashed #b8a890;border-radius:18px;padding:16px;background:#fffdf7}
@@ -55,6 +87,17 @@ button,input,textarea,select{font:inherit}button{cursor:pointer}.app{max-width:1
   </div>
 
   <section id="dashboard" class="page active">
+    <div class="card dashboard-month-browser">
+      <button class="month-nav-btn no-print" id="dashPrevMonth" type="button" aria-label="Previous month">‹</button>
+      <div class="month-display" id="dashMonthDisplay">
+        <small data-i18n="dashboardMonth">الشهر المعروض</small>
+        <strong id="dashMonthLabel">—</strong>
+      </div>
+      <select class="input no-print" id="dashboardMonthSelect" aria-label="Dashboard month"></select>
+      <button class="month-nav-btn no-print" id="dashNextMonth" type="button" aria-label="Next month">›</button>
+      <button class="btn btn-soft current-month-btn no-print" id="dashCurrentMonth" type="button" data-i18n="currentMonth">الشهر الحالي</button>
+    </div>
+
     <div class="grid grid-4">
       <div class="card stat"><div class="label" data-i18n="monthSpend">إجمالي الشهر</div><div class="value" id="statTotal">0.00 د.إ</div><div class="sub" id="statMonthName">—</div></div>
       <div class="card stat"><div class="label" data-i18n="invoiceCount">عدد الفواتير</div><div class="value" id="statCount">0</div><div class="sub" data-i18n="savedLocally">محفوظة على الجهاز</div></div>
@@ -75,7 +118,7 @@ button,input,textarea,select{font:inherit}button{cursor:pointer}.app{max-width:1
       <div class="card"><div class="section-title"><h2 data-i18n="dailySpend">الإنفاق اليومي</h2><small id="chartMonth">—</small></div><div class="chart-wrap"><canvas id="dailyChart"></canvas></div></div>
       <div class="card"><div class="section-title"><h2 data-i18n="storesDistribution">التوزيع حسب المحلات</h2><small data-i18n="topFive">أعلى 5</small></div><div id="storeBars"></div></div>
     </div>
-    <div class="card" style="margin-top:16px"><div class="section-title"><h2 data-i18n="recentInvoices">أحدث الفواتير</h2><button class="btn btn-soft no-print" onclick="showPage('records')" data-i18n="viewAll">عرض الكل</button></div><div id="recentList"></div></div>
+    <div class="card" style="margin-top:16px"><div class="section-title"><h2 data-i18n="recentInvoices">أحدث الفواتير</h2><button class="btn btn-soft no-print" onclick="openRecordsForDashboardMonth()" data-i18n="viewAll">عرض الكل</button></div><div id="recentList"></div></div>
   </section>
 
   <section id="new" class="page">
@@ -145,17 +188,66 @@ const STORAGE_KEY='monthlyExpensesPro_v2', OLD_STORAGE_KEY='monthlyExpensesPro_v
 let data=JSON.parse(localStorage.getItem(STORAGE_KEY)||localStorage.getItem(OLD_STORAGE_KEY)||'[]');
 let budgets=JSON.parse(localStorage.getItem(BUDGET_KEY)||'{}');
 let lang=localStorage.getItem('monthlyExpensesLang')||'ar';
+const DASHBOARD_MONTH_KEY='monthlyExpensesDashboardMonthV1';
+let dashboardMonthKey=localStorage.getItem(DASHBOARD_MONTH_KEY)||null;
 let editingId=null,currentCanvas=null,sourceBitmap=null,sourceCanvas=null,enhanceLevel=1,ocrBusy=false,tesseractLoader=null,ocrWorker=null,ocrEnglishWorker=null;
 let smartReaderBusy=false,localAIWorker=null,localAIReady=false,localAILoadPromise=null,localAILoadResolve=null,localAILoadReject=null,localAIRequestSeq=0,draftTimer=null;const localAIPending=new Map();
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 document.addEventListener('submit',e=>e.preventDefault(),true);const secureButtonTypes=()=>{$$('button').forEach(b=>{if(!b.hasAttribute('type'))b.type='button'})};secureButtonTypes();window.addEventListener('pageshow',secureButtonTypes);
 const CATEGORIES=['groceries','dining','shopping','transport','health','bills','entertainment','home','other'];
 const I18N={
- ar:{appTitle:'مصاريف الشهر',appSub:'إدارة ذكية للفواتير والمشتريات الشهرية',backup:'نسخة احتياطية',restore:'استعادة',dashboard:'الرئيسية',newInvoice:'تسجيل فاتورة جديدة',monthlyRecords:'السجلات الشهرية',monthSpend:'إجمالي الشهر',invoiceCount:'عدد الفواتير',savedLocally:'محفوظة على الجهاز',avgInvoice:'متوسط الفاتورة',monthAverage:'متوسط الشهر الحالي',budgetRemaining:'المتبقي من الميزانية',monthlyBudget:'الميزانية الشهرية',budgetAmount:'قيمة الميزانية',saveBudget:'حفظ الميزانية',budgetSaved:'تم حفظ ميزانية الشهر',spentOfBudget:'تم إنفاق',noBudget:'لم تحدد ميزانية بعد',categoryDistribution:'التوزيع حسب التصنيف',storesDistribution:'التوزيع حسب المحلات',topFive:'أعلى 5',dailySpend:'الإنفاق اليومي',recentInvoices:'أحدث الفواتير',viewAll:'عرض الكل',receiptScan:'تصوير / رفع الفاتورة',ocrAuto:'Cloudflare Llama Vision — Line OCR',takePhoto:'تصوير بالكاميرا',choosePhoto:'اختيار صورة من الألبوم',rotateLeft:'↶ تدوير',rotateRight:'↷ تدوير',enhanceAgain:'✨ تحسين',scanAgain:'إعادة القراءة الذكية',enhanced:'محسّنة للقراءة',ocrHint:'تُرسل صورة واحدة مرتبة بحيث يأخذ جدول الأصناف أكبر مساحة. يعيد Llama سطورًا نصية بسيطة، ثم يحللها الـWorker محليًا بدون JSON.',ocrNote:'قارئ عام للفواتير: يحدد الاسم التجاري الفعلي حتى عند وجود شركة مالكة أو إدارية، ويفرّق بين عدد أسطر الأصناف ومجموع القطع، ويعيد المحاولة تلقائيًا بصورة أخف عند انقطاع مؤقت.',invoiceData:'بيانات الفاتورة',storeName:'اسم المحل',invoiceDate:'تاريخ الفاتورة',category:'التصنيف',subtotal:'المبلغ قبل الضريبة',tax:'الضريبة',finalTotal:'الإجمالي النهائي',purchases:'المشتريات',addItem:'+ إضافة غرض',itemsSubtotal:'مجموع الأغراض',calculatedTax:'الضريبة',calculatedTotal:'الإجمالي',clear:'مسح',approve:'اعتماد وحفظ الفاتورة',printReport:'طباعة التقرير',item:'الغرض',price:'السعر',qty:'العدد',noData:'لا توجد فواتير محفوظة لهذا الشهر.',delete:'حذف',edit:'تعديل',saved:'تم حفظ الفاتورة بنجاح',updated:'تم تحديث الفاتورة',required:'يرجى إدخال اسم المحل وتاريخ الفاتورة والإجمالي النهائي.',scanning:'جارٍ قراءة الفاتورة…',preparing:'جارٍ تحسين الصورة وقص الحواف…',scanDone:'تم تحليل الفاتورة. راجع البيانات ثم اعتمدها.',scanFail:'تعذر استخراج البيانات بدقة. يمكنك تعديلها أو إدخالها يدويًا.',ocrNeedsNet:'يتطلب القارئ الذكي اتصالًا بالإنترنت للوصول إلى Cloudflare Worker. القارئ المحلي الاحتياطي يعمل عند تعذر الاتصال.',localAIReader:'القارئ الذكي السحابي',aiChecking:'جارٍ التحقق من Cloudflare…',aiLoading:'جارٍ الاتصال بـ Cloudflare AI…',aiReady:'متصل وجاهز',aiFallback:'قارئ محلي احتياطي',aiError:'تعذر الاتصال بالقارئ السحابي',aiLocalNote:'القارئ الأساسي عبر Cloudflare Worker: طلب Llama واحد، وجدول الأصناف يأخذ أكبر مساحة، ثم تحليل محلي سريع.',aiPrivate:'المعالجة عبر Worker آمن',aiAnalyzing:'جارٍ قراءة مناطق الفاتورة المكبرة عبر Cloudflare AI…',aiMerged:'اكتملت القراءة السريعة والتحقق من الفاتورة',currency:'د.إ',invoice:'فاتورة',itemsCount:'أغراض',confirmDelete:'هل تريد حذف هذه الفاتورة؟',backupDone:'تم تنزيل النسخة الاحتياطية',restoreDone:'تمت استعادة النسخة الاحتياطية',restoreFail:'ملف النسخة الاحتياطية غير صالح',quality:'جودة الاستخراج',vatDetected:'تم اكتشاف ضريبة القيمة المضافة 5%',fieldsDetected:'حقول مكتشفة',jan:'يناير',feb:'فبراير',mar:'مارس',apr:'أبريل',may:'مايو',jun:'يونيو',jul:'يوليو',aug:'أغسطس',sep:'سبتمبر',oct:'أكتوبر',nov:'نوفمبر',dec:'ديسمبر',groceries:'بقالة ومواد غذائية',dining:'مطاعم ومقاهي',shopping:'تسوق',transport:'مواصلات ووقود',health:'صحة وصيدلية',bills:'فواتير وخدمات',entertainment:'ترفيه',home:'منزل',other:'أخرى'},
- en:{appTitle:'Monthly Expenses',appSub:'Smart monthly receipt & spending manager',backup:'Backup',restore:'Restore',dashboard:'Dashboard',newInvoice:'New Receipt',monthlyRecords:'Monthly Records',monthSpend:'Month Total',invoiceCount:'Receipts',savedLocally:'Saved on this device',avgInvoice:'Average Receipt',monthAverage:'Current month average',budgetRemaining:'Budget Remaining',monthlyBudget:'Monthly Budget',budgetAmount:'Budget Amount',saveBudget:'Save Budget',budgetSaved:'Monthly budget saved',spentOfBudget:'Spent',noBudget:'No budget set yet',categoryDistribution:'Spend by Category',storesDistribution:'Spend by Store',topFive:'Top 5',dailySpend:'Daily Spending',recentInvoices:'Recent Receipts',viewAll:'View All',receiptScan:'Scan / Upload Receipt',ocrAuto:'Cloudflare Llama Vision — Line OCR',takePhoto:'Take Photo',choosePhoto:'Choose from Photos',rotateLeft:'↶ Rotate',rotateRight:'↷ Rotate',enhanceAgain:'✨ Enhance',scanAgain:'Smart Re-scan',enhanced:'Enhanced for OCR',ocrHint:'One receipt composite gives the item table the largest area. Llama returns simple text lines and the Worker parses them locally without JSON.',ocrNote:'Universal receipt reader selects the customer-facing trade name, distinguishes item rows from total pieces, preserves printed date order, and automatically retries transient failures.',invoiceData:'Receipt Details',storeName:'Store Name',invoiceDate:'Receipt Date',category:'Category',subtotal:'Subtotal Before Tax',tax:'Tax',finalTotal:'Final Total',purchases:'Items',addItem:'+ Add Item',itemsSubtotal:'Items Subtotal',calculatedTax:'Tax',calculatedTotal:'Total',clear:'Clear',approve:'Approve & Save Receipt',printReport:'Print Report',item:'Item',price:'Price',qty:'Qty',noData:'No saved receipts for this month.',delete:'Delete',edit:'Edit',saved:'Receipt saved successfully',updated:'Receipt updated',required:'Please enter store name, receipt date and final total.',scanning:'Reading receipt…',preparing:'Enhancing image and cropping edges…',scanDone:'Receipt analyzed. Review the fields before saving.',scanFail:'Could not extract the data accurately. You can edit or enter it manually.',ocrNeedsNet:'Cloud AI requires an internet connection. If it is unavailable, fields stay blank instead of running a slow fallback.',localAIReader:'Cloud Smart Receipt Reader',aiChecking:'Checking Cloudflare…',aiLoading:'Connecting to Cloudflare AI…',aiReady:'Connected & Ready',aiFallback:'Local fallback reader',aiError:'Cloud reader unavailable',aiLocalNote:'One Llama request with an enlarged item table, followed by local parsing in the secure Worker.',aiPrivate:'Secure Worker processing',aiAnalyzing:'Reading enlarged receipt regions with Cloudflare AI…',aiMerged:'Cloud AI receipt analysis complete',currency:'AED',invoice:'Receipt',itemsCount:'Items',confirmDelete:'Delete this receipt?',backupDone:'Backup downloaded',restoreDone:'Backup restored',restoreFail:'Invalid backup file',quality:'Extraction quality',vatDetected:'5% VAT detected',fieldsDetected:'fields detected',jan:'January',feb:'February',mar:'March',apr:'April',may:'May',jun:'June',jul:'July',aug:'August',sep:'September',oct:'October',nov:'November',dec:'December',groceries:'Groceries',dining:'Dining & Coffee',shopping:'Shopping',transport:'Transport & Fuel',health:'Health & Pharmacy',bills:'Bills & Services',entertainment:'Entertainment',home:'Home',other:'Other'}
+ ar:{appTitle:'مصاريف الشهر',appSub:'إدارة ذكية للفواتير والمشتريات الشهرية',backup:'نسخة احتياطية',restore:'استعادة',dashboard:'الرئيسية',dashboardMonth:'الشهر المعروض',currentMonth:'الشهر الحالي',previousMonth:'الشهر السابق',nextMonth:'الشهر التالي',newInvoice:'تسجيل فاتورة جديدة',monthlyRecords:'السجلات الشهرية',monthSpend:'إجمالي الشهر',invoiceCount:'عدد الفواتير',savedLocally:'محفوظة على الجهاز',avgInvoice:'متوسط الفاتورة',monthAverage:'متوسط الشهر الحالي',budgetRemaining:'المتبقي من الميزانية',monthlyBudget:'الميزانية الشهرية',budgetAmount:'قيمة الميزانية',saveBudget:'حفظ الميزانية',budgetSaved:'تم حفظ ميزانية الشهر',spentOfBudget:'تم إنفاق',noBudget:'لم تحدد ميزانية بعد',categoryDistribution:'التوزيع حسب التصنيف',storesDistribution:'التوزيع حسب المحلات',topFive:'أعلى 5',dailySpend:'الإنفاق اليومي',recentInvoices:'أحدث الفواتير',viewAll:'عرض الكل',receiptScan:'تصوير / رفع الفاتورة',ocrAuto:'Cloudflare Llama Vision — Line OCR',takePhoto:'تصوير بالكاميرا',choosePhoto:'اختيار صورة من الألبوم',rotateLeft:'↶ تدوير',rotateRight:'↷ تدوير',enhanceAgain:'✨ تحسين',scanAgain:'إعادة القراءة الذكية',enhanced:'محسّنة للقراءة',ocrHint:'تُرسل صورة واحدة مرتبة بحيث يأخذ جدول الأصناف أكبر مساحة. يعيد Llama سطورًا نصية بسيطة، ثم يحللها الـWorker محليًا بدون JSON.',ocrNote:'قارئ عام للفواتير: يحدد الاسم التجاري الفعلي حتى عند وجود شركة مالكة أو إدارية، ويفرّق بين عدد أسطر الأصناف ومجموع القطع، ويعيد المحاولة تلقائيًا بصورة أخف عند انقطاع مؤقت.',invoiceData:'بيانات الفاتورة',storeName:'اسم المحل',invoiceDate:'تاريخ الفاتورة',category:'التصنيف',subtotal:'المبلغ قبل الضريبة',tax:'الضريبة',finalTotal:'الإجمالي النهائي',purchases:'المشتريات',addItem:'+ إضافة غرض',itemsSubtotal:'مجموع الأغراض',calculatedTax:'الضريبة',calculatedTotal:'الإجمالي',clear:'مسح',approve:'اعتماد وحفظ الفاتورة',printReport:'طباعة التقرير',item:'الغرض',price:'السعر',qty:'العدد',noData:'لا توجد فواتير محفوظة لهذا الشهر.',delete:'حذف',edit:'تعديل',saved:'تم حفظ الفاتورة بنجاح',updated:'تم تحديث الفاتورة',required:'يرجى إدخال اسم المحل وتاريخ الفاتورة والإجمالي النهائي.',scanning:'جارٍ قراءة الفاتورة…',preparing:'جارٍ تحسين الصورة وقص الحواف…',scanDone:'تم تحليل الفاتورة. راجع البيانات ثم اعتمدها.',scanFail:'تعذر استخراج البيانات بدقة. يمكنك تعديلها أو إدخالها يدويًا.',ocrNeedsNet:'يتطلب القارئ الذكي اتصالًا بالإنترنت للوصول إلى Cloudflare Worker. القارئ المحلي الاحتياطي يعمل عند تعذر الاتصال.',localAIReader:'القارئ الذكي السحابي',aiChecking:'جارٍ التحقق من Cloudflare…',aiLoading:'جارٍ الاتصال بـ Cloudflare AI…',aiReady:'متصل وجاهز',aiFallback:'قارئ محلي احتياطي',aiError:'تعذر الاتصال بالقارئ السحابي',aiLocalNote:'القارئ الأساسي عبر Cloudflare Worker: طلب Llama واحد، وجدول الأصناف يأخذ أكبر مساحة، ثم تحليل محلي سريع.',aiPrivate:'المعالجة عبر Worker آمن',aiAnalyzing:'جارٍ قراءة مناطق الفاتورة المكبرة عبر Cloudflare AI…',aiMerged:'اكتملت القراءة السريعة والتحقق من الفاتورة',currency:'د.إ',invoice:'فاتورة',itemsCount:'أغراض',confirmDelete:'هل تريد حذف هذه الفاتورة؟',backupDone:'تم تنزيل النسخة الاحتياطية',restoreDone:'تمت استعادة النسخة الاحتياطية',restoreFail:'ملف النسخة الاحتياطية غير صالح',quality:'جودة الاستخراج',vatDetected:'تم اكتشاف ضريبة القيمة المضافة 5%',fieldsDetected:'حقول مكتشفة',jan:'يناير',feb:'فبراير',mar:'مارس',apr:'أبريل',may:'مايو',jun:'يونيو',jul:'يوليو',aug:'أغسطس',sep:'سبتمبر',oct:'أكتوبر',nov:'نوفمبر',dec:'ديسمبر',groceries:'بقالة ومواد غذائية',dining:'مطاعم ومقاهي',shopping:'تسوق',transport:'مواصلات ووقود',health:'صحة وصيدلية',bills:'فواتير وخدمات',entertainment:'ترفيه',home:'منزل',other:'أخرى'},
+ en:{appTitle:'Monthly Expenses',appSub:'Smart monthly receipt & spending manager',backup:'Backup',restore:'Restore',dashboard:'Dashboard',dashboardMonth:'Displayed Month',currentMonth:'Current Month',previousMonth:'Previous Month',nextMonth:'Next Month',newInvoice:'New Receipt',monthlyRecords:'Monthly Records',monthSpend:'Month Total',invoiceCount:'Receipts',savedLocally:'Saved on this device',avgInvoice:'Average Receipt',monthAverage:'Current month average',budgetRemaining:'Budget Remaining',monthlyBudget:'Monthly Budget',budgetAmount:'Budget Amount',saveBudget:'Save Budget',budgetSaved:'Monthly budget saved',spentOfBudget:'Spent',noBudget:'No budget set yet',categoryDistribution:'Spend by Category',storesDistribution:'Spend by Store',topFive:'Top 5',dailySpend:'Daily Spending',recentInvoices:'Recent Receipts',viewAll:'View All',receiptScan:'Scan / Upload Receipt',ocrAuto:'Cloudflare Llama Vision — Line OCR',takePhoto:'Take Photo',choosePhoto:'Choose from Photos',rotateLeft:'↶ Rotate',rotateRight:'↷ Rotate',enhanceAgain:'✨ Enhance',scanAgain:'Smart Re-scan',enhanced:'Enhanced for OCR',ocrHint:'One receipt composite gives the item table the largest area. Llama returns simple text lines and the Worker parses them locally without JSON.',ocrNote:'Universal receipt reader selects the customer-facing trade name, distinguishes item rows from total pieces, preserves printed date order, and automatically retries transient failures.',invoiceData:'Receipt Details',storeName:'Store Name',invoiceDate:'Receipt Date',category:'Category',subtotal:'Subtotal Before Tax',tax:'Tax',finalTotal:'Final Total',purchases:'Items',addItem:'+ Add Item',itemsSubtotal:'Items Subtotal',calculatedTax:'Tax',calculatedTotal:'Total',clear:'Clear',approve:'Approve & Save Receipt',printReport:'Print Report',item:'Item',price:'Price',qty:'Qty',noData:'No saved receipts for this month.',delete:'Delete',edit:'Edit',saved:'Receipt saved successfully',updated:'Receipt updated',required:'Please enter store name, receipt date and final total.',scanning:'Reading receipt…',preparing:'Enhancing image and cropping edges…',scanDone:'Receipt analyzed. Review the fields before saving.',scanFail:'Could not extract the data accurately. You can edit or enter it manually.',ocrNeedsNet:'Cloud AI requires an internet connection. If it is unavailable, fields stay blank instead of running a slow fallback.',localAIReader:'Cloud Smart Receipt Reader',aiChecking:'Checking Cloudflare…',aiLoading:'Connecting to Cloudflare AI…',aiReady:'Connected & Ready',aiFallback:'Local fallback reader',aiError:'Cloud reader unavailable',aiLocalNote:'One Llama request with an enlarged item table, followed by local parsing in the secure Worker.',aiPrivate:'Secure Worker processing',aiAnalyzing:'Reading enlarged receipt regions with Cloudflare AI…',aiMerged:'Cloud AI receipt analysis complete',currency:'AED',invoice:'Receipt',itemsCount:'Items',confirmDelete:'Delete this receipt?',backupDone:'Backup downloaded',restoreDone:'Backup restored',restoreFail:'Invalid backup file',quality:'Extraction quality',vatDetected:'5% VAT detected',fieldsDetected:'fields detected',jan:'January',feb:'February',mar:'March',apr:'April',may:'May',jun:'June',jul:'July',aug:'August',sep:'September',oct:'October',nov:'November',dec:'December',groceries:'Groceries',dining:'Dining & Coffee',shopping:'Shopping',transport:'Transport & Fuel',health:'Health & Pharmacy',bills:'Bills & Services',entertainment:'Entertainment',home:'Home',other:'Other'}
 };
 function t(k){return I18N[lang][k]||k}function money(n){return `${Number(n||0).toFixed(2)} ${t('currency')}`}function escapeHtml(s){return String(s??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))}
-function monthName(i){return t(['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'][i])}function todayISO(){const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`}function currentMonthKey(){return todayISO().slice(0,7)}function monthKey(date){return String(date||'').slice(0,7)}function uid(){return (crypto?.randomUUID?.()||`r_${Date.now()}_${Math.random().toString(36).slice(2,10)}`)}
+function monthName(i){return t(['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'][i])}
+function todayISO(){const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`}
+function currentMonthKey(){return todayISO().slice(0,7)}
+function monthKey(date){return String(date||'').slice(0,7)}
+function validMonthKey(k){return /^\d{4}-\d{2}$/.test(String(k||''))}
+function offsetMonthKey(key,delta){
+  const [y,m]=String(key||currentMonthKey()).split('-').map(Number);
+  const d=new Date(y,m-1+delta,1);
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`
+}
+function monthLabel(key){
+  const [y,m]=String(key||currentMonthKey()).split('-').map(Number);
+  return `${monthName(m-1)} ${y}`
+}
+function normalizeDashboardMonth(){
+  const cur=currentMonthKey();
+  if(!validMonthKey(dashboardMonthKey))dashboardMonthKey=cur;
+  if(dashboardMonthKey>cur)dashboardMonthKey=cur;
+  return dashboardMonthKey
+}
+function setDashboardMonth(key){
+  if(!validMonthKey(key))return;
+  const cur=currentMonthKey();
+  dashboardMonthKey=key>cur?cur:key;
+  localStorage.setItem(DASHBOARD_MONTH_KEY,dashboardMonthKey);
+  renderDashboard()
+}
+function dashboardMonthKeys(){
+  const cur=currentMonthKey();
+  const saved=data.map(x=>monthKey(x.date)).filter(validMonthKey).sort();
+  const recentStart=offsetMonthKey(cur,-11);
+  let start=saved.length&&saved[0]<recentStart?saved[0]:recentStart;
+  if(validMonthKey(dashboardMonthKey)&&dashboardMonthKey<start)start=dashboardMonthKey;
+  const keys=[];let k=start,guard=0;
+  while(k<=cur&&guard++<240){keys.push(k);k=offsetMonthKey(k,1)}
+  return keys.reverse()
+}
+function buildDashboardMonthOptions(){
+  normalizeDashboardMonth();
+  const sel=$('#dashboardMonthSelect');if(!sel)return;
+  const keys=dashboardMonthKeys();
+  sel.innerHTML=keys.map(k=>`<option value="${k}">${monthLabel(k)}</option>`).join('');
+  if(!keys.includes(dashboardMonthKey)){
+    const opt=document.createElement('option');opt.value=dashboardMonthKey;opt.textContent=monthLabel(dashboardMonthKey);sel.appendChild(opt)
+  }
+  sel.value=dashboardMonthKey
+}
+function uid(){return (crypto?.randomUUID?.()||`r_${Date.now()}_${Math.random().toString(36).slice(2,10)}`)}
 function persist(){localStorage.setItem(STORAGE_KEY,JSON.stringify(data));localStorage.setItem(BUDGET_KEY,JSON.stringify(budgets))}
 function modelCacheMarked(){try{return !!JSON.parse(localStorage.getItem(MODEL_CACHE_KEY)||'null')?.ready}catch(e){return false}}
 async function ensurePersistentStorage(){try{if(navigator.storage?.persist){await navigator.storage.persist()}}catch(e){console.warn('Persistent storage request unavailable',e)}}
@@ -194,14 +286,69 @@ function clearRecognitionFieldsForNewImage(){
 
 function clearForm(clearSavedDraft=true){editingId=null;['storeName','subtotal','tax','finalTotal'].forEach(id=>$('#'+id).value='');$('#invoiceDate').value=todayISO();renderCategoryOptions('other');$('#items').innerHTML='';addItem();resetScanner();$('#editModeBadge').textContent='';calcTotals();if(clearSavedDraft)clearDraft()}
 $('#clearBtn').onclick=()=>clearForm(true);
-$('#saveBtn').onclick=()=>{const store=$('#storeName').value.trim(),date=$('#invoiceDate').value,total=Number($('#finalTotal').value||0);if(!store||!date||!total){toast(t('required'));return}const old=editingId?data.find(x=>x.id===editingId):null;const rec={id:editingId||uid(),store,date,category:$('#category').value||'other',subtotal:Number($('#subtotal').value||0),tax:Number($('#tax').value||0),total,items:getItems(),createdAt:old?.createdAt||new Date().toISOString(),updatedAt:new Date().toISOString()};if(editingId){const i=data.findIndex(x=>x.id===editingId);if(i>=0)data[i]=rec;toast(t('updated'))}else{data.push(rec);toast(t('saved'))}persist();clearDraft();clearForm(false);renderAll();showPage('dashboard')};
+$('#saveBtn').onclick=()=>{const store=$('#storeName').value.trim(),date=$('#invoiceDate').value,total=Number($('#finalTotal').value||0);if(!store||!date||!total){toast(t('required'));return}const old=editingId?data.find(x=>x.id===editingId):null;const rec={id:editingId||uid(),store,date,category:$('#category').value||'other',subtotal:Number($('#subtotal').value||0),tax:Number($('#tax').value||0),total,items:getItems(),createdAt:old?.createdAt||new Date().toISOString(),updatedAt:new Date().toISOString()};if(editingId){const i=data.findIndex(x=>x.id===editingId);if(i>=0)data[i]=rec;toast(t('updated'))}else{data.push(rec);toast(t('saved'))}persist();dashboardMonthKey=monthKey(date)||currentMonthKey();localStorage.setItem(DASHBOARD_MONTH_KEY,dashboardMonthKey);clearDraft();clearForm(false);renderAll();showPage('dashboard')};
 function filteredMonth(key){return data.filter(x=>monthKey(x.date)===key).sort((a,b)=>String(a.date).localeCompare(String(b.date))||String(a.createdAt).localeCompare(String(b.createdAt)))}
-function renderDashboard(){const key=currentMonthKey(),rows=filteredMonth(key),total=rows.reduce((s,x)=>s+Number(x.total||0),0),avg=rows.length?total/rows.length:0;$('#statTotal').textContent=money(total);$('#statCount').textContent=rows.length;$('#statAvg').textContent=money(avg);const [y,m]=key.split('-').map(Number),label=`${monthName(m-1)} ${y}`;$('#statMonthName').textContent=label;$('#chartMonth').textContent=label;$('#budgetMonthLabel').textContent=label;const budget=Number(budgets[key]||0),remain=budget-total;$('#statBudgetRemaining').textContent=budget?money(remain):'—';$('#statBudgetSub').textContent=budget?(remain>=0?t('budgetRemaining'):t('spentOfBudget')):t('noBudget');$('#budgetInput').value=budget||'';const pct=budget?Math.max(0,total/budget*100):0;$('#budgetBar').style.width=`${Math.min(100,pct)}%`;$('#budgetProgress').classList.toggle('over',pct>100);$('#budgetSpent').textContent=budget?`${t('spentOfBudget')} ${money(total)} / ${money(budget)}`:t('noBudget');$('#budgetPercent').textContent=budget?`${pct.toFixed(0)}%`:'—';const stores={},cats={};rows.forEach(r=>{stores[r.store]=(stores[r.store]||0)+Number(r.total||0);const c=r.category||'other';cats[c]=(cats[c]||0)+Number(r.total||0)});drawDaily(rows,y,m);renderBars('#storeBars',stores,k=>k);renderBars('#categoryBars',cats,k=>t(k));renderRecent(rows)}
-$('#saveBudgetBtn').onclick=()=>{const key=currentMonthKey(),v=Math.max(0,Number($('#budgetInput').value||0));if(v)budgets[key]=v;else delete budgets[key];persist();renderDashboard();toast(t('budgetSaved'))};
+function renderDashboard(){
+  const key=normalizeDashboardMonth(),rows=filteredMonth(key),total=rows.reduce((s,x)=>s+Number(x.total||0),0),avg=rows.length?total/rows.length:0;
+  buildDashboardMonthOptions();
+  const label=monthLabel(key);
+  $('#dashMonthLabel').textContent=label;
+  $('#dashPrevMonth').title=t('previousMonth');
+  $('#dashNextMonth').title=t('nextMonth');
+  $('#dashNextMonth').disabled=key>=currentMonthKey();
+  $('#dashCurrentMonth').disabled=key===currentMonthKey();
+
+  $('#statTotal').textContent=money(total);
+  $('#statCount').textContent=rows.length;
+  $('#statAvg').textContent=money(avg);
+  const [y,m]=key.split('-').map(Number);
+  $('#statMonthName').textContent=label;
+  $('#chartMonth').textContent=label;
+  $('#budgetMonthLabel').textContent=label;
+
+  const budget=Number(budgets[key]||0),remain=budget-total;
+  $('#statBudgetRemaining').textContent=budget?money(remain):'—';
+  $('#statBudgetSub').textContent=budget?(remain>=0?t('budgetRemaining'):t('spentOfBudget')):t('noBudget');
+  $('#budgetInput').value=budget||'';
+  const pct=budget?Math.max(0,total/budget*100):0;
+  $('#budgetBar').style.width=`${Math.min(100,pct)}%`;
+  $('#budgetProgress').classList.toggle('over',pct>100);
+  $('#budgetSpent').textContent=budget?`${t('spentOfBudget')} ${money(total)} / ${money(budget)}`:t('noBudget');
+  $('#budgetPercent').textContent=budget?`${pct.toFixed(0)}%`:'—';
+
+  const stores={},cats={};
+  rows.forEach(r=>{
+    stores[r.store]=(stores[r.store]||0)+Number(r.total||0);
+    const c=r.category||'other';cats[c]=(cats[c]||0)+Number(r.total||0)
+  });
+  drawDaily(rows,y,m);
+  renderBars('#storeBars',stores,k=>k);
+  renderBars('#categoryBars',cats,k=>t(k));
+  renderRecent(rows)
+}
+$('#saveBudgetBtn').onclick=()=>{const key=normalizeDashboardMonth(),v=Math.max(0,Number($('#budgetInput').value||0));if(v)budgets[key]=v;else delete budgets[key];persist();renderDashboard();toast(t('budgetSaved'))};
+
+$('#dashboardMonthSelect').onchange=e=>setDashboardMonth(e.target.value);
+$('#dashPrevMonth').onclick=()=>setDashboardMonth(offsetMonthKey(normalizeDashboardMonth(),-1));
+$('#dashNextMonth').onclick=()=>setDashboardMonth(offsetMonthKey(normalizeDashboardMonth(),1));
+$('#dashCurrentMonth').onclick=()=>setDashboardMonth(currentMonthKey());
+window.openRecordsForDashboardMonth=()=>{
+  const key=normalizeDashboardMonth();
+  buildMonthOptions();
+  const sel=$('#monthFilter');
+  if(sel&&!Array.from(sel.options).some(o=>o.value===key)){
+    const opt=document.createElement('option');opt.value=key;opt.textContent=monthLabel(key);sel.appendChild(opt)
+  }
+  if(sel)sel.value=key;
+  showPage('records');
+  if(sel)sel.value=key;
+  renderRecords()
+};
+
 function drawDaily(rows,y,m){const c=$('#dailyChart'),ctx=c.getContext('2d'),ratio=window.devicePixelRatio||1,w=Math.max(300,c.clientWidth),h=Math.max(180,c.clientHeight);c.width=w*ratio;c.height=h*ratio;ctx.setTransform(ratio,0,0,ratio,0,0);ctx.clearRect(0,0,w,h);const days=new Date(y,m,0).getDate(),vals=Array(days).fill(0);rows.forEach(r=>{const d=Number(String(r.date).slice(8,10));if(d>=1&&d<=days)vals[d-1]+=Number(r.total||0)});const max=Math.max(...vals,1),pad={l:36,r:12,t:18,b:30};ctx.strokeStyle='#d9ccb9';ctx.lineWidth=1;for(let i=0;i<=4;i++){const yy=pad.t+(h-pad.t-pad.b)*i/4;ctx.beginPath();ctx.moveTo(pad.l,yy);ctx.lineTo(w-pad.r,yy);ctx.stroke()}const bw=(w-pad.l-pad.r)/days;ctx.fillStyle='#17324d';vals.forEach((v,i)=>{const bh=(h-pad.t-pad.b)*v/max;ctx.fillRect(pad.l+i*bw+Math.max(1,bw*.17),h-pad.b-bh,Math.max(2,bw*.66),bh)});ctx.fillStyle='#7b7b73';ctx.font='11px sans-serif';ctx.textAlign='center';for(let i=0;i<days;i+=Math.max(1,Math.ceil(days/7)))ctx.fillText(String(i+1),pad.l+i*bw+bw/2,h-10)}
 function renderBars(selector,obj,labelFn){const el=$(selector),arr=Object.entries(obj).sort((a,b)=>b[1]-a[1]).slice(0,5),max=Math.max(...arr.map(x=>x[1]),1);if(!arr.length){el.innerHTML=`<div class="empty">${t('noData')}</div>`;return}el.innerHTML=arr.map(([name,val])=>`<div style="margin-bottom:14px"><div class="kpi-line"><strong>${escapeHtml(labelFn(name))}</strong><span>${money(val)}</span></div><div class="progress"><i style="width:${(val/max*100).toFixed(1)}%"></i></div></div>`).join('')}
 function renderRecent(rows){const el=$('#recentList'),arr=[...rows].sort((a,b)=>String(b.date).localeCompare(String(a.date))).slice(0,5);if(!arr.length){el.innerHTML=`<div class="empty">${t('noData')}</div>`;return}el.innerHTML=arr.map(r=>`<div class="kpi-line" style="padding:10px 0;border-bottom:1px solid #eadfce"><div><strong>${escapeHtml(r.store)}</strong><div class="purchase-meta">${r.date} · <span class="pill">${escapeHtml(t(r.category||'other'))}</span></div></div><strong>${money(r.total)}</strong></div>`).join('')}
-function buildMonthOptions(){const set=new Set(data.map(x=>monthKey(x.date)).filter(Boolean));set.add(currentMonthKey());const keys=[...set].sort().reverse(),sel=$('#monthFilter'),cur=sel.value||currentMonthKey();sel.innerHTML=keys.map(k=>{const [y,m]=k.split('-').map(Number);return `<option value="${k}">${monthName(m-1)} ${y}</option>`}).join('');sel.value=keys.includes(cur)?cur:keys[0]}
+function buildMonthOptions(){const set=new Set(data.map(x=>monthKey(x.date)).filter(Boolean));set.add(currentMonthKey());if(validMonthKey(dashboardMonthKey))set.add(dashboardMonthKey);const keys=[...set].sort().reverse(),sel=$('#monthFilter'),cur=sel.value||dashboardMonthKey||currentMonthKey();sel.innerHTML=keys.map(k=>{const [y,m]=k.split('-').map(Number);return `<option value="${k}">${monthName(m-1)} ${y}</option>`}).join('');sel.value=keys.includes(cur)?cur:keys[0]}
 $('#monthFilter').onchange=renderRecords;
 function renderRecords(){buildMonthOptions();const key=$('#monthFilter').value||currentMonthKey(),rows=filteredMonth(key),total=rows.reduce((s,x)=>s+Number(x.total||0),0);$('#monthlyTotal').textContent=money(total);$('#recordsSummary').textContent=`${rows.length} ${t('invoice')} • ${money(total)}`;const el=$('#recordsList');if(!rows.length){el.innerHTML=`<div class="empty">${t('noData')}</div>`;return}el.innerHTML=rows.map((r,i)=>`<div class="purchase" data-id="${r.id}"><div class="purchase-head" onclick="this.parentElement.classList.toggle('open')"><div><div class="purchase-title">${i+1}. ${escapeHtml(r.store)}</div><div class="purchase-meta">${r.date} • ${r.items?.length||0} ${t('itemsCount')} • <span class="pill">${escapeHtml(t(r.category||'other'))}</span></div></div><div class="amount">${money(r.total)}</div><div class="chev">⌄</div></div><div class="purchase-body"><table class="detail-table"><thead><tr><th>${t('item')}</th><th>${t('price')}</th><th>${t('qty')}</th><th>${t('calculatedTotal')}</th></tr></thead><tbody>${(r.items||[]).map(it=>`<tr><td>${escapeHtml(it.name||'—')}</td><td>${money(it.price)}</td><td>${it.qty}</td><td>${money(Number(it.price||0)*Number(it.qty||1))}</td></tr>`).join('')||`<tr><td colspan="4">—</td></tr>`}</tbody></table><div class="totals"><div class="total-box"><span>${t('subtotal')}</span><strong>${money(r.subtotal)}</strong></div><div class="total-box"><span>${t('tax')}</span><strong>${money(r.tax)}</strong></div><div class="total-box"><span>${t('finalTotal')}</span><strong>${money(r.total)}</strong></div></div><div class="actions no-print"><button class="btn btn-soft" onclick="editReceipt('${r.id}')">${t('edit')}</button><button class="btn btn-danger" onclick="deleteReceipt('${r.id}')">${t('delete')}</button></div></div></div>`).join('')}
 window.deleteReceipt=id=>{if(!confirm(t('confirmDelete')))return;data=data.filter(x=>x.id!==id);persist();renderAll()};window.editReceipt=id=>{const r=data.find(x=>x.id===id);if(!r)return;editingId=id;$('#storeName').value=r.store;$('#invoiceDate').value=r.date;renderCategoryOptions(r.category||'other');$('#subtotal').value=r.subtotal;$('#tax').value=r.tax;$('#finalTotal').value=r.total;$('#items').innerHTML='';((r.items||[]).length?r.items:[{}]).forEach(addItem);$('#editModeBadge').textContent=t('edit');resetScanner();calcTotals();showPage('new')};
@@ -555,7 +702,7 @@ function cloudFitRegion(source,x0,y0,x1,y1,w,h){
 }
 function buildCloudReceiptComposite(fullSource,detailSource,compact=false){
   if(!fullSource&&!detailSource)return null;fullSource=fullSource||detailSource;detailSource=detailSource||fullSource;
-  // 4.4.1 keeps one AI image like 4.4.0, but does not assign semantic meaning to fixed bands.
+  // 4.4.2 keeps one AI image like 4.4.0, but does not assign semantic meaning to fixed bands.
   // Left = complete receipt context. Right = three overlapping magnified coverage bands.
   const W=compact?900:1200,H=compact?900:1200,leftW=Math.floor(W*.48),rightW=W-leftW,bandH=Math.floor(H/3);
   const whole=cloudFitRegion(fullSource,0,0,1,1,leftW,H);
@@ -917,6 +1064,6 @@ $('#exportBtn').onclick=()=>{const payload={version:2,exportedAt:new Date().toIS
 clearForm(false);applyLang();ensurePersistentStorage();restoreDraft();setLocalAIStatus('loading',lang==='ar'?'جارٍ التحقق من اتصال Cloudflare AI…':'Checking Cloudflare AI connection…',5);setTimeout(checkCloudReaderHealth,250);
 </script>
 
-<footer class="app-version-footer" id="appVersionFooter" data-version="4.4.1">الإصدار 4.4.1</footer>
+<footer class="app-version-footer" id="appVersionFooter" data-version="4.4.2">الإصدار 4.4.2</footer>
 </body>
 </html>
