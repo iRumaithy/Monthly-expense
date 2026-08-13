@@ -1,5 +1,5 @@
 const MODEL = '@cf/meta/llama-3.2-11b-vision-instruct';
-const VERSION = '4.4.8';
+const VERSION = '4.4.9';
 
 const PROMPT = `You are a literal OCR transcriber specialized in many different UAE receipt and tax-invoice layouts.
 
@@ -113,6 +113,38 @@ RULES:
 10. Exclude customer/order/invoice numbers, payment methods, balances, dates, VAT/totals and terms from ITEM rows.
 11. If a number/text is unclear, leave it blank instead of guessing.
 12. No JSON, markdown, commentary or code fences.`;
+
+const SEGMENT_PROMPT = `You are reading ONE enlarged vertical segment of a UAE receipt/tax invoice.
+Another overlapping segment of the SAME receipt is read separately and both results will be merged by software.
+
+Extract ONLY text that is actually visible in this segment.
+Return plain protocol lines only:
+
+STORE|actual customer-facing merchant/outlet name, only if visibly present
+STORE_CANDIDATE|another prominent business/legal name, only if visibly present
+DATE_RAW|invoice/order/transaction date exactly as printed, only if visibly present
+COUNT|distinct purchasable item-row count, only if explicitly printed as item count
+PIECES|T.Pcs / Total Pieces / Total Qty, only if explicitly printed
+VAT_RATE|percentage number
+SUBTOTAL|pre-tax amount
+VAT|tax amount
+TOTAL|final payable/gross/net amount
+ITEM|English item text|Arabic item text|quantity|unit price|line total
+
+Rules:
+1. This is not a fixed template. Find table rows wherever they appear.
+2. Read EVERY complete purchase/service row visible in this segment.
+3. Do not invent rows that are cut off. If a row crosses the segment edge and is incomplete, omit it; the overlapping segment will capture it.
+4. Preserve item names literally; never translate or spell-correct.
+5. Quantity, unit price and line total must come from the SAME row.
+6. T.Pcs / Total Qty / Total Pieces is PIECES, not COUNT.
+7. Exclude table headings, customer name, invoice/order numbers, payment method, balance, terms, VAT/totals and dates from ITEM.
+8. Common pre-tax labels: VATable Sales, Taxable Sales, Excl.VAT, G.Amt, Subtotal, Net W/Out Tax.
+9. Common tax labels: VAT Amount, VAT 5%, Tax.
+10. Common final labels: Net Amount, Gross, Grand Total, Total, Amount Due, Adv when it is clearly the final paid amount.
+11. Preserve printed date order exactly. Never swap day/month.
+12. If merchant name is not visible in this segment, do not guess one.
+13. No JSON, markdown, explanation or code fences.`;
 
 function headers(extra={}) {
   return {'content-type':'application/json; charset=utf-8','cache-control':'no-store',...extra};
@@ -294,8 +326,52 @@ function parseProtocol(rawText){
     if(m)out.subtotal=r2(m[1]);
   }
 
+
   out.store=chooseMerchant(out.store,out.storeCandidates);
   return {out,lines,raw};
+}
+
+function segmentItemKey(v){
+  return txt(v||'').toLowerCase()
+    .replace(/[\u0600-\u06FF]/g,' ')
+    .replace(/[^a-z0-9]+/g,' ')
+    .replace(/\b(?:wash(?:ing)?|iron(?:ing)?|service|men|household|pr)\b/g,' ')
+    .replace(/\s+/g,' ').trim();
+}
+function segmentItemTokenSimilarity(a,b){
+  const A=new Set(segmentItemKey(a).split(' ').filter(x=>x.length>1));
+  const B=new Set(segmentItemKey(b).split(' ').filter(x=>x.length>1));
+  if(!A.size||!B.size)return 0;
+  let hit=0;for(const x of A)if(B.has(x))hit++;
+  return hit/Math.max(A.size,B.size);
+}
+function dedupeSegmentItems(items){
+  const out=[];
+  for(const row of items||[]){
+    const money=rowMoney(row),qty=Number(row?.quantity)||1;
+    let duplicate=-1;
+    for(let i=0;i<out.length;i++){
+      const x=out[i],xm=rowMoney(x),xq=Number(x?.quantity)||1;
+      const sameQty=Math.abs(qty-xq)<.001;
+      const sameMoney=money!=null&&xm!=null&&Math.abs(money-xm)<=.06;
+      const sim=segmentItemTokenSimilarity(row?.name,x?.name);
+      const exact=txt(row?.name).toLowerCase()===txt(x?.name).toLowerCase();
+      if(sameQty&&sameMoney&&(exact||sim>=.72)){duplicate=i;break}
+    }
+    if(duplicate<0){out.push({...row});continue}
+    const x=out[duplicate];
+    if(!x.name_en&&row.name_en)x.name_en=row.name_en;
+    if(!x.name_ar&&row.name_ar)x.name_ar=row.name_ar;
+    if((x.name||'').length<(row.name||'').length)x.name=row.name;
+    if(x.unit_price==null&&row.unit_price!=null)x.unit_price=row.unit_price;
+    if(x.line_total==null&&row.line_total!=null)x.line_total=row.line_total;
+  }
+  return out;
+}
+function mergeSegmentProtocols(raws){
+  const merged=parseProtocol((raws||[]).filter(Boolean).join('\n'));
+  merged.out.items=dedupeSegmentItems(merged.out.items);
+  return merged;
 }
 
 function itemSuspicionScore(item){
@@ -539,6 +615,34 @@ function fillMissingFromPrimary(best,primary){
   return best;
 }
 
+
+async function readReceiptSegments(env,images){
+  const started=Date.now();
+  const jobs=images.map(image=>env.AI.run(MODEL,{
+    prompt:SEGMENT_PROMPT,
+    image,
+    max_tokens:1150,
+    temperature:0,
+    stream:false
+  }));
+  const settled=await Promise.allSettled(jobs);
+  const raws=[];
+  for(const r of settled){
+    if(r.status!=='fulfilled')continue;
+    const t=responseText(r.value);if(t)raws.push(t)
+  }
+  if(!raws.length)throw new Error('Segment rescue returned no OCR text');
+  const checked=validate(mergeSegmentProtocols(raws));
+  checked.transcript_lines=raws.join('\n').split(/\n+/).filter(Boolean).length;
+  checked.transcript_preview=raws.join('\n').slice(0,1800);
+  checked.repair_used=false;
+  checked.alternate_layout=false;
+  checked.segment_rescue=true;
+  checked.segment_calls=raws.length;
+  checked.segment_ms=Date.now()-started;
+  return checked;
+}
+
 async function readReceipt(env,image,mode='primary'){
   if(mode==='alternate'){
     const altResult=await env.AI.run(MODEL,{
@@ -604,18 +708,24 @@ export default {
   async fetch(request,env){
     const url=new URL(request.url);
     if(url.pathname==='/api/health'){
-      return new Response(JSON.stringify({ok:true,engine:'Cloudflare Workers AI • Universal Receipt OCR + Adaptive Layout',model:MODEL,version:VERSION,base:'4.4.0'}),{headers:headers()});
+      return new Response(JSON.stringify({ok:true,engine:'Cloudflare Workers AI • Universal Receipt OCR + Segment Rescue',model:MODEL,version:VERSION,base:'4.4.0'}),{headers:headers()});
     }
     if(url.pathname==='/api/receipt'){
       if(request.method!=='POST')return new Response(JSON.stringify({ok:false,error:'Method not allowed'}),{status:405,headers:headers()});
       const started=Date.now(),scanId=crypto.randomUUID().slice(0,8);
       try{
-        const body=await request.json(),image=body?.image,mode=body?.mode==='alternate'?'alternate':'primary';
-        if(!validImage(image))return new Response(JSON.stringify({ok:false,error:'One composite receipt image is required'}),{status:400,headers:headers()});
-        const result=await readReceipt(env,image,mode);
+        const body=await request.json(),image=body?.image,
+          mode=body?.mode==='segments'?'segments':(body?.mode==='alternate'?'alternate':'primary'),
+          images=Array.isArray(body?.images)?body.images:[];
+        if(mode==='segments'){
+          if(images.length!==2||!images.every(validImage))return new Response(JSON.stringify({ok:false,error:'Two receipt segment images are required'}),{status:400,headers:headers()});
+        }else if(!validImage(image)){
+          return new Response(JSON.stringify({ok:false,error:'One composite receipt image is required'}),{status:400,headers:headers()});
+        }
+        const result=mode==='segments'?await readReceiptSegments(env,images):await readReceipt(env,image,mode);
         return new Response(JSON.stringify({
           ok:true,...result,
-          meta:{engine:'Cloudflare Workers AI • Universal Receipt OCR + Adaptive Layout',model:MODEL,version:VERSION,base:'4.4.0',scan_id:scanId,elapsed_ms:Date.now()-started,images:1,inference_calls:mode==='alternate'?1:(result.repair_used?2:1),repair_used:!!result.repair_used,alternate_layout:mode==='alternate'}
+          meta:{engine:'Cloudflare Workers AI • Universal Receipt OCR + Segment Rescue',model:MODEL,version:VERSION,base:'4.4.0',scan_id:scanId,elapsed_ms:Date.now()-started,images:mode==='segments'?2:1,inference_calls:mode==='segments'?(result.segment_calls||2):(mode==='alternate'?1:(result.repair_used?2:1)),repair_used:!!result.repair_used,alternate_layout:mode==='alternate',segment_rescue:mode==='segments',segment_ms:result.segment_ms||0}
         }),{headers:headers()});
       }catch(e){
         console.error('receipt-reader',e);
