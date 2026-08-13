@@ -1,296 +1,245 @@
-const MODEL = '@cf/moondream/moondream3.1-9B-A2B';
+const PRIMARY_MODEL = '@cf/google/gemma-4-26b-a4b-it';
+const VERIFY_MODEL = '@cf/moonshotai/kimi-k2.6';
+const VERSION = '4.1.0';
 
-const RECEIPT_PROMPT = `You are a high-precision receipt and invoice extraction engine for UAE receipts.
-Read the image visually. Do not guess text that is not clearly visible.
-Return ONLY valid JSON with this exact structure:
-{
-  "merchant_name_en": string | null,
-  "date": string | null,
-  "currency": string | null,
-  "subtotal": number | null,
-  "tax": number | null,
-  "total": number | null,
-  "items": [
-    {
-      "name": string,
-      "quantity": number | null,
-      "unit_price": number | null,
-      "line_total": number | null
-    }
-  ],
-  "confidence": {
-    "merchant": number,
-    "date": number,
-    "items": number,
-    "totals": number
+const RECEIPT_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    merchant_name_en: { type: ['string','null'] },
+    invoice_date: { type: ['string','null'], description: 'YYYY-MM-DD only when clearly visible' },
+    printed_item_count: { type: ['number','null'] },
+    vat_rate_percent: { type: ['number','null'] },
+    currency: { type: ['string','null'] },
+    subtotal: { type: ['number','null'] },
+    tax: { type: ['number','null'] },
+    total: { type: ['number','null'] },
+    items: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          name_en: { type: ['string','null'] },
+          name_ar: { type: ['string','null'] },
+          quantity: { type: ['number','null'] },
+          unit_price: { type: ['number','null'] },
+          line_total: { type: ['number','null'] }
+        },
+        required: ['name_en','name_ar','quantity','unit_price','line_total']
+      }
+    },
+    confidence: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        merchant: { type: 'number' },
+        date: { type: 'number' },
+        items: { type: 'number' },
+        totals: { type: 'number' }
+      },
+      required: ['merchant','date','items','totals']
+    },
+    warnings: { type: 'array', items: { type: 'string' } }
   },
-  "warnings": [string]
+  required: ['merchant_name_en','invoice_date','printed_item_count','vat_rate_percent','currency','subtotal','tax','total','items','confidence','warnings']
+};
+
+const SYSTEM_PROMPT = `You are a high-precision UAE receipt transcription engine. Your job is literal visual reading, not guessing.
+The receipt may contain Arabic and English on the same row. Copy only what is visibly printed.
+Never translate Arabic into English or English into Arabic. Never rewrite, normalize, spell-correct, or invent merchant/item text.
+For numbers, distinguish decimal points carefully. Read 12.60 as 12.60, never 1260, 12.09, or 12.6 unless that is what is printed.
+If a character or number is not sufficiently clear, return null rather than guessing.`;
+
+const USER_PROMPT = `Extract this receipt with extreme care.
+
+MERCHANT:
+- merchant_name_en = ONLY the English business name near the top of the receipt.
+- Exclude address, mall/location, phone, TRN, TAX INVOICE, JOB ORDER, branch text, customer text and identifiers.
+
+DATE:
+- invoice_date = the transaction/invoice Date, not Delivery Date, Print Time, due date or order date.
+- Return YYYY-MM-DD only when the year/month/day are visually clear.
+
+ITEMS:
+- Detect the actual item/service table and every purchasable row.
+- name_en = exact English item text printed in that row, or null if no English is printed.
+- name_ar = exact Arabic item text printed in that row, or null if no Arabic is printed.
+- Do not include VAT, Subtotal, Total, Balance, Cash, Card, TRN, order numbers, dates or Total item as items.
+- quantity, unit_price, line_total must come from the SAME row.
+- printed_item_count = the explicitly printed count such as “Total item: 3” when visible; otherwise null.
+
+TOTALS:
+- subtotal = amount explicitly labeled before VAT / Excl.VAT / subtotal.
+- tax = VAT/tax amount, not the VAT percentage.
+- vat_rate_percent = the printed VAT percentage if visible.
+- total = Grand Total / final payable total.
+- currency = AED when shown or clearly indicated by UAE currency notation.
+
+CONFIDENCE:
+- Use 0..1 and be conservative.
+- If text is blurry or partially obscured, confidence must be low and the uncertain field should be null rather than guessed.`;
+
+const VERIFY_PROMPT = `The first extraction failed one or more structural checks. Re-read the receipt from scratch using the supplied original and focused crops.
+Prioritize literal transcription over completion.
+Critical checks:
+1) English merchant name only, copied exactly from the top business-name line.
+2) Invoice Date, NOT delivery date.
+3) Read every item row. If “Total item: N” is visible, items.length should equal N.
+4) Copy Arabic and English item names separately exactly as printed; never translate.
+5) Read decimal amounts character-by-character. Check VAT percentage and the labeled Excl.VAT / VAT / Grand Total lines.
+6) Do not use the first extraction as truth; it is only a list of fields that need verification.
+Return the schema exactly.`;
+
+function jsonHeaders(extra={}) {
+  return {'content-type':'application/json; charset=utf-8','cache-control':'no-store',...extra};
 }
-
-Critical rules:
-1) merchant_name_en: copy ONLY the English merchant/business name printed near the top. Do not translate Arabic. Do not use address, phone, TRN, TAX INVOICE, JOB ORDER, branch address, city or mall as the merchant name.
-2) items: copy each purchasable item/service exactly as printed. If the item is printed in Arabic and English, preserve BOTH languages in the same name. If only one language is printed, keep only that language. Never translate, normalize, beautify, spell-correct or invent item names.
-3) Exclude summary/payment rows such as VAT, Tax, Subtotal, Excl.VAT, Grand Total, Balance, Total Item, Cash, Card, Change, TRN, order number and dates from items.
-4) quantity, unit_price and line_total must come from the matching row. Do not confuse dates, percentages, TRN/order numbers or totals with item prices.
-5) date must be the invoice/transaction date, formatted YYYY-MM-DD when clear. If uncertain return null.
-6) subtotal is the amount before tax. tax is VAT/tax amount. total is final payable/grand total.
-7) Use null for any uncertain numeric field. Never fabricate a value just to complete the JSON.
-8) confidence values must be between 0 and 1 and reflect actual visual confidence.
-9) Preserve decimal points exactly. A value like 12.60 must never become 1260 or 1.26.
-10) Return JSON only, no markdown and no explanation.`;
-
-const RETRY_PROMPT = `Re-read this receipt carefully because the first extraction was uncertain.
-Focus ONLY on these fields: English merchant name at the top, every item/service row exactly as printed (preserve Arabic+English if both are printed), quantity, unit price, line total, invoice date, subtotal before VAT, VAT, and final total.
-Ignore address, TRN, phone, TAX INVOICE, JOB ORDER, Total Item, payment rows and all identifiers.
-Return ONLY JSON using the same receipt schema. Do not translate or rewrite item names. Use null rather than guessing.`;
-
-function jsonHeaders(extra = {}) {
-  return {
-    'content-type': 'application/json; charset=utf-8',
-    'cache-control': 'no-store',
-    ...extra,
-  };
+function clamp01(v){const n=Number(v);return Number.isFinite(n)?Math.max(0,Math.min(1,n)):0}
+function round2(n){return n==null?null:Math.round((Number(n)+Number.EPSILON)*100)/100}
+function toNumber(v){
+  if(v===null||v===undefined||v==='')return null;
+  if(typeof v==='number')return Number.isFinite(v)?v:null;
+  const s=String(v).replace(/[٠-٩]/g,d=>'٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replace(/[۰-۹]/g,d=>'۰۱۲۳۴۵۶۷۸۹'.indexOf(d)).replace(/٫/g,'.').replace(/٬/g,'').replace(/[^0-9.,-]/g,'').replace(/,(?=\d{1,2}$)/,'.');
+  const n=Number(s);return Number.isFinite(n)?n:null;
 }
-
-function toNumber(value) {
-  if (value === null || value === undefined || value === '') return null;
-  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
-  const normalized = String(value)
-    .replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d))
-    .replace(/[۰-۹]/g, d => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d))
-    .replace(/٫/g, '.')
-    .replace(/٬/g, '')
-    .replace(/[^0-9.,-]/g, '')
-    .replace(/,(?=\d{1,2}$)/, '.');
-  const n = Number(normalized);
-  return Number.isFinite(n) ? n : null;
+function cleanText(v){return v==null?null:String(v).replace(/\s+/g,' ').trim()||null}
+function merchantEnglish(v){
+  let s=cleanText(v);if(!s)return null;
+  s=s.replace(/[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]+/g,' ').replace(/\s+/g,' ').trim();
+  s=s.replace(/\b(?:TAX\s*INVOICE|INVOICE|RECEIPT|JOB\s*ORDER|TRN|MOB(?:ILE)?|TEL(?:EPHONE)?)\b.*$/i,'').trim();
+  return /[A-Za-z]{3}/.test(s)?s:null;
 }
-
-function round2(n) {
-  return n == null ? null : Math.round((n + Number.EPSILON) * 100) / 100;
+function itemName(row){
+  const en=cleanText(row?.name_en), ar=cleanText(row?.name_ar);
+  if(en&&ar)return `${en} — ${ar}`;
+  return en||ar||'';
 }
-
-function confidence(v) {
-  const n = Number(v);
-  if (!Number.isFinite(n)) return 0;
-  return Math.max(0, Math.min(1, n));
+function isSummaryName(name){return /^(?:vat|tax|subtotal|sub\s*total|excl\.?\s*vat|grand\s*total|total|balance|amount\s*due|total\s*item|cash|card|change|trn|invoice|job\s*order|ضريبة|الإجمالي|الاجمالي|المجموع|المبلغ\s*المستحق)/i.test(String(name||'').trim())}
+function validIsoDate(v){
+  const s=cleanText(v);if(!s||!/^\d{4}-\d{2}-\d{2}$/.test(s))return null;
+  const [y,m,d]=s.split('-').map(Number);const dt=new Date(Date.UTC(y,m-1,d));
+  if(dt.getUTCFullYear()!==y||dt.getUTCMonth()!==m-1||dt.getUTCDate()!==d)return null;
+  if(y<2000||y>2100)return null;return s;
 }
-
-function extractJson(text) {
-  if (text && typeof text === 'object' && !Array.isArray(text)) return text;
-  const s = String(text || '').trim();
-  if (!s) throw new Error('AI returned an empty response');
-  try { return JSON.parse(s); } catch {}
-  const fenced = s.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  if (fenced) {
-    try { return JSON.parse(fenced[1].trim()); } catch {}
+function extractObject(result){
+  if(result==null)throw new Error('AI returned empty response');
+  if(result.response&&typeof result.response==='object')return result.response;
+  if(result.answer&&typeof result.answer==='object')return result.answer;
+  if(typeof result==='object'&&!Array.isArray(result)&&!result.response&&!result.answer)return result;
+  const text=String(result.response??result.answer??result).trim();
+  try{return JSON.parse(text)}catch{}
+  const fenced=text.match(/```(?:json)?\s*([\s\S]*?)```/i);if(fenced){try{return JSON.parse(fenced[1])}catch{}}
+  const a=text.indexOf('{'),b=text.lastIndexOf('}');if(a>=0&&b>a)return JSON.parse(text.slice(a,b+1));
+  throw new Error('AI response was not valid JSON');
+}
+function sanitize(raw){
+  const warnings=Array.isArray(raw?.warnings)?raw.warnings.map(String).slice(0,20):[];
+  const items=[];
+  for(const row of Array.isArray(raw?.items)?raw.items:[]){
+    const name=itemName(row);if(!name||isSummaryName(name))continue;
+    let qty=toNumber(row.quantity),unit=toNumber(row.unit_price),line=toNumber(row.line_total);
+    if(qty!=null&&(qty<=0||qty>999))qty=null;if(qty==null)qty=1;
+    if(unit!=null&&(unit<0||unit>1e6))unit=null;if(line!=null&&(line<0||line>1e6))line=null;
+    if(line==null&&unit!=null)line=round2(unit*qty);if(unit==null&&line!=null&&qty)unit=round2(line/qty);
+    items.push({name,name_en:cleanText(row.name_en),name_ar:cleanText(row.name_ar),quantity:qty,unit_price:round2(unit),line_total:round2(line)});
   }
-  const start = s.indexOf('{');
-  if (start >= 0) {
-    let depth = 0, inString = false, escaped = false;
-    for (let i = start; i < s.length; i++) {
-      const ch = s[i];
-      if (inString) {
-        if (escaped) escaped = false;
-        else if (ch === '\\') escaped = true;
-        else if (ch === '"') inString = false;
-        continue;
-      }
-      if (ch === '"') inString = true;
-      else if (ch === '{') depth++;
-      else if (ch === '}') {
-        depth--;
-        if (depth === 0) return JSON.parse(s.slice(start, i + 1));
-      }
-    }
-  }
-  throw new Error('AI response did not contain valid JSON');
-}
-
-function englishMerchant(value) {
-  if (!value) return null;
-  let s = String(value)
-    .replace(/[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-  if (!/[A-Za-z]/.test(s)) return null;
-  s = s.replace(/\b(?:TAX\s*INVOICE|INVOICE|RECEIPT|JOB\s*ORDER|TRN)\b.*$/i, '').trim();
-  return s || null;
-}
-
-function isSummaryItem(name) {
-  return /^(?:vat|tax|subtotal|sub\s*total|excl\.?\s*vat|grand\s*total|total|balance|amount\s*due|total\s*item|cash|card|change|trn|invoice|job\s*order|ضريبة|الإجمالي|الاجمالي|المجموع|المبلغ\s*المستحق|عدد\s*(?:الأصناف|الاصناف))/i.test(String(name || '').trim());
-}
-
-function sanitizeReceipt(raw) {
-  const warnings = Array.isArray(raw?.warnings) ? raw.warnings.map(x => String(x)).slice(0, 20) : [];
-  const merchant = englishMerchant(raw?.merchant_name_en ?? raw?.merchant ?? raw?.store);
-  const items = [];
-  for (const row of Array.isArray(raw?.items) ? raw.items : []) {
-    const name = String(row?.name ?? '').replace(/\s+/g, ' ').trim();
-    if (!name || isSummaryItem(name)) continue;
-    let qty = toNumber(row?.quantity ?? row?.qty);
-    let unit = toNumber(row?.unit_price ?? row?.price);
-    let line = toNumber(row?.line_total ?? row?.total);
-    if (qty != null && (qty <= 0 || qty > 1000)) qty = null;
-    if (unit != null && (unit < 0 || unit > 1000000)) unit = null;
-    if (line != null && (line < 0 || line > 1000000)) line = null;
-    if (qty == null) qty = 1;
-    if (line == null && unit != null && qty != null) line = round2(unit * qty);
-    if (unit == null && line != null && qty) unit = round2(line / qty);
-    if (unit != null && line != null && Math.abs(unit * qty - line) > Math.max(0.15, line * 0.04)) {
-      warnings.push(`Item arithmetic needs review: ${name}`);
-    }
-    items.push({ name, quantity: qty, unit_price: round2(unit), line_total: round2(line) });
-  }
-
-  let subtotal = toNumber(raw?.subtotal);
-  let tax = toNumber(raw?.tax ?? raw?.vat);
-  let total = toNumber(raw?.total ?? raw?.grand_total);
-  subtotal = round2(subtotal); tax = round2(tax); total = round2(total);
-
-  if (subtotal != null && tax != null && total != null) {
-    const delta = Math.abs(subtotal + tax - total);
-    if (delta > Math.max(0.15, total * 0.015)) warnings.push('Subtotal + tax does not match total');
-  }
-
-  const itemSum = round2(items.reduce((sum, it) => sum + (it.line_total ?? ((it.unit_price ?? 0) * (it.quantity ?? 1))), 0));
-  if (items.length && total != null && itemSum > total * 1.5) warnings.push('Item sum is implausibly above receipt total');
-
-  const c = raw?.confidence || {};
-  return {
-    merchant_name_en: merchant,
-    date: raw?.date ? String(raw.date).trim() : null,
-    currency: raw?.currency ? String(raw.currency).trim() : 'AED',
-    subtotal,
-    tax,
-    total,
+  const c=raw?.confidence||{};
+  const receipt={
+    merchant_name_en:merchantEnglish(raw?.merchant_name_en),
+    date:validIsoDate(raw?.invoice_date??raw?.date),
+    printed_item_count:toNumber(raw?.printed_item_count),
+    vat_rate_percent:toNumber(raw?.vat_rate_percent),
+    currency:cleanText(raw?.currency)||'AED',
+    subtotal:round2(toNumber(raw?.subtotal)),
+    tax:round2(toNumber(raw?.tax)),
+    total:round2(toNumber(raw?.total)),
     items,
-    confidence: {
-      merchant: confidence(c.merchant),
-      date: confidence(c.date),
-      items: confidence(c.items),
-      totals: confidence(c.totals),
-    },
-    warnings: [...new Set(warnings)].slice(0, 20),
-    item_sum: itemSum,
+    confidence:{merchant:clamp01(c.merchant),date:clamp01(c.date),items:clamp01(c.items),totals:clamp01(c.totals)},
+    warnings:[...new Set(warnings)]
   };
+  reconcile(receipt);
+  return receipt;
 }
-
-function scoreReceipt(r) {
-  let score = 0;
-  if (r.merchant_name_en) score += 18 * Math.max(0.5, r.confidence.merchant);
-  if (r.date) score += 14 * Math.max(0.5, r.confidence.date);
-  if (r.items.length) score += 30 * Math.max(0.5, r.confidence.items);
-  if (r.total != null) score += 20 * Math.max(0.5, r.confidence.totals);
-  if (r.subtotal != null) score += 7;
-  if (r.tax != null) score += 6;
-  if (r.subtotal != null && r.tax != null && r.total != null && Math.abs(r.subtotal + r.tax - r.total) <= Math.max(0.15, r.total * 0.015)) score += 5;
-  return Math.round(Math.max(0, Math.min(100, score)));
-}
-
-function needsRetry(r) {
-  return !r.merchant_name_en || !r.items.length || r.total == null || r.confidence.items < 0.68 || r.confidence.merchant < 0.65 || r.warnings.some(w => /does not match|implausibly/i.test(w));
-}
-
-function mergeReceipts(a, b) {
-  if (!b) return a;
-  const choose = (key, confKey) => {
-    const av = a[key], bv = b[key];
-    if (bv == null || bv === '' || (Array.isArray(bv) && !bv.length)) return av;
-    if (av == null || av === '' || (Array.isArray(av) && !av.length)) return bv;
-    return (b.confidence?.[confKey] || 0) > (a.confidence?.[confKey] || 0) ? bv : av;
-  };
-  return sanitizeReceipt({
-    merchant_name_en: choose('merchant_name_en', 'merchant'),
-    date: choose('date', 'date'),
-    currency: a.currency || b.currency || 'AED',
-    subtotal: choose('subtotal', 'totals'),
-    tax: choose('tax', 'totals'),
-    total: choose('total', 'totals'),
-    items: (b.items?.length && ((b.confidence?.items || 0) >= (a.confidence?.items || 0) || !a.items?.length)) ? b.items : a.items,
-    confidence: {
-      merchant: Math.max(a.confidence.merchant, b.confidence.merchant),
-      date: Math.max(a.confidence.date, b.confidence.date),
-      items: Math.max(a.confidence.items, b.confidence.items),
-      totals: Math.max(a.confidence.totals, b.confidence.totals),
-    },
-    warnings: [...(a.warnings || []), ...(b.warnings || [])],
-  });
-}
-
-async function askVision(env, image, prompt) {
-  const result = await env.AI.run(MODEL, {
-    task: 'query',
-    image,
-    question: prompt,
-    reasoning: true,
-    temperature: 0.05,
-    top_p: 0.1,
-    max_tokens: 2600,
-    stream: false,
-  });
-  const raw = result?.answer ?? result?.response ?? result;
-  return sanitizeReceipt(extractJson(raw));
-}
-
-async function analyzeReceipt(env, image) {
-  let first = await askVision(env, image, RECEIPT_PROMPT);
-  if (needsRetry(first)) {
-    try {
-      const second = await askVision(env, image, RETRY_PROMPT);
-      first = mergeReceipts(first, second);
-    } catch (e) {
-      first.warnings.push(`Second-pass verification failed: ${e.message}`);
+function reconcile(r){
+  const itemSum=round2(r.items.reduce((s,x)=>s+(x.line_total??((x.unit_price??0)*(x.quantity??1))),0));r.item_sum=itemSum;
+  if(r.printed_item_count!=null&&Math.round(r.printed_item_count)!==r.items.length)r.warnings.push(`Printed item count is ${r.printed_item_count}, but ${r.items.length} rows were extracted`);
+  if(r.items.length&&r.total!=null&&itemSum>r.total*1.35)r.warnings.push('Item sum is implausibly above receipt total');
+  if(r.subtotal!=null&&r.tax!=null&&r.total!=null&&Math.abs((r.subtotal+r.tax)-r.total)>Math.max(.06,r.total*.008))r.warnings.push('Subtotal + VAT does not match Grand Total');
+  const rate=toNumber(r.vat_rate_percent);
+  if(rate!=null&&rate>0&&rate<30&&r.subtotal!=null&&r.tax!=null){
+    const expected=round2(r.subtotal*rate/100);
+    if(Math.abs(expected-r.tax)>Math.max(.06,expected*.08))r.warnings.push('VAT amount does not match printed VAT rate');
+  }
+  // Conservative arithmetic repair: only when total and a clearly printed VAT rate form a clean 2-decimal split.
+  if(rate!=null&&rate>0&&rate<30&&r.total!=null&&r.warnings.some(x=>/VAT amount|Subtotal \+ VAT/i.test(x))){
+    const derivedSubtotal=round2(r.total/(1+rate/100)), derivedTax=round2(r.total-derivedSubtotal);
+    if(derivedSubtotal!=null&&derivedTax!=null&&Math.abs(derivedSubtotal+derivedTax-r.total)<.011){
+      if(r.subtotal!=null&&Math.abs(r.subtotal-derivedSubtotal)<=.15 && r.tax!=null&&Math.abs(r.tax-derivedTax)<=.15){
+        r.subtotal=derivedSubtotal;r.tax=derivedTax;r.warnings.push('Financial fields corrected using Grand Total and printed VAT rate');
+      }
     }
   }
-  return { receipt: first, score: scoreReceipt(first) };
+  r.warnings=[...new Set(r.warnings)].slice(0,20);
 }
+function score(r){
+  let s=0;if(r.merchant_name_en)s+=18*Math.max(.55,r.confidence.merchant);if(r.date)s+=12*Math.max(.55,r.confidence.date);
+  if(r.items.length)s+=34*Math.max(.55,r.confidence.items);if(r.total!=null)s+=18*Math.max(.55,r.confidence.totals);if(r.subtotal!=null)s+=6;if(r.tax!=null)s+=5;
+  if(r.printed_item_count!=null&&Math.round(r.printed_item_count)===r.items.length)s+=4;if(!r.warnings.some(x=>/does not match|implausibly|Printed item count/i.test(x)))s+=3;
+  return Math.round(Math.max(0,Math.min(100,s)));
+}
+function needsVerify(r){
+  return !r.merchant_name_en||!r.date||!r.items.length||r.total==null||r.confidence.merchant<.72||r.confidence.items<.76||r.confidence.totals<.78||
+    (r.printed_item_count!=null&&Math.round(r.printed_item_count)!==r.items.length)||r.warnings.some(x=>/does not match|implausibly/i.test(x));
+}
+function better(a,b){
+  if(!b)return a;
+  const ac=score(a),bc=score(b);if(bc>ac+2)return b;if(ac>bc+2)return a;
+  // Field-wise merge only when verifier has equal/higher confidence.
+  const out=JSON.parse(JSON.stringify(a));
+  if(b.merchant_name_en&&b.confidence.merchant>=a.confidence.merchant)out.merchant_name_en=b.merchant_name_en;
+  if(b.date&&b.confidence.date>=a.confidence.date)out.date=b.date;
+  if(b.total!=null&&b.confidence.totals>=a.confidence.totals){out.subtotal=b.subtotal;out.tax=b.tax;out.total=b.total;out.vat_rate_percent=b.vat_rate_percent;}
+  if(b.items.length&&b.confidence.items>=a.confidence.items)out.items=b.items;
+  if(b.printed_item_count!=null)out.printed_item_count=b.printed_item_count;
+  out.confidence={merchant:Math.max(a.confidence.merchant,b.confidence.merchant),date:Math.max(a.confidence.date,b.confidence.date),items:Math.max(a.confidence.items,b.confidence.items),totals:Math.max(a.confidence.totals,b.confidence.totals)};
+  out.warnings=[...(a.warnings||[]),...(b.warnings||[])];reconcile(out);return out;
+}
+async function runStructured(env,model,messages){
+  const result=await env.AI.run(model,{messages,response_format:{type:'json_schema',json_schema:RECEIPT_SCHEMA},temperature:0,max_completion_tokens:2600,stream:false});
+  return sanitize(extractObject(result));
+}
+async function primaryRead(env,image){
+  const messages=[{role:'system',content:SYSTEM_PROMPT},{role:'user',content:[{type:'text',text:USER_PROMPT},{type:'image_url',image_url:{url:image}}]}];
+  return runStructured(env,PRIMARY_MODEL,messages);
+}
+async function verifyRead(env,images,first){
+  const content=[{type:'text',text:`${VERIFY_PROMPT}\n\nFirst extraction for verification only:\n${JSON.stringify(first)}`}];
+  for(const img of [images.image,images.header,images.items,images.totals])if(typeof img==='string'&&img.startsWith('data:image/'))content.push({type:'image_url',image_url:{url:img}});
+  return runStructured(env,VERIFY_MODEL,[{role:'system',content:SYSTEM_PROMPT},{role:'user',content}]);
+}
+async function analyze(env,images){
+  let first=await primaryRead(env,images.image);let verified=false;
+  if(needsVerify(first)){
+    try{const second=await verifyRead(env,images,first);first=better(first,second);verified=true}catch(e){first.warnings.push(`Verification pass failed: ${e.message}`)}
+  }
+  return {receipt:first,score:score(first),verified};
+}
+function validImage(v){return typeof v==='string'&&v.startsWith('data:image/')&&v.length<8_000_000}
 
 export default {
-  async fetch(request, env) {
-    const url = new URL(request.url);
-
-    if (url.pathname === '/api/health') {
-      return new Response(JSON.stringify({ ok: true, engine: 'Cloudflare Workers AI', model: MODEL, version: '4.0.0' }), {
-        status: 200,
-        headers: jsonHeaders(),
-      });
+  async fetch(request,env){
+    const url=new URL(request.url);
+    if(url.pathname==='/api/health')return new Response(JSON.stringify({ok:true,engine:'Cloudflare Workers AI',primary_model:PRIMARY_MODEL,verify_model:VERIFY_MODEL,version:VERSION}),{headers:jsonHeaders()});
+    if(url.pathname==='/api/receipt'){
+      if(request.method==='OPTIONS')return new Response(null,{status:204});
+      if(request.method!=='POST')return new Response(JSON.stringify({ok:false,error:'Method not allowed'}),{status:405,headers:jsonHeaders()});
+      try{
+        const body=await request.json();if(!validImage(body?.image))return new Response(JSON.stringify({ok:false,error:'A valid original receipt image is required'}),{status:400,headers:jsonHeaders()});
+        const images={image:body.image,header:validImage(body.header)?body.header:null,items:validImage(body.items)?body.items:null,totals:validImage(body.totals)?body.totals:null};
+        const started=Date.now(),result=await analyze(env,images);
+        return new Response(JSON.stringify({ok:true,receipt:result.receipt,score:result.score,meta:{engine:'Cloudflare Workers AI',primary_model:PRIMARY_MODEL,verify_model:result.verified?VERIFY_MODEL:null,verified:result.verified,version:VERSION,elapsed_ms:Date.now()-started}}),{headers:jsonHeaders()});
+      }catch(error){console.error('Receipt analysis failed',error);return new Response(JSON.stringify({ok:false,error:error?.message||'Receipt analysis failed'}),{status:500,headers:jsonHeaders()});}
     }
-
-    if (url.pathname === '/api/receipt') {
-      if (request.method === 'OPTIONS') return new Response(null, { status: 204 });
-      if (request.method !== 'POST') return new Response(JSON.stringify({ ok: false, error: 'Method not allowed' }), { status: 405, headers: jsonHeaders() });
-
-      try {
-        const body = await request.json();
-        const image = body?.image;
-        if (typeof image !== 'string' || !image.startsWith('data:image/')) {
-          return new Response(JSON.stringify({ ok: false, error: 'A base64 image data URI is required' }), { status: 400, headers: jsonHeaders() });
-        }
-        if (image.length > 8_000_000) {
-          return new Response(JSON.stringify({ ok: false, error: 'Image is too large; please use the optimized image from the page' }), { status: 413, headers: jsonHeaders() });
-        }
-
-        const started = Date.now();
-        const result = await analyzeReceipt(env, image);
-        return new Response(JSON.stringify({
-          ok: true,
-          receipt: result.receipt,
-          score: result.score,
-          meta: {
-            engine: 'Cloudflare Workers AI',
-            model: MODEL,
-            version: '4.0.0',
-            elapsed_ms: Date.now() - started,
-          },
-        }), { status: 200, headers: jsonHeaders() });
-      } catch (error) {
-        console.error('Receipt analysis failed', error);
-        return new Response(JSON.stringify({ ok: false, error: error?.message || 'Receipt analysis failed' }), { status: 500, headers: jsonHeaders() });
-      }
-    }
-
     return env.ASSETS.fetch(request);
-  },
+  }
 };
