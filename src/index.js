@@ -1,5 +1,5 @@
 const MODEL = '@cf/meta/llama-3.2-11b-vision-instruct';
-const VERSION = '4.4.1';
+const VERSION = '4.4.2';
 
 const PROMPT = `You are a literal OCR evidence extractor for UAE receipts and tax invoices of ANY layout.
 
