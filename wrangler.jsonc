@@ -1,6 +1,6 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
-  "name": "monthly-expense-ai",
+  "name": "monthly-expense",
   "main": "./src/index.js",
   "compatibility_date": "2026-08-13",
   "ai": {
