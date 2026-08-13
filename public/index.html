@@ -170,7 +170,7 @@ button,input,textarea,select{font:inherit}button{cursor:pointer}.app{max-width:1
             <div class="ai-local-head"><div class="ai-local-title"><span>🧠</span><span data-i18n="localAIReader">القارئ الذكي المحلي</span></div><span class="ai-local-badge" id="aiLocalBadge" data-i18n="aiChecking">جارٍ التحقق…</span></div>
             <div class="ai-local-detail" id="aiLocalDetail" data-i18n="aiLocalNote">يعمل داخل الهاتف بدون API أو اشتراك. في أول تشغيل فقط يتم تنزيل النموذج وحفظه في ذاكرة المتصفح.</div>
             <div class="ai-local-meter" id="aiLocalMeter"><i id="aiLocalMeterBar"></i></div>
-            <div class="ai-local-tech"><span id="aiDeviceBadge">Cloudflare</span><span>Workers AI • Universal Receipt OCR + Segment Rescue</span><span data-i18n="aiPrivate">معالجة سحابية آمنة</span></div>
+            <div class="ai-local-tech"><span id="aiDeviceBadge">Cloudflare</span><span>Workers AI • Stable OCR + Hybrid Verification</span><span data-i18n="aiPrivate">معالجة سحابية آمنة</span></div>
           </div>
         </div>
         <div class="footer-note" data-i18n="ocrNote">لأفضل نتيجة: اجعل الفاتورة كاملة داخل الصورة وبإضاءة متساوية. تتم معالجة التباين والقص تلقائيًا، ويمكنك مراجعة كل البيانات قبل الحفظ.</div>
@@ -713,7 +713,7 @@ function applyLearnedNames(parsed){
   const hist=data.filter(r=>!parsed.store||simName(r.store||'',parsed.store)>=.82).flatMap(r=>r.items||[]);
   parsed.itemRows=(parsed.itemRows||[]).map(it=>{let pick=null,ps=0;for(const h of hist){if(Math.abs(Number(h.price||0)-Number(it.price||0))>.12)continue;const x=simName(h.name||'',it.name||'');if(x>ps){ps=x;pick=h}}return pick&&ps>=.50?{...it,name:pick.name}:it});parsed.items=parsed.itemRows.length;return parsed
 }
-async function runOCR(){if(!currentCanvas||ocrBusy)return;ocrBusy=true;['cameraBtn','galleryBtn','scanAgainBtn'].forEach(id=>$('#'+id).disabled=true);$('#ocrStatus').textContent=t('scanning');$('#ocrMeter').style.display='block';$('#ocrMeterBar').style.width='3%';try{
+async function runOCR(options={}){if(!currentCanvas||ocrBusy)return;ocrBusy=true;['cameraBtn','galleryBtn','scanAgainBtn'].forEach(id=>$('#'+id).disabled=true);$('#ocrStatus').textContent=t('scanning');$('#ocrMeter').style.display='block';$('#ocrMeterBar').style.width='3%';try{
   const worker=await getOcrWorker(),OCR=window.Tesseract;
   const fullGray=makeOcrVariant(currentCanvas,'gray',1750);
   await worker.setParameters({tessedit_pageseg_mode:OCR.PSM?.SINGLE_BLOCK??'6',tessedit_char_whitelist:'',preserve_interword_spaces:'1',user_defined_dpi:'300'});
@@ -732,7 +732,9 @@ async function runOCR(){if(!currentCanvas||ocrBusy)return;ocrBusy=true;['cameraB
     if(alt.score>parsed.score+2||(!parsed.totalReliable&&alt.totalReliable)||(alt.items===alt.itemsExpected&&parsed.items!==parsed.itemsExpected))parsed=alt;
     await worker.setParameters({tessedit_pageseg_mode:OCR.PSM?.SINGLE_BLOCK??'6',tessedit_char_whitelist:'',preserve_interword_spaces:'1',user_defined_dpi:'300'});
   }
-  parsed=applyLearnedNames(parsed);parsed._ocrText=[res?.text||'',regions?.storeEng?.text||'',regions?.itemMix?.text||'',regions?.itemEng?.text||''].filter(Boolean).join('\n').slice(0,9000);applyParsedReceipt(parsed);$('#ocrMeterBar').style.width='100%';$('#ocrStatus').textContent=t('scanDone');showScanResult(parsed);return parsed
+  parsed=applyLearnedNames(parsed);parsed._ocrText=[res?.text||'',regions?.storeEng?.text||'',regions?.itemMix?.text||'',regions?.itemEng?.text||''].filter(Boolean).join('\n').slice(0,9000);
+  if(options.apply!==false){applyParsedReceipt(parsed);$('#ocrMeterBar').style.width='100%';$('#ocrStatus').textContent=t('scanDone');showScanResult(parsed)}
+  return parsed
 }catch(err){console.error(err);$('#ocrStatus').textContent=/OCR load|network|timeout|unavailable|worker/i.test(String(err))?t('ocrNeedsNet'):t('scanFail');return null}finally{ocrBusy=false;['cameraBtn','galleryBtn','scanAgainBtn'].forEach(id=>$('#'+id).disabled=false);setTimeout(()=>{$('#ocrMeter').style.display='none'},900)}}
 
 function setLocalAIStatus(kind,detail,progress=null){
@@ -888,7 +890,7 @@ function paddleReceiptParse(fullResult,topResult,itemResult,canvas){
   parsed.items=parsed.itemRows.length;
   return parsed
 }
-async function runPaddleReceiptOCR(){
+async function runPaddleReceiptOCR(options={}){
   const ocr=await getPaddleOCR();
   $('#ocrStatus').textContent=lang==='ar'?'جارٍ كشف أسطر الفاتورة ومواقعها…':'Detecting receipt lines and positions…';
   $('#ocrMeter').style.display='block';$('#ocrMeterBar').style.width='18%';
@@ -906,9 +908,11 @@ async function runPaddleReceiptOCR(){
   $('#ocrMeterBar').style.width='82%';
   if(!Array.isArray(results)||!results[0])throw new Error('PaddleOCR returned no result');
   let parsed=sanitizeParsedReceipt(paddleReceiptParse(results[0],results[1]||results[0],results[2]||results[0],currentCanvas));parsed=applyLearnedNames(parsed);
-  applyParsedReceipt(parsed);showScanResult(parsed);saveDraftNow(true);
-  $('#ocrMeterBar').style.width='100%';$('#ocrStatus').textContent=t('scanDone');
-  setLocalAIStatus('ready',lang==='ar'?'اكتملت القراءة بـ PaddleOCR مع التحقق من مواقع الأسطر والأرقام.':'PaddleOCR finished with line-position and totals checks.',100);
+  if(options.apply!==false){
+    applyParsedReceipt(parsed);showScanResult(parsed);saveDraftNow(true);
+    $('#ocrMeterBar').style.width='100%';$('#ocrStatus').textContent=t('scanDone');
+    setLocalAIStatus('ready',lang==='ar'?'اكتملت القراءة بـ PaddleOCR مع التحقق من مواقع الأسطر والأرقام.':'PaddleOCR finished with line-position and totals checks.',100)
+  }
   return parsed
 }
 
@@ -1001,7 +1005,7 @@ function cloudReceiptToParsed(payload){
     store:canonicalMerchant,date:r.date||'',category:inferCategory(`${canonicalMerchant} ${(r.items||[]).map(x=>x.name||'').join(' ')}`),
     subtotal:r.subtotal??null,tax:r.tax??null,total:r.total??null,itemRows:items,items:items.length,itemsExpected:items.length,
     score:Number(payload?.score??0)||Math.min(100,vals*14),fields:vals,vatEvidence:Number(r.tax||0)>0,totalReliable:r.total!=null,
-    localAI:true,engine:'Cloudflare AI • Universal Receipt OCR + Segment Rescue',warnings:Array.isArray(r.warnings)?r.warnings:[],readerMeta:payload?.meta||null,accepted:payload?.accepted!==false
+    localAI:true,engine:'Cloudflare AI • Stable OCR + Hybrid Verification',warnings:Array.isArray(r.warnings)?r.warnings:[],readerMeta:payload?.meta||null,accepted:payload?.accepted!==false
   }
 }
 async function checkCloudReaderHealth(){
@@ -1216,6 +1220,70 @@ async function tryAlternateCloudReceipt(primaryBody){
   return primaryBody
 }
 
+
+function localRowMoneyOptions(it){
+  const q=Math.max(1,Number(it?.qty)||1),arr=[],seen=new Set();
+  const push=(v,mode,penalty=0)=>{v=Number(v);if(!Number.isFinite(v)||v<0)return;v=Math.round(v*100)/100;const k=v.toFixed(2);if(seen.has(k))return;seen.add(k);arr.push({value:v,mode,penalty})};
+  if(Number.isFinite(Number(it?.readTotal)))push(Number(it.readTotal),'readTotal',0);
+  if(Number.isFinite(Number(it?.price))){push(Number(it.price)*q,'priceTimesQty',.15);push(Number(it.price),'priceIsLine',q>1?.35:.2)}
+  return arr
+}
+function normalizeLocalItemsToTargets(items,targets){
+  items=(items||[]).filter(x=>x&&String(x.name||'').trim());
+  targets=(targets||[]).map(Number).filter(x=>Number.isFinite(x)&&x>=0);
+  if(!items.length||!targets.length)return{items,sum:null,diff:Infinity};
+  let states=[{sum:0,choices:[],penalty:0}];
+  for(const it of items){
+    const opts=localRowMoneyOptions(it);if(!opts.length)return{items,sum:null,diff:Infinity};
+    const next=[];for(const st of states)for(const o of opts)next.push({sum:Math.round((st.sum+o.value)*100)/100,choices:[...st.choices,o],penalty:st.penalty+o.penalty});
+    const by=new Map();for(const st of next){const k=Math.round(st.sum*100),old=by.get(k);if(!old||st.penalty<old.penalty)by.set(k,st)}
+    states=[...by.values()];
+    if(states.length>500){states.sort((a,b)=>Math.min(...targets.map(t=>Math.abs(a.sum-t)))-Math.min(...targets.map(t=>Math.abs(b.sum-t))));states=states.slice(0,500)}
+  }
+  let best=null;for(const st of states){const diff=Math.min(...targets.map(t=>Math.abs(st.sum-t))),score=diff*1000+st.penalty;if(!best||score<best.score)best={...st,diff,score}}
+  if(!best)return{items,sum:null,diff:Infinity};
+  const normalized=items.map((it,i)=>{const x={...it},o=best.choices[i],q=Math.max(1,Number(x.qty)||1),line=Math.round(o.value*100)/100;x.readTotal=line;if(o.mode==='priceIsLine')x.price=Math.round((line/q)*100)/100;else if(!Number.isFinite(Number(x.price)))x.price=Math.round((line/q)*100)/100;else if(q>1&&Math.abs(Number(x.price)-line)<=.01&&o.mode==='readTotal')x.price=Math.round((line/q)*100)/100;return x});
+  return{items:normalized,sum:best.sum,diff:best.diff}
+}
+function hybridTargets(body,cloudParsed){
+  const r=body?.receipt||{},vals=[r.subtotal,r.total,(r.total!=null&&r.tax!=null)?Number(r.total)-Number(r.tax):null,cloudParsed?.subtotal,cloudParsed?.total];
+  return[...new Set(vals.map(Number).filter(x=>Number.isFinite(x)&&x>=0).map(x=>Math.round(x*100)/100))]
+}
+function hybridLocalCandidate(local,body,cloudParsed){
+  if(!local||!(local.itemRows||[]).length)return null;
+  const targets=hybridTargets(body,cloudParsed),norm=normalizeLocalItemsToTargets(local.itemRows,targets);
+  if(!norm.items.length||!Number.isFinite(norm.sum))return null;
+  const tol=Math.max(.12,Math.min(.55,Math.max(...targets,1)*.012));
+  const qsum=norm.items.reduce((s,x)=>s+(Number(x.qty)||1),0),r=body?.receipt||{};
+  const printedPieces=Number(r.printed_piece_count||0),printedCount=Number(r.printed_item_count||0);
+  let countBonus=0,countHardFail=false;
+  if(printedPieces>0){if(Math.abs(qsum-printedPieces)<=.001)countBonus+=25;else countHardFail=true}
+  else if(printedCount>0){if(norm.items.length===printedCount||Math.abs(qsum-printedCount)<=.001)countBonus+=22;else if(printedCount<=20)countHardFail=true}
+  if(countHardFail&&norm.diff>tol*.45)return null;
+  if(norm.diff>tol)return null;
+  const subtotal=Number(r.subtotal??cloudParsed?.subtotal),tax=Number(r.tax??cloudParsed?.tax),total=Number(r.total??cloudParsed?.total);
+  let financeBonus=0;if(Number.isFinite(subtotal)&&Number.isFinite(tax)&&Number.isFinite(total)&&Math.abs(subtotal+tax-total)<=.15)financeBonus+=24;
+  if(norm.diff<=.08)financeBonus+=30;else if(norm.diff<=.20)financeBonus+=18;
+  return{local,norm,qsum,score:80+countBonus+financeBonus-Math.min(30,norm.diff*100)}
+}
+function mergeCloudLocalRescue(body,cloudParsed,candidate){
+  const local=candidate.local,norm=candidate.norm,r=body?.receipt||{};
+  const store=cloudParsed?.store||local.store||'',date=cloudParsed?.date||local.date||'';
+  let subtotal=Number(r.subtotal),tax=Number(r.tax),total=Number(r.total);
+  if(!Number.isFinite(subtotal))subtotal=Number(local.subtotal);
+  if(!Number.isFinite(tax))tax=Number(local.tax);
+  if(!Number.isFinite(total))total=Number(local.total);
+  return{...cloudParsed,store,date,category:inferCategory(`${store}\n${norm.items.map(x=>x.name).join('\n')}`),subtotal:Number.isFinite(subtotal)?subtotal:null,tax:Number.isFinite(tax)?tax:null,total:Number.isFinite(total)?total:null,itemRows:norm.items,items:norm.items.length,itemsExpected:norm.items.length,score:Math.max(Number(cloudParsed?.score||0),92),fields:Math.max(Number(cloudParsed?.fields||0),5),totalReliable:true,accepted:true,localAI:true,engine:'Cloudflare totals + Local OCR row verification',warnings:[...(cloudParsed?.warnings||[]),lang==='ar'?'تم إنقاذ جدول الأصناف محليًا والتحقق منه حسابيًا.':'Item table rescued locally and verified arithmetically.'],hybridRescue:true}
+}
+async function tryLocalHybridReceiptRescue(body,cloudParsed){
+  $('#ocrMeterBar').style.width='91%';$('#ocrStatus').textContent=lang==='ar'?'القراءة السحابية غير مكتملة؛ جارٍ التحقق محليًا من جدول الأصناف…':'Cloud result is incomplete; verifying the item table locally…';
+  setLocalAIStatus('loading',lang==='ar'?'إنقاذ محلي مجاني: OCR على الهاتف + مطابقة الأسعار مع إجماليات الفاتورة.':'Free local rescue: on-device OCR + arithmetic matching against receipt totals.',86);
+  const candidates=[];
+  try{const tess=await runOCR({apply:false});const c=hybridLocalCandidate(tess,body,cloudParsed);if(c)candidates.push(c)}catch(e){console.warn('Tesseract hybrid rescue failed',e)}
+  if(!candidates.length){try{const paddle=await runPaddleReceiptOCR({apply:false});const c=hybridLocalCandidate(paddle,body,cloudParsed);if(c)candidates.push(c)}catch(e){console.warn('Paddle hybrid rescue failed',e)}}
+  if(!candidates.length)return null;candidates.sort((a,b)=>b.score-a.score);return mergeCloudLocalRescue(body,cloudParsed,candidates[0])
+}
+
 async function runCloudReceiptReader(){
   const focus=sourceCanvas||currentCanvas;if(!focus)throw new Error('No receipt image');
   clearRecognitionFieldsForNewImage();
@@ -1249,25 +1317,28 @@ async function runCloudReceiptReader(){
     || (Number(br.printed_piece_count||0)>0 && bi.length>Number(br.printed_piece_count||0)+2);
   if(suspiciousPrimary)body=await tryAlternateCloudReceipt(body);
 
-  // Last-resort generic table rescue. Only failed/suspicious receipts pay for it.
-  const rr=body?.receipt||{},ri=Array.isArray(rr.items)?rr.items:[];
-  const stillSuspicious=body?.accepted===false
-    || ri.length===0
-    || (ri.length===1&&rr.total!=null&&Number(ri[0]?.line_total||0)>0&&Number(rr.total)>Number(ri[0].line_total)*1.35)
-    || (Number(rr.printed_piece_count||0)>0&&Math.abs(ri.reduce((s,x)=>s+(Number(x.quantity)||0),0)-Number(rr.printed_piece_count))>.001);
-  if(stillSuspicious)body=await trySegmentCloudReceipt(body);
-
+  // Segment Rescue was removed from the live path in 4.5.1 because repeated tests
+  // showed that it added latency without fixing the two difficult receipt layouts.
+  // Rejected receipts now proceed directly to the local arithmetic OCR verifier.
   $('#ocrMeterBar').style.width='88%';
   const parsed=cloudReceiptToParsed(body);
   if(!parsed.store&&!parsed.itemRows.length&&parsed.total==null)throw new Error('Cloud reader returned no usable fields');
   parsed.itemsExpected=Number(body?.receipt?.printed_item_count)||parsed.itemsExpected;
 
   if(body?.accepted===false){
+    const hybrid=await tryLocalHybridReceiptRescue(body,parsed);
+    if(hybrid){
+      applyParsedReceipt(hybrid);showScanResult(hybrid);saveDraftNow(true);$('#ocrMeterBar').style.width='100%';
+      const sid=body?.meta?.scan_id?` • Scan ${body.meta.scan_id}`:'';
+      $('#ocrStatus').textContent=(lang==='ar'?'تمت قراءة الفاتورة بنجاح عبر التحقق الهجين السحابي + المحلي.':'Receipt recovered successfully using cloud + local hybrid verification.')+sid;
+      setLocalAIStatus('ready',lang==='ar'?'تمت مطابقة صفوف الأصناف محليًا مع الإجماليات المطبوعة — النتيجة موثوقة.':'Local item rows matched the printed totals — verified result.',100);
+      return hybrid
+    }
     clearRecognitionFieldsForNewImage();
-    parsed.warnings=[...(parsed.warnings||[]),lang==='ar'?'تم رفض القراءة لأنها لم تجتز التحقق البنيوي.':'Reading rejected because it failed structural validation.'];
+    parsed.warnings=[...(parsed.warnings||[]),lang==='ar'?'تم رفض القراءة لأنها لم تجتز التحقق البنيوي والمحلي.':'Reading rejected because it failed cloud and local structural validation.'];
     showScanResult(parsed);$('#ocrMeterBar').style.width='100%';
     const sid=body?.meta?.scan_id?` • Scan ${body.meta.scan_id}`:'';
-    $('#ocrStatus').textContent=(lang==='ar'?'لم تُعبأ الحقول لأن النتيجة غير موثوقة. صوّر الفاتورة بشكل مستقيم وواضح.':'Fields were left blank because the result was not trustworthy. Retake a straight, clear photo.')+sid;
+    $('#ocrStatus').textContent=(lang==='ar'?'لم تُعبأ الحقول لأن النتيجة لم تتطابق حتى بعد التحقق المحلي.':'Fields were left blank because the result still did not reconcile after local verification.')+sid;
     setLocalAIStatus('error',lang==='ar'?'تم رفض نتيجة غير موثوقة بدل تعبئة بيانات خاطئة.':'Unreliable result rejected instead of filling wrong data.');
     return null
   }
@@ -1277,9 +1348,8 @@ async function runCloudReceiptReader(){
   const retried=body?.meta?.client_retry===true;
   const repaired=body?.meta?.repair_used===true;
   const adaptive=body?.meta?.adaptive_retry===true||body?.meta?.alternate_layout===true;
-  const segmented=body?.meta?.segment_retry===true||body?.meta?.segment_rescue===true;
   const partial=body?.complete===false;
-  const suffix=(segmented?(lang==='ar'?' • نجحت قراءة الأجزاء عالية الدقة':' • high-resolution segment rescue succeeded'):'')+(adaptive?(lang==='ar'?' • نجحت القراءة المرنة':' • adaptive layout succeeded'):'')+(repaired?(lang==='ar'?' • تم إصلاح القراءة تلقائيًا':' • auto-repair applied'):'')+(retried?(lang==='ar'?' • نجحت المحاولة التلقائية الثانية':' • automatic retry succeeded'):'')+time+sid;
+  const suffix=(adaptive?(lang==='ar'?' • نجحت القراءة المرنة':' • adaptive layout succeeded'):'')+(repaired?(lang==='ar'?' • تم إصلاح القراءة تلقائيًا':' • auto-repair applied'):'')+(retried?(lang==='ar'?' • نجحت المحاولة التلقائية الثانية':' • automatic retry succeeded'):'')+time+sid;
   $('#ocrStatus').textContent=(partial
     ?(lang==='ar'?'تم ملء الحقول الموثوقة. راجع فقط الحقول التي بقيت فارغة.':'Reliable fields were filled. Review only fields that remain blank.')
     :t('scanDone'))+suffix;
@@ -1586,6 +1656,6 @@ $('#restoreInput').onchange=async e=>{
 clearForm(false);applyLang();ensurePersistentStorage();restoreDraft();setLocalAIStatus('loading',lang==='ar'?'جارٍ التحقق من اتصال Cloudflare AI…':'Checking Cloudflare AI connection…',5);setTimeout(checkCloudReaderHealth,250);
 </script>
 
-<footer class="app-version-footer" id="appVersionFooter" data-version="4.4.9">الإصدار 4.4.9</footer>
+<footer class="app-version-footer" id="appVersionFooter" data-version="4.5.1">الإصدار 4.5.1</footer>
 </body>
 </html>
