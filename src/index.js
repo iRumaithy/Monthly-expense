@@ -1,5 +1,5 @@
 const MODEL = '@cf/meta/llama-3.2-11b-vision-instruct';
-const VERSION = '4.4.5';
+const VERSION = '4.4.6';
 
 const PROMPT = `You are a literal OCR transcriber specialized in many different UAE receipt and tax-invoice layouts.
 
@@ -79,6 +79,40 @@ Rules:
 9. If only one money value is printed for a row, use it as line total.
 10. Read decimals exactly. If unclear, leave blank instead of guessing.
 11. No JSON, markdown, explanation or code fences.`;
+
+const ALT_LAYOUT_PROMPT = `You are a literal OCR transcriber for a UAE receipt/tax invoice of ANY layout.
+
+The supplied image is an ALTERNATE MAGNIFIED VIEW of one receipt:
+- LEFT COLUMN: the complete receipt for context.
+- RIGHT COLUMN: four overlapping enlarged sections, in top-to-bottom order.
+The enlarged sections are coverage only. DO NOT assume merchant, date, items or totals are at fixed positions.
+
+Return ONLY plain protocol lines:
+
+STORE|actual customer-facing merchant/trade/store name visibly printed on the receipt
+STORE_CANDIDATE|another major English business/legal/outlet name visibly printed
+DATE_RAW|invoice/transaction date exactly as printed
+COUNT|distinct purchasable item-row count only if explicitly printed
+PIECES|T.Pcs / Total Pieces / Total Qty / summed quantity only if explicitly printed
+VAT_RATE|percentage number
+SUBTOTAL|amount before VAT/tax
+VAT|tax amount
+TOTAL|final payable/gross/net total
+ITEM|English item text|Arabic item text|quantity|unit price|line total
+
+RULES:
+1. Read the ACTUAL receipt, not these instructions. Never output example/placeholder phrases.
+2. STORE is the outlet the customer used. If a parent/management company and a pharmacy/laundry/shop/restaurant are both visible, choose the outlet.
+3. Preserve DATE_RAW exactly in printed order. Never swap day/month.
+4. Read EVERY DISTINCT purchase/service row from the whole receipt.
+5. T.Pcs / Total Qty / Total Pieces is PIECES, not COUNT.
+6. Common pre-tax labels include VATable Sales, Taxable Sales, Excl.VAT, Subtotal, G.Amt, Net W/Out Tax.
+7. Common tax labels include VAT Amount, VAT 5%, Tax.
+8. Common final labels include Net Amount, Gross, Grand Total, Total, Amount Due, Adv when it is the final paid amount.
+9. Copy item names literally. Do not translate or spell-correct.
+10. Exclude customer/order/invoice numbers, payment methods, balances, dates, VAT/totals and terms from ITEM rows.
+11. If a number/text is unclear, leave it blank instead of guessing.
+12. No JSON, markdown, commentary or code fences.`;
 
 function headers(extra={}) {
   return {'content-type':'application/json; charset=utf-8','cache-control':'no-store',...extra};
@@ -492,7 +526,25 @@ function fillMissingFromPrimary(best,primary){
   return best;
 }
 
-async function readReceipt(env,image){
+async function readReceipt(env,image,mode='primary'){
+  if(mode==='alternate'){
+    const altResult=await env.AI.run(MODEL,{
+      prompt:ALT_LAYOUT_PROMPT,
+      image,
+      max_tokens:1450,
+      temperature:0,
+      stream:false
+    });
+    const altRaw=responseText(altResult);
+    if(!altRaw)throw new Error('Alternate vision pass returned no text');
+    const alt=validate(parseProtocol(altRaw));
+    alt.transcript_lines=altRaw.split(/\n+/).filter(Boolean).length;
+    alt.transcript_preview=altRaw.slice(0,1400);
+    alt.repair_used=false;
+    alt.alternate_layout=true;
+    return alt;
+  }
+
   const firstResult=await env.AI.run(MODEL,{
     prompt:PROMPT,
     image,
@@ -506,10 +558,10 @@ async function readReceipt(env,image){
   primary.transcript_lines=firstRaw.split(/\n+/).filter(Boolean).length;
   primary.transcript_preview=firstRaw.slice(0,1200);
   primary.repair_used=false;
+  primary.alternate_layout=false;
 
   if(!shouldRepair(primary))return primary;
 
-  // One focused second pass only for suspicious/failed receipts.
   const secondResult=await env.AI.run(MODEL,{
     prompt:REPAIR_PROMPT,
     image,
@@ -524,12 +576,14 @@ async function readReceipt(env,image){
   repaired.transcript_lines=secondRaw.split(/\n+/).filter(Boolean).length;
   repaired.transcript_preview=secondRaw.slice(0,1200);
   repaired.repair_used=true;
+  repaired.alternate_layout=false;
 
   let best=checkedQuality(repaired)>checkedQuality(primary)?repaired:primary;
   if(best===repaired)best=fillMissingFromPrimary(best,primary);
   best.repair_used=true;
   best.primary_score=primary.score;
   best.repair_score=repaired.score;
+  best.alternate_layout=false;
   return best;
 }
 
@@ -537,18 +591,18 @@ export default {
   async fetch(request,env){
     const url=new URL(request.url);
     if(url.pathname==='/api/health'){
-      return new Response(JSON.stringify({ok:true,engine:'Cloudflare Workers AI • Universal Receipt OCR + Auto Repair',model:MODEL,version:VERSION,base:'4.4.0'}),{headers:headers()});
+      return new Response(JSON.stringify({ok:true,engine:'Cloudflare Workers AI • Universal Receipt OCR + Adaptive Layout',model:MODEL,version:VERSION,base:'4.4.0'}),{headers:headers()});
     }
     if(url.pathname==='/api/receipt'){
       if(request.method!=='POST')return new Response(JSON.stringify({ok:false,error:'Method not allowed'}),{status:405,headers:headers()});
       const started=Date.now(),scanId=crypto.randomUUID().slice(0,8);
       try{
-        const body=await request.json(),image=body?.image;
+        const body=await request.json(),image=body?.image,mode=body?.mode==='alternate'?'alternate':'primary';
         if(!validImage(image))return new Response(JSON.stringify({ok:false,error:'One composite receipt image is required'}),{status:400,headers:headers()});
-        const result=await readReceipt(env,image);
+        const result=await readReceipt(env,image,mode);
         return new Response(JSON.stringify({
           ok:true,...result,
-          meta:{engine:'Cloudflare Workers AI • Universal Receipt OCR + Auto Repair',model:MODEL,version:VERSION,base:'4.4.0',scan_id:scanId,elapsed_ms:Date.now()-started,images:1,inference_calls:result.repair_used?2:1,repair_used:!!result.repair_used}
+          meta:{engine:'Cloudflare Workers AI • Universal Receipt OCR + Adaptive Layout',model:MODEL,version:VERSION,base:'4.4.0',scan_id:scanId,elapsed_ms:Date.now()-started,images:1,inference_calls:mode==='alternate'?1:(result.repair_used?2:1),repair_used:!!result.repair_used,alternate_layout:mode==='alternate'}
         }),{headers:headers()});
       }catch(e){
         console.error('receipt-reader',e);
