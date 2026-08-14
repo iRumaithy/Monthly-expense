@@ -802,46 +802,85 @@ function aiItemClean(x){if(!x||typeof x!=='object')return null;const name=normal
 function localAIItemScore(items,base){if(!items.length)return-999;const sum=items.reduce((a,x)=>a+Number(x.readTotal??x.price*x.qty),0),targets=[base?.total,base?.subtotal].filter(v=>Number.isFinite(v)&&v>0);let score=items.length*8;if(base?.itemsExpected)score-=Math.abs(items.length-base.itemsExpected)*12;if(targets.length){const d=Math.min(...targets.map(t=>Math.abs(sum-t)/Math.max(1,t)));score+=d<.02?30:d<.08?12:-Math.min(30,d*100)}return score}
 function mergeLocalAIReceipt(aiRaw,base){const ai=extractJSONObject(aiRaw?.text||'');if(!ai)return base;const aiItems=(Array.isArray(ai.items)?ai.items:[]).map(aiItemClean).filter(Boolean),baseItems=base?.itemRows||[];let itemRows=baseItems;if(localAIItemScore(aiItems,base)>localAIItemScore(baseItems,base)+3)itemRows=aiItems;else if(aiItems.length&&baseItems.length===aiItems.length){itemRows=baseItems.map((b,i)=>{const a=aiItems[i];if(Math.abs(Number(b.price||0)-Number(a.price||0))<=.12||Math.abs(Number(b.readTotal??b.price*b.qty)-Number(a.readTotal??a.price*a.qty))<=.15)return{...b,name:a.name||b.name};return b})}const store=validEnglishStore(ai.store)?String(ai.store).trim():base?.store,date=/^\d{4}-\d{2}-\d{2}$/.test(String(ai.date||''))?ai.date:base?.date;let subtotal=aiNum(ai.subtotal),tax=aiNum(ai.tax),total=aiNum(ai.total);const consistent=subtotal!=null&&tax!=null&&total!=null&&Math.abs(subtotal+tax-total)<=.15;if(!consistent||(base?.total!=null&&total!=null&&Math.abs(total-base.total)>Math.max(.20,base.total*.04))){subtotal=base?.subtotal;tax=base?.tax;total=base?.total}const category=inferCategory(`${store||''}\n${itemRows.map(x=>x.name).join('\n')}`),aiConf=Math.max(0,Math.min(100,Number(ai.confidence||0))),score=Math.round(Math.max(base?.score||0,Math.min(100,(base?.score||50)*.45+aiConf*.55)));return{...base,store,date,itemRows,items:itemRows.length,subtotal,tax,total,category,score,localAI:true,aiConfidence:aiConf}}
 
-// === v5.0.0 Universal On-Device Receipt OCR: PaddleOCR + spatial reconstruction ===
-let paddleOCRInstance=null,paddleOCRLoadPromise=null,paddleModelTarPromise=null,lastPaddleEvidence=null;
+// === v5.0.1 Universal On-Device Receipt OCR: PaddleOCR + spatial reconstruction ===
+let paddleOCRInstance=null,paddleOCRLoadPromise=null,paddleArabicOCRInstance=null,paddleArabicLoadPromise=null,paddleModulePromise=null,lastPaddleEvidence=null,lastPaddleInitError='';
 const PADDLE_OCR_MODULE='https://cdn.jsdelivr.net/npm/@paddleocr/paddleocr-js@0.4.2/+esm';
 const PADDLE_ORT_WASM='https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/';
-const PADDLE_AR_ASSET='https://local.receipt-ocr.invalid/arabic_PP-OCRv5_mobile_rec.tar';
-const PADDLE_AR_ONNX='https://huggingface.co/itextresearch/itext-arabic_PP-OCRv5_mobile_rec_infer/resolve/main/inference.onnx?download=true';
-const PADDLE_AR_YML='https://huggingface.co/itextresearch/itext-arabic_PP-OCRv5_mobile_rec_infer/resolve/main/inference.yml?download=true';
-const OCR_CACHE='monthly-expense-paddleocr-v5';
+// The Arabic model is served from the same Cloudflare Worker. The Worker proxies PaddlePaddle's official inference TAR.
+const PADDLE_AR_ASSET='/api/ocr-model-ar';
+const OCR_CACHE='monthly-expense-paddleocr-v5.0.1';
 
-function tarOctal(n,len){const s=Math.max(0,Number(n)||0).toString(8);return s.padStart(len-1,'0')+'\0'}
-function tarWriteAscii(buf,off,len,text){const b=new TextEncoder().encode(String(text));buf.set(b.subarray(0,len),off)}
-function buildUstar(files){
-  const enc=new TextEncoder(),parts=[];
-  for(const f of files){
-    const data=f.data instanceof Uint8Array?f.data:new Uint8Array(f.data),h=new Uint8Array(512);h.fill(0);
-    tarWriteAscii(h,0,100,f.name);tarWriteAscii(h,100,8,'0000644\0');tarWriteAscii(h,108,8,'0000000\0');tarWriteAscii(h,116,8,'0000000\0');
-    tarWriteAscii(h,124,12,tarOctal(data.byteLength,12));tarWriteAscii(h,136,12,tarOctal(Math.floor(Date.now()/1000),12));
-    for(let i=148;i<156;i++)h[i]=32;h[156]='0'.charCodeAt(0);tarWriteAscii(h,257,6,'ustar\0');tarWriteAscii(h,263,2,'00');
-    let sum=0;for(const v of h)sum+=v;tarWriteAscii(h,148,8,sum.toString(8).padStart(6,'0')+'\0 ');
-    parts.push(h,data);const pad=(512-(data.byteLength%512))%512;if(pad)parts.push(new Uint8Array(pad))
-  }
-  parts.push(new Uint8Array(1024));const total=parts.reduce((s,p)=>s+p.byteLength,0),out=new Uint8Array(total);let off=0;for(const p of parts){out.set(p,off);off+=p.byteLength}return out
-}
 async function cachedOcrFetch(input,init){
-  const req=input instanceof Request?input:new Request(input,init),url=req.url;
-  if(url===PADDLE_AR_ASSET){
-    if(paddleModelTarPromise)return paddleModelTarPromise;
-    paddleModelTarPromise=(async()=>{
-      const cache=await caches.open(OCR_CACHE),key=new Request(PADDLE_AR_ASSET);
-      const hit=await cache.match(key);if(hit)return hit.clone();
-      const [onnxRes,ymlRes]=await Promise.all([cachedOcrFetch(PADDLE_AR_ONNX),cachedOcrFetch(PADDLE_AR_YML)]);
-      if(!onnxRes.ok||!ymlRes.ok)throw new Error('Arabic OCR model download failed');
-      const onnx=new Uint8Array(await onnxRes.arrayBuffer()),yml=new Uint8Array(await ymlRes.arrayBuffer());
-      const tar=buildUstar([{name:'inference.onnx',data:onnx},{name:'inference.yml',data:yml}]);
-      const res=new Response(tar,{status:200,headers:{'content-type':'application/x-tar','content-length':String(tar.byteLength)}});await cache.put(key,res.clone());return res
-    })().finally(()=>{paddleModelTarPromise=null});
-    return paddleModelTarPromise
-  }
+  const req=input instanceof Request?input:new Request(input,init);
   if(req.method!=='GET')return fetch(req);
-  try{const cache=await caches.open(OCR_CACHE),hit=await cache.match(req);if(hit)return hit;const res=await fetch(req);if(res.ok)cache.put(req,res.clone()).catch(()=>{});return res}catch(e){return fetch(req)}
+  try{
+    const cache=await caches.open(OCR_CACHE),hit=await cache.match(req);
+    if(hit)return hit.clone();
+    const res=await fetch(req);
+    if(res.ok)cache.put(req,res.clone()).catch(()=>{});
+    return res
+  }catch(e){return fetch(req)}
+}
+async function getPaddleModule(){
+  if(paddleModulePromise)return paddleModulePromise;
+  paddleModulePromise=(async()=>{
+    let mod,lastErr;
+    for(const url of [PADDLE_OCR_MODULE,'https://esm.sh/@paddleocr/paddleocr-js@0.4.2?bundle']){
+      try{mod=await import(url);if(mod?.PaddleOCR)return mod}catch(e){lastErr=e}
+    }
+    throw lastErr||new Error('PaddleOCR module unavailable')
+  })().catch(e=>{paddleModulePromise=null;throw e});
+  return paddleModulePromise
+}
+async function getPaddleOCR(){
+  // Safety-first primary engine: use the model pair that PaddleOCR.js officially ships with.
+  // This avoids a custom Arabic-model download from blocking ALL OCR on Safari.
+  if(paddleOCRInstance)return paddleOCRInstance;if(paddleOCRLoadPromise)return paddleOCRLoadPromise;
+  setLocalAIStatus('loading',modelCacheMarked()?(lang==='ar'?'تهيئة محرك OCR المحلي…':'Preparing on-device OCR…'):(lang==='ar'?'تهيئة محرك PaddleOCR لأول مرة…':'Preparing PaddleOCR for the first time…'),5);
+  paddleOCRLoadPromise=(async()=>{
+    const mod=await getPaddleModule();
+    const ocr=await mod.PaddleOCR.create({
+      lang:'en',ocrVersion:'PP-OCRv5',worker:false,fetch:cachedOcrFetch,
+      textDetectionBatchSize:1,textRecognitionBatchSize:4,
+      ortOptions:{backend:'wasm',wasmPaths:PADDLE_ORT_WASM,numThreads:1,simd:true}
+    });
+    paddleOCRInstance=ocr;lastPaddleInitError='';
+    try{localStorage.setItem(MODEL_CACHE_KEY,JSON.stringify({ready:true,ts:Date.now(),model:'PaddleOCR PP-OCRv5 primary + Arabic warm fallback'}))}catch(e){}
+    setLocalAIStatus('ready',lang==='ar'?'محرك PaddleOCR الأساسي جاهز على الجهاز.':'Primary PaddleOCR engine is ready on this device.',100);
+    // Warm the Arabic+English recognition model in the background. It can never break the primary reader.
+    warmPaddleArabic().catch(e=>console.warn('Arabic OCR warm-up skipped',e));
+    return ocr
+  })().catch(e=>{paddleOCRLoadPromise=null;lastPaddleInitError=String(e?.message||e);throw e});
+  return paddleOCRLoadPromise
+}
+async function warmPaddleArabic(){
+  if(paddleArabicOCRInstance)return paddleArabicOCRInstance;if(paddleArabicLoadPromise)return paddleArabicLoadPromise;
+  paddleArabicLoadPromise=(async()=>{
+    const mod=await getPaddleModule();
+    const ocr=await mod.PaddleOCR.create({
+      textDetectionModelName:'PP-OCRv5_mobile_det',
+      textRecognitionModelName:'arabic_PP-OCRv5_mobile_rec',
+      textRecognitionModelAsset:{url:PADDLE_AR_ASSET},
+      worker:false,fetch:cachedOcrFetch,textDetectionBatchSize:1,textRecognitionBatchSize:3,
+      ortOptions:{backend:'wasm',wasmPaths:PADDLE_ORT_WASM,numThreads:1,simd:true}
+    });
+    paddleArabicOCRInstance=ocr;return ocr
+  })().catch(e=>{paddleArabicLoadPromise=null;console.warn('Arabic PaddleOCR init',e);throw e});
+  return paddleArabicLoadPromise
+}
+function mergePaddleParses(a,b){
+  if(!b)return a;if(!a)return b;
+  const aq=Number(a.score||0)+(a.accepted?40:0),bq=Number(b.score||0)+(b.accepted?40:0);
+  const primary=bq>aq?{...b}:{...a},other=bq>aq?a:b;
+  if(!primary.store&&other.store)primary.store=other.store;if(!primary.date&&other.date)primary.date=other.date;
+  for(const k of ['subtotal','tax','total'])if(primary[k]==null&&other[k]!=null)primary[k]=other[k];
+  if((!primary.itemRows?.length||other.itemRows?.length>primary.itemRows.length)&&other.itemRows?.length){primary.itemRows=other.itemRows;primary.items=other.itemRows.length}
+  // Merge Arabic/English descriptions when the numeric row identity matches.
+  if(primary.itemRows?.length&&other.itemRows?.length){
+    primary.itemRows=primary.itemRows.map(p=>{const pt=Number(p.readTotal??p.price*p.qty),m=other.itemRows.find(o=>Number(o.qty)===Number(p.qty)&&Math.abs(Number(o.readTotal??o.price*o.qty)-pt)<=.05);if(!m)return p;const pn=String(p.name||''),mn=String(m.name||'');const hasAr=/[\u0600-\u06FF]/.test(pn),mAr=/[\u0600-\u06FF]/.test(mn),hasEn=/[A-Za-z]/.test(pn),mEn=/[A-Za-z]/.test(mn);if((!hasAr&&mAr)||(!hasEn&&mEn)){const parts=[pn,mn].filter(Boolean);return{...p,name:[...new Set(parts)].join(' | ')}}return p})
+  }
+  const sum=(primary.itemRows||[]).reduce((s,x)=>s+Number((x.readTotal ?? (x.price*x.qty)) || 0),0),finance=primary.subtotal!=null&&primary.tax!=null&&primary.total!=null&&Math.abs((Number(primary.subtotal)+Number(primary.tax))-Number(primary.total))<=.15,itemMatch=primary.itemRows?.length&&[primary.subtotal,primary.total].filter(Number.isFinite).some(t=>Math.abs(sum-t)<=Math.max(.15,Math.abs(t)*.015));
+  primary.accepted=!!(primary.total!=null&&primary.itemRows?.length&&(finance||itemMatch));primary.totalReliable=!!(finance||itemMatch);primary.engine='PaddleOCR PP-OCRv5 Primary + Arabic/English Merge';primary.category=inferCategory(`${primary.store||''}\n${(primary.itemRows||[]).map(x=>x.name).join('\n')}`);return primary
 }
 function paddleBox(item){
   const p=item?.poly||item?.box||item?.bbox||[];let pts=[];
@@ -938,36 +977,28 @@ function mergePaddleWithTextStructurer(local,remote){
   const sum=(out.itemRows||[]).reduce((s,x)=>s+Number((x.readTotal ?? (x.price*x.qty)) || 0),0),finance=out.subtotal!=null&&out.tax!=null&&out.total!=null&&Math.abs(out.subtotal+out.tax-out.total)<=.15,itemMatch=out.total!=null&&out.itemRows?.length&&([out.subtotal,out.total].filter(Number.isFinite).some(t=>Math.abs(sum-t)<=Math.max(.15,t*.015)));
   out.accepted=!!(out.total!=null&&out.itemRows?.length&&(finance||itemMatch));out.totalReliable=finance||itemMatch;out.score=Math.max(out.score||0,r.score||0,out.accepted?94:0);out.engine='PaddleOCR Spatial OCR + Text Structurer';out.category=inferCategory(`${out.store||''}\n${(out.itemRows||[]).map(x=>x.name).join('\n')}`);return out
 }
-async function getPaddleOCR(){
-  if(paddleOCRInstance)return paddleOCRInstance;if(paddleOCRLoadPromise)return paddleOCRLoadPromise;
-  setLocalAIStatus('loading',modelCacheMarked()?(lang==='ar'?'تهيئة محرك OCR المحفوظ على هذا الجهاز…':'Preparing cached on-device OCR…'):(lang==='ar'?'تنزيل محرك PaddleOCR العربي/الإنجليزي لأول مرة…':'Downloading Arabic/English PaddleOCR for the first time…'),5);
-  paddleOCRLoadPromise=(async()=>{
-    let mod,lastErr;for(const url of [PADDLE_OCR_MODULE,'https://esm.sh/@paddleocr/paddleocr-js@0.4.2?bundle']){try{mod=await import(url);if(mod?.PaddleOCR)break}catch(e){lastErr=e}}
-    if(!mod?.PaddleOCR)throw lastErr||new Error('PaddleOCR module unavailable');
-    const ocr=await mod.PaddleOCR.create({
-      textDetectionModelName:'PP-OCRv5_mobile_det',
-      textRecognitionModelName:'arabic_PP-OCRv5_mobile_rec',
-      textRecognitionModelAsset:{url:PADDLE_AR_ASSET},
-      worker:false,fetch:cachedOcrFetch,textDetectionBatchSize:1,textRecognitionBatchSize:4,
-      ortOptions:{backend:'wasm',wasmPaths:PADDLE_ORT_WASM,numThreads:1,simd:true}
-    });
-    paddleOCRInstance=ocr;try{localStorage.setItem(MODEL_CACHE_KEY,JSON.stringify({ready:true,ts:Date.now(),model:'PaddleOCR PP-OCRv5 Arabic-English'}))}catch(e){}
-    setLocalAIStatus('ready',lang==='ar'?'PaddleOCR العربي/الإنجليزي جاهز ويعمل داخل الهاتف.':'Arabic/English PaddleOCR is ready on this device.',100);return ocr
-  })().catch(e=>{paddleOCRLoadPromise=null;throw e});return paddleOCRLoadPromise
-}
-async function postPaddleTextEvidence(payload,timeoutMs=12000){
-  const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),timeoutMs);try{const res=await fetch('/api/receipt-text',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload),signal:ctl.signal,cache:'no-store'});const body=await res.json().catch(()=>({}));if(!res.ok||body?.ok===false)throw new Error(body?.error||`HTTP ${res.status}`);return cloudReceiptToParsed(body)}finally{clearTimeout(timer)}
-}
 async function runPaddleUniversalReader(options={}){
   const ocr=await getPaddleOCR();$('#ocrMeter').style.display='block';$('#ocrMeterBar').style.width='12%';$('#ocrStatus').textContent=lang==='ar'?'جارٍ قراءة النص ومواقعه داخل الفاتورة…':'Reading receipt text and geometry…';
-  const [result]=await ocr.predict(currentCanvas,{textDetLimitSideLen:1800,textDetLimitType:'max',textDetMaxSideLimit:3000,textDetThresh:.22,textDetBoxThresh:.40,textDetUnclipRatio:1.7,textRecScoreThresh:.18});
-  if(!result)throw new Error('PaddleOCR returned no result');$('#ocrMeterBar').style.width='72%';let parsed=spatialReceiptParse(result);lastPaddleEvidence=paddleEvidencePayload(parsed,result);
+  const [result]=await ocr.predict(currentCanvas,{textDetLimitSideLen:1900,textDetLimitType:'max',textDetMaxSideLimit:3200,textDetThresh:.20,textDetBoxThresh:.36,textDetUnclipRatio:1.75,textRecScoreThresh:.14});
+  if(!result)throw new Error('PaddleOCR returned no result');$('#ocrMeterBar').style.width='58%';let parsed=spatialReceiptParse(result);lastPaddleEvidence=paddleEvidencePayload(parsed,result);
+
+  // If the official Arabic model has already warmed up, use it as a second recognizer and merge rows by geometry/numbers.
+  // Never wait for it when the primary result is already trustworthy.
+  if(paddleArabicOCRInstance && (!parsed.accepted || !parsed.store || !parsed.date || (parsed._paddleLines||[]).some(x=>/[\u0600-\u06FF]/.test(x.text)))){
+    try{
+      $('#ocrStatus').textContent=lang==='ar'?'دمج القراءة العربية والإنجليزية…':'Merging Arabic and English OCR…';
+      const [arResult]=await paddleArabicOCRInstance.predict(currentCanvas,{textDetLimitSideLen:1900,textDetLimitType:'max',textDetMaxSideLimit:3200,textDetThresh:.20,textDetBoxThresh:.36,textDetUnclipRatio:1.75,textRecScoreThresh:.14});
+      if(arResult){const arParsed=spatialReceiptParse(arResult);parsed=mergePaddleParses(parsed,arParsed);lastPaddleEvidence=paddleEvidencePayload(parsed,(parsed===arParsed?arResult:result))}
+    }catch(e){console.warn('Arabic OCR second pass',e)}
+  }
+
+  $('#ocrMeterBar').style.width='72%';
   // Use the AI only as a lightweight text structurer when deterministic reconstruction is incomplete.
   if(!parsed.accepted||!parsed.store||!parsed.date){
     try{$('#ocrStatus').textContent=lang==='ar'?'الـ OCR اكتمل؛ تنظيم الحقول الصعبة من النص فقط…':'OCR complete; structuring difficult fields from text only…';const remote=await postPaddleTextEvidence(lastPaddleEvidence,12000);parsed=mergePaddleWithTextStructurer(parsed,remote)}catch(e){console.warn('Text structurer fallback',e)}
   }
   parsed=sanitizeParsedReceipt(applyLearnedNames(parsed));
-  if(options.apply!==false&&parsed.accepted){applyParsedReceipt(parsed);showScanResult(parsed);saveDraftNow(true);$('#ocrMeterBar').style.width='100%';$('#ocrStatus').textContent=lang==='ar'?'تمت القراءة محليًا والتحقق حسابيًا.':'On-device OCR complete and arithmetically verified.';setLocalAIStatus('ready',lang==='ar'?'PaddleOCR نجح؛ لم نحتج لإرسال صورة الفاتورة إلى السحابة.':'PaddleOCR succeeded; the receipt image did not need cloud OCR.',100)}
+  if(options.apply!==false&&parsed.accepted){applyParsedReceipt(parsed);showScanResult(parsed);saveDraftNow(true);$('#ocrMeterBar').style.width='100%';$('#ocrStatus').textContent=lang==='ar'?'تمت القراءة محليًا والتحقق حسابيًا.':'On-device OCR complete and arithmetically verified.';setLocalAIStatus('ready',lang==='ar'?'PaddleOCR نجح؛ بقيت صورة الفاتورة على جهازك.':'PaddleOCR succeeded; the receipt image stayed on your device.',100)}
   return parsed
 }
 // Compatibility hook used by the old hybrid rescue path.
@@ -1516,7 +1547,7 @@ async function runSmartReceiptReader(){
     $('#ocrMeterBar').style.width='78%';$('#ocrStatus').textContent=lang==='ar'?'تعذر اعتماد القراءة المحلية؛ تشغيل المسار السحابي المستقر كاحتياط…':'Local OCR could not be verified; using the stable cloud fallback…';
     const parsed=await runCloudReceiptReader();if(parsed)return parsed;
   }catch(e){
-    console.warn('All receipt readers failed',e);clearRecognitionFieldsForNewImage();const detail=String(e?.message||localErr?.message||'').slice(0,220),quota=/429|account limited|10,?000 neurons|free allocation/i.test(detail),license=/agree|license|acceptable use|meta/i.test(detail);
+    console.warn('All receipt readers failed',e);clearRecognitionFieldsForNewImage();const detail=String(e?.message||localErr?.message||lastPaddleInitError||'').slice(0,220),quota=/429|account limited|10,?000 neurons|free allocation/i.test(detail),license=/agree|license|acceptable use|meta/i.test(detail);
     if(license){$('#ocrStatus').innerHTML=lang==='ar'?`يحتاج المسار السحابي الاحتياطي إلى تفعيل مرة واحدة. <a href="/api/license" style="color:#17324d;font-weight:900;text-decoration:underline">اضغط هنا للتفعيل</a>`:`Cloud fallback needs one-time activation. <a href="/api/license">Activate here</a>`;setLocalAIStatus('error',lang==='ar'?'يلزم تفعيل رخصة المسار الاحتياطي':'Cloud fallback activation required')}
     else{$('#ocrStatus').textContent=quota?(lang==='ar'?'الحصة السحابية الاحتياطية مستهلكة اليوم. جرّب القراءة المحلية مجددًا بعد تحسين الصورة.':'Cloud fallback quota is used today. Retry local OCR after enhancing the image.'):(lang==='ar'?`تعذرت القراءة: ${detail||'خطأ غير معروف'}`:`Receipt reading failed: ${detail||'Unknown error'}`);setLocalAIStatus('error',lang==='ar'?'تعذر المحرك المحلي والمسار السحابي الاحتياطي.':'Both local OCR and cloud fallback failed.')}
   }finally{smartReaderBusy=false;['cameraBtn','galleryBtn','scanAgainBtn','enhanceBtn'].forEach(id=>{const el=$('#'+id);if(el)el.disabled=false});setTimeout(()=>{$('#ocrMeter').style.display='none'},1200)}
@@ -1789,7 +1820,7 @@ $('#restoreInput').onchange=async e=>{
 clearForm(false);applyLang();ensurePersistentStorage();restoreDraft();setLocalAIStatus('loading',lang==='ar'?'جارٍ التحقق من اتصال Cloudflare AI…':'Checking Cloudflare AI connection…',5);setTimeout(checkCloudReaderHealth,250);
 </script>
 
-<footer class="app-version-footer" id="appVersionFooter" data-version="5.0.0">الإصدار 5.0.0</footer>
+<footer class="app-version-footer" id="appVersionFooter" data-version="5.0.1">الإصدار 5.0.1</footer>
 <script>if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js').catch(()=>{}));}</script>
 </body>
 </html>
