@@ -172,7 +172,7 @@ button,input,textarea,select{font:inherit}button{cursor:pointer}.app{max-width:1
             <div class="ai-local-head"><div class="ai-local-title"><span>🧠</span><span data-i18n="localAIReader">القارئ الذكي المحلي</span></div><span class="ai-local-badge" id="aiLocalBadge" data-i18n="aiChecking">جارٍ التحقق…</span></div>
             <div class="ai-local-detail" id="aiLocalDetail" data-i18n="aiLocalNote">يعمل داخل الهاتف بدون API أو اشتراك. في أول تشغيل فقط يتم تنزيل النموذج وحفظه في ذاكرة المتصفح.</div>
             <div class="ai-local-meter" id="aiLocalMeter"><i id="aiLocalMeterBar"></i></div>
-            <div class="ai-local-tech"><span id="aiDeviceBadge">Cloudflare</span><span>PaddleOCR + Tesseract • Strict Row Verification • PDF.js • Cloud Last</span><span data-i18n="aiPrivate">معالجة سحابية آمنة</span></div>
+            <div class="ai-local-tech"><span id="aiDeviceBadge">Cloudflare</span><span>PaddleOCR + Tesseract • Row Ambiguity Guard • PDF.js • Cloud Last</span><span data-i18n="aiPrivate">معالجة سحابية آمنة</span></div>
           </div>
         </div>
         <div class="footer-note" data-i18n="ocrNote">لأفضل نتيجة: اجعل الفاتورة كاملة داخل الصورة وبإضاءة متساوية. تتم معالجة التباين والقص تلقائيًا، ويمكنك مراجعة كل البيانات قبل الحفظ.</div>
@@ -231,7 +231,12 @@ let lang=localStorage.getItem('monthlyExpensesLang')||'ar';
 const DASHBOARD_MONTH_KEY='monthlyExpensesDashboardMonthV1';
 const MERCHANT_ALIASES_KEY='monthlyExpensesMerchantAliasesV1';
 const DEFAULT_MERCHANT_ALIASES={
-  'ALMADAMAUTOMATICLAUNDRY':'AL MAQAM AUTOMATIC LAUNDRY'
+  'ALMADAMAUTOMATICLAUNDRY':'AL MAQAM AUTOMATIC LAUNDRY',
+  'ALWADGAEDLAUNDRY':'ALWAQAED LAUNDRY',
+  'ALWADQAEDLAUNDRY':'ALWAQAED LAUNDRY',
+  'ALWADAEAEDLAUNDRY':'ALWAQAED LAUNDRY',
+  'ALWAOAEDLAUNDRY':'ALWAQAED LAUNDRY',
+  'ALWAQAEDLAUNDRY':'ALWAQAED LAUNDRY'
 };
 let merchantAliases={...DEFAULT_MERCHANT_ALIASES};
 try{
@@ -252,14 +257,14 @@ const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 document.addEventListener('submit',e=>e.preventDefault(),true);const secureButtonTypes=()=>{$$('button').forEach(b=>{if(!b.hasAttribute('type'))b.type='button'})};secureButtonTypes();window.addEventListener('pageshow',secureButtonTypes);
 const CATEGORIES=['groceries','dining','shopping','transport','health','bills','entertainment','home','other'];
 const I18N={
- ar:{appTitle:'مصاريف الشهر',appSub:'إدارة ذكية للفواتير والمشتريات الشهرية',backup:'نسخة احتياطية',restore:'استعادة',dashboard:'الرئيسية',dashboardMonth:'الشهر المعروض',currentMonth:'الشهر الحالي',previousMonth:'الشهر السابق',nextMonth:'الشهر التالي',newInvoice:'تسجيل فاتورة جديدة',monthlyRecords:'السجلات الشهرية',monthSpend:'إجمالي الشهر',invoiceCount:'عدد الفواتير',savedLocally:'محفوظة على الجهاز',avgInvoice:'متوسط الفاتورة',monthAverage:'متوسط الشهر الحالي',budgetRemaining:'المتبقي من الميزانية',monthlyBudget:'الميزانية الشهرية',budgetAmount:'قيمة الميزانية',saveBudget:'حفظ الميزانية',budgetSaved:'تم حفظ ميزانية الشهر',spentOfBudget:'تم إنفاق',noBudget:'لم تحدد ميزانية بعد',categoryDistribution:'التوزيع حسب التصنيف',storesDistribution:'التوزيع حسب المحلات',topFive:'أعلى 5',dailySpend:'الإنفاق اليومي',recentInvoices:'أحدث الفواتير',viewAll:'عرض الكل',receiptScan:'تصوير / رفع الفاتورة',ocrAuto:'قارئان محليان + تدقيق مستقل لرأس الفاتورة والجدول',takePhoto:'تصوير بالكاميرا',choosePhoto:'اختيار صورة من الألبوم',choosePdf:'اختيار ملف PDF',rotateLeft:'↶ تدوير',rotateRight:'↷ تدوير',enhanceAgain:'✨ تحسين',scanAgain:'إعادة القراءة الذكية',enhanced:'محسّنة للقراءة',ocrHint:'بعد OCR لا تُعتمد النتيجة لمجرد أن الإجماليات صحيحة. يجب أن تتطابق أسطر الأصناف نفسها حسابيًا مع المبلغ قبل الضريبة أو الإجمالي، وإلا يبدأ تدقيق مركز للرأس والجدول فقط.',ocrNote:'الإصدار 5.3 يحتفظ بمحركات 5.2، لكنه يصلح طبقة تفسير الفاتورة: يستبعد أرقام العملاء والتحيات من اسم المحل، يدقق التاريخ من رأس الفاتورة، ويمنع قبول جدول ناقص حتى لو كانت حقول الإجمالي والضريبة صحيحة.',invoiceData:'بيانات الفاتورة',storeName:'اسم المحل',invoiceDate:'تاريخ الفاتورة',category:'التصنيف',subtotal:'المبلغ قبل الضريبة',tax:'الضريبة',finalTotal:'الإجمالي النهائي',purchases:'المشتريات',addItem:'+ إضافة غرض',itemsSubtotal:'مجموع الأغراض',calculatedTax:'الضريبة',calculatedTotal:'الإجمالي',clear:'مسح',approve:'اعتماد وحفظ الفاتورة',printReport:'طباعة التقرير',item:'الغرض',price:'السعر',qty:'العدد',noData:'لا توجد فواتير محفوظة لهذا الشهر.',delete:'حذف',edit:'تعديل',saved:'تم حفظ الفاتورة بنجاح',updated:'تم تحديث الفاتورة',required:'يرجى إدخال اسم المحل وتاريخ الفاتورة والإجمالي النهائي.',scanning:'جارٍ قراءة الفاتورة…',preparing:'جارٍ تحسين الصورة وقص الحواف…',scanDone:'تم تحليل الفاتورة. راجع البيانات ثم اعتمدها.',scanFail:'تعذر استخراج البيانات بدقة. يمكنك تعديلها أو إدخالها يدويًا.',ocrNeedsNet:'يحتاج الاتصال في أول مرة لتنزيل نموذج OCR وحفظه على الجهاز. بعد ذلك يعمل القارئ الأساسي محليًا، ويُستخدم Cloudflare فقط للحالات الصعبة أو كاحتياط.',localAIReader:'قارئ PaddleOCR المحلي',aiChecking:'جارٍ التحقق من محرك OCR…',aiLoading:'جارٍ تهيئة PaddleOCR…',aiReady:'جاهز على الجهاز',aiFallback:'مسار سحابي احتياطي',aiError:'تعذر تشغيل محرك OCR',aiLocalNote:'PaddleOCR هو القارئ الأساسي: يقرأ النص وإحداثياته محليًا، ثم يتحقق من الجداول والأرقام حسابيًا. Cloudflare احتياط فقط.',aiPrivate:'OCR محلي + Cloudflare احتياطي',aiAnalyzing:'جارٍ تحليل النص ومواقع الأسطر على الجهاز…',aiMerged:'اكتملت القراءة السريعة والتحقق من الفاتورة',currency:'د.إ',invoice:'فاتورة',itemsCount:'أغراض',confirmDelete:'هل تريد حذف هذه الفاتورة؟',backupDone:'تم تنزيل النسخة الاحتياطية',restoreDone:'تمت استعادة النسخة الاحتياطية',restoreFail:'ملف النسخة الاحتياطية غير صالح',quality:'جودة الاستخراج',vatDetected:'تم اكتشاف ضريبة القيمة المضافة 5%',fieldsDetected:'حقول مكتشفة',jan:'يناير',feb:'فبراير',mar:'مارس',apr:'أبريل',may:'مايو',jun:'يونيو',jul:'يوليو',aug:'أغسطس',sep:'سبتمبر',oct:'أكتوبر',nov:'نوفمبر',dec:'ديسمبر',groceries:'بقالة ومواد غذائية',dining:'مطاعم ومقاهي',shopping:'تسوق',transport:'مواصلات ووقود',health:'صحة وصيدلية',bills:'فواتير وخدمات',entertainment:'ترفيه',home:'منزل',other:'أخرى',
+ ar:{appTitle:'مصاريف الشهر',appSub:'إدارة ذكية للفواتير والمشتريات الشهرية',backup:'نسخة احتياطية',restore:'استعادة',dashboard:'الرئيسية',dashboardMonth:'الشهر المعروض',currentMonth:'الشهر الحالي',previousMonth:'الشهر السابق',nextMonth:'الشهر التالي',newInvoice:'تسجيل فاتورة جديدة',monthlyRecords:'السجلات الشهرية',monthSpend:'إجمالي الشهر',invoiceCount:'عدد الفواتير',savedLocally:'محفوظة على الجهاز',avgInvoice:'متوسط الفاتورة',monthAverage:'متوسط الشهر الحالي',budgetRemaining:'المتبقي من الميزانية',monthlyBudget:'الميزانية الشهرية',budgetAmount:'قيمة الميزانية',saveBudget:'حفظ الميزانية',budgetSaved:'تم حفظ ميزانية الشهر',spentOfBudget:'تم إنفاق',noBudget:'لم تحدد ميزانية بعد',categoryDistribution:'التوزيع حسب التصنيف',storesDistribution:'التوزيع حسب المحلات',topFive:'أعلى 5',dailySpend:'الإنفاق اليومي',recentInvoices:'أحدث الفواتير',viewAll:'عرض الكل',receiptScan:'تصوير / رفع الفاتورة',ocrAuto:'قارئان محليان + تدقيق مستقل لرأس الفاتورة والجدول',takePhoto:'تصوير بالكاميرا',choosePhoto:'اختيار صورة من الألبوم',choosePdf:'اختيار ملف PDF',rotateLeft:'↶ تدوير',rotateRight:'↷ تدوير',enhanceAgain:'✨ تحسين',scanAgain:'إعادة القراءة الذكية',enhanced:'محسّنة للقراءة',ocrHint:'بعد OCR لا تُعتمد النتيجة لمجرد أن الإجماليات صحيحة. يجب أن تتطابق أسطر الأصناف نفسها حسابيًا مع المبلغ قبل الضريبة أو الإجمالي، وإلا يبدأ تدقيق مركز للرأس والجدول فقط.',ocrNote:'الإصدار 5.4 يضيف تدقيق الغموض داخل صفوف الأصناف: يرفض الكميات غير المنطقية وانقسام الأرقام مثل 3.15 ← 315 و0.01، ويشغّل تحققًا إضافيًا تلقائيًا لفواتير الصيدليات والجداول السوداء قبل اعتماد الأصناف، مع تحسين تصحيح اسم مغسلة الوقايد.',invoiceData:'بيانات الفاتورة',storeName:'اسم المحل',invoiceDate:'تاريخ الفاتورة',category:'التصنيف',subtotal:'المبلغ قبل الضريبة',tax:'الضريبة',finalTotal:'الإجمالي النهائي',purchases:'المشتريات',addItem:'+ إضافة غرض',itemsSubtotal:'مجموع الأغراض',calculatedTax:'الضريبة',calculatedTotal:'الإجمالي',clear:'مسح',approve:'اعتماد وحفظ الفاتورة',printReport:'طباعة التقرير',item:'الغرض',price:'السعر',qty:'العدد',noData:'لا توجد فواتير محفوظة لهذا الشهر.',delete:'حذف',edit:'تعديل',saved:'تم حفظ الفاتورة بنجاح',updated:'تم تحديث الفاتورة',required:'يرجى إدخال اسم المحل وتاريخ الفاتورة والإجمالي النهائي.',scanning:'جارٍ قراءة الفاتورة…',preparing:'جارٍ تحسين الصورة وقص الحواف…',scanDone:'تم تحليل الفاتورة. راجع البيانات ثم اعتمدها.',scanFail:'تعذر استخراج البيانات بدقة. يمكنك تعديلها أو إدخالها يدويًا.',ocrNeedsNet:'يحتاج الاتصال في أول مرة لتنزيل نموذج OCR وحفظه على الجهاز. بعد ذلك يعمل القارئ الأساسي محليًا، ويُستخدم Cloudflare فقط للحالات الصعبة أو كاحتياط.',localAIReader:'قارئ PaddleOCR المحلي',aiChecking:'جارٍ التحقق من محرك OCR…',aiLoading:'جارٍ تهيئة PaddleOCR…',aiReady:'جاهز على الجهاز',aiFallback:'مسار سحابي احتياطي',aiError:'تعذر تشغيل محرك OCR',aiLocalNote:'PaddleOCR هو القارئ الأساسي: يقرأ النص وإحداثياته محليًا، ثم يتحقق من الجداول والأرقام حسابيًا. Cloudflare احتياط فقط.',aiPrivate:'OCR محلي + Cloudflare احتياطي',aiAnalyzing:'جارٍ تحليل النص ومواقع الأسطر على الجهاز…',aiMerged:'اكتملت القراءة السريعة والتحقق من الفاتورة',currency:'د.إ',invoice:'فاتورة',itemsCount:'أغراض',confirmDelete:'هل تريد حذف هذه الفاتورة؟',backupDone:'تم تنزيل النسخة الاحتياطية',restoreDone:'تمت استعادة النسخة الاحتياطية',restoreFail:'ملف النسخة الاحتياطية غير صالح',quality:'جودة الاستخراج',vatDetected:'تم اكتشاف ضريبة القيمة المضافة 5%',fieldsDetected:'حقول مكتشفة',jan:'يناير',feb:'فبراير',mar:'مارس',apr:'أبريل',may:'مايو',jun:'يونيو',jul:'يوليو',aug:'أغسطس',sep:'سبتمبر',oct:'أكتوبر',nov:'نوفمبر',dec:'ديسمبر',groceries:'بقالة ومواد غذائية',dining:'مطاعم ومقاهي',shopping:'تسوق',transport:'مواصلات ووقود',health:'صحة وصيدلية',bills:'فواتير وخدمات',entertainment:'ترفيه',home:'منزل',other:'أخرى',
 receiptEvidence:'صورة الفاتورة كدليل',evidenceAttached:'صورة دليل مرفقة',noEvidence:'لا توجد صورة دليل',
 addEvidence:'إضافة صورة دليل',viewEvidence:'عرض صورة الدليل',replaceEvidence:'استبدال الصورة',deleteEvidence:'حذف صورة الدليل',
 evidenceSaved:'تم حفظ صورة الفاتورة كدليل',evidenceDeleted:'تم حذف صورة الدليل',confirmDeleteEvidence:'هل تريد حذف صورة الدليل المرفقة؟',
 manualEvidencePrompt:'تم اعتماد الفاتورة بدون صورة. هل تريد إضافة صورة الفاتورة كدليل الآن؟',
 takeEvidencePhoto:'تصوير صورة الدليل',chooseEvidencePhoto:'اختيار صورة الدليل من الألبوم',later:'لاحقًا',
 evidenceStorageFail:'تعذر حفظ صورة الدليل على الجهاز',evidenceNotFound:'صورة الدليل غير موجودة على هذا الجهاز'},
- en:{appTitle:'Monthly Expenses',appSub:'Smart monthly receipt & spending manager',backup:'Backup',restore:'Restore',dashboard:'Dashboard',dashboardMonth:'Displayed Month',currentMonth:'Current Month',previousMonth:'Previous Month',nextMonth:'Next Month',newInvoice:'New Receipt',monthlyRecords:'Monthly Records',monthSpend:'Month Total',invoiceCount:'Receipts',savedLocally:'Saved on this device',avgInvoice:'Average Receipt',monthAverage:'Current month average',budgetRemaining:'Budget Remaining',monthlyBudget:'Monthly Budget',budgetAmount:'Budget Amount',saveBudget:'Save Budget',budgetSaved:'Monthly budget saved',spentOfBudget:'Spent',noBudget:'No budget set yet',categoryDistribution:'Spend by Category',storesDistribution:'Spend by Store',topFive:'Top 5',dailySpend:'Daily Spending',recentInvoices:'Recent Receipts',viewAll:'View All',receiptScan:'Scan / Upload Receipt',ocrAuto:'Dual Local OCR + Independent Header/Table Verification',takePhoto:'Take Photo',choosePhoto:'Choose from Photos',choosePdf:'Choose PDF File',rotateLeft:'↶ Rotate',rotateRight:'↷ Rotate',enhanceAgain:'✨ Enhance',scanAgain:'Smart Re-scan',enhanced:'Enhanced for OCR',ocrHint:'A receipt is no longer marked complete just because totals are valid. Item rows must reconcile to subtotal or total; otherwise a focused English header/table verification pass runs locally.',ocrNote:'v5.3 keeps the v5.2 OCR engines and fixes interpretation: customer IDs/greetings are rejected as merchants, the header date is independently checked, and incomplete item tables cannot be declared successful.',invoiceData:'Receipt Details',storeName:'Store Name',invoiceDate:'Receipt Date',category:'Category',subtotal:'Subtotal Before Tax',tax:'Tax',finalTotal:'Final Total',purchases:'Items',addItem:'+ Add Item',itemsSubtotal:'Items Subtotal',calculatedTax:'Tax',calculatedTotal:'Total',clear:'Clear',approve:'Approve & Save Receipt',printReport:'Print Report',item:'Item',price:'Price',qty:'Qty',noData:'No saved receipts for this month.',delete:'Delete',edit:'Edit',saved:'Receipt saved successfully',updated:'Receipt updated',required:'Please enter store name, receipt date and final total.',scanning:'Reading receipt…',preparing:'Enhancing image and cropping edges…',scanDone:'Receipt analyzed. Review the fields before saving.',scanFail:'Could not extract the data accurately. You can edit or enter it manually.',ocrNeedsNet:'Cloud AI requires an internet connection. If it is unavailable, fields stay blank instead of running a slow fallback.',localAIReader:'Cloud Smart Receipt Reader',aiChecking:'Checking Cloudflare…',aiLoading:'Connecting to Cloudflare AI…',aiReady:'Connected & Ready',aiFallback:'Local fallback reader',aiError:'Cloud reader unavailable',aiLocalNote:'One Llama request with an enlarged item table, followed by local parsing in the secure Worker.',aiPrivate:'Secure Worker processing',aiAnalyzing:'Reading enlarged receipt regions with Cloudflare AI…',aiMerged:'Cloud AI receipt analysis complete',currency:'AED',invoice:'Receipt',itemsCount:'Items',confirmDelete:'Delete this receipt?',backupDone:'Backup downloaded',restoreDone:'Backup restored',restoreFail:'Invalid backup file',quality:'Extraction quality',vatDetected:'5% VAT detected',fieldsDetected:'fields detected',jan:'January',feb:'February',mar:'March',apr:'April',may:'May',jun:'June',jul:'July',aug:'August',sep:'September',oct:'October',nov:'November',dec:'December',groceries:'Groceries',dining:'Dining & Coffee',shopping:'Shopping',transport:'Transport & Fuel',health:'Health & Pharmacy',bills:'Bills & Services',entertainment:'Entertainment',home:'Home',other:'Other',
+ en:{appTitle:'Monthly Expenses',appSub:'Smart monthly receipt & spending manager',backup:'Backup',restore:'Restore',dashboard:'Dashboard',dashboardMonth:'Displayed Month',currentMonth:'Current Month',previousMonth:'Previous Month',nextMonth:'Next Month',newInvoice:'New Receipt',monthlyRecords:'Monthly Records',monthSpend:'Month Total',invoiceCount:'Receipts',savedLocally:'Saved on this device',avgInvoice:'Average Receipt',monthAverage:'Current month average',budgetRemaining:'Budget Remaining',monthlyBudget:'Monthly Budget',budgetAmount:'Budget Amount',saveBudget:'Save Budget',budgetSaved:'Monthly budget saved',spentOfBudget:'Spent',noBudget:'No budget set yet',categoryDistribution:'Spend by Category',storesDistribution:'Spend by Store',topFive:'Top 5',dailySpend:'Daily Spending',recentInvoices:'Recent Receipts',viewAll:'View All',receiptScan:'Scan / Upload Receipt',ocrAuto:'Dual Local OCR + Independent Header/Table Verification',takePhoto:'Take Photo',choosePhoto:'Choose from Photos',choosePdf:'Choose PDF File',rotateLeft:'↶ Rotate',rotateRight:'↷ Rotate',enhanceAgain:'✨ Enhance',scanAgain:'Smart Re-scan',enhanced:'Enhanced for OCR',ocrHint:'A receipt is no longer marked complete just because totals are valid. Item rows must reconcile to subtotal or total; otherwise a focused English header/table verification pass runs locally.',ocrNote:'v5.4 adds row-ambiguity verification: suspicious quantity/price splits are rejected, pharmacy single-row quantities and dense/dark tables get an independent verification pass, and the ALWAQAED laundry merchant OCR is corrected more reliably.',invoiceData:'Receipt Details',storeName:'Store Name',invoiceDate:'Receipt Date',category:'Category',subtotal:'Subtotal Before Tax',tax:'Tax',finalTotal:'Final Total',purchases:'Items',addItem:'+ Add Item',itemsSubtotal:'Items Subtotal',calculatedTax:'Tax',calculatedTotal:'Total',clear:'Clear',approve:'Approve & Save Receipt',printReport:'Print Report',item:'Item',price:'Price',qty:'Qty',noData:'No saved receipts for this month.',delete:'Delete',edit:'Edit',saved:'Receipt saved successfully',updated:'Receipt updated',required:'Please enter store name, receipt date and final total.',scanning:'Reading receipt…',preparing:'Enhancing image and cropping edges…',scanDone:'Receipt analyzed. Review the fields before saving.',scanFail:'Could not extract the data accurately. You can edit or enter it manually.',ocrNeedsNet:'Cloud AI requires an internet connection. If it is unavailable, fields stay blank instead of running a slow fallback.',localAIReader:'Cloud Smart Receipt Reader',aiChecking:'Checking Cloudflare…',aiLoading:'Connecting to Cloudflare AI…',aiReady:'Connected & Ready',aiFallback:'Local fallback reader',aiError:'Cloud reader unavailable',aiLocalNote:'One Llama request with an enlarged item table, followed by local parsing in the secure Worker.',aiPrivate:'Secure Worker processing',aiAnalyzing:'Reading enlarged receipt regions with Cloudflare AI…',aiMerged:'Cloud AI receipt analysis complete',currency:'AED',invoice:'Receipt',itemsCount:'Items',confirmDelete:'Delete this receipt?',backupDone:'Backup downloaded',restoreDone:'Backup restored',restoreFail:'Invalid backup file',quality:'Extraction quality',vatDetected:'5% VAT detected',fieldsDetected:'fields detected',jan:'January',feb:'February',mar:'March',apr:'April',may:'May',jun:'June',jul:'July',aug:'August',sep:'September',oct:'October',nov:'November',dec:'December',groceries:'Groceries',dining:'Dining & Coffee',shopping:'Shopping',transport:'Transport & Fuel',health:'Health & Pharmacy',bills:'Bills & Services',entertainment:'Entertainment',home:'Home',other:'Other',
 receiptEvidence:'Receipt Evidence Image',evidenceAttached:'Evidence image attached',noEvidence:'No evidence image',
 addEvidence:'Add Evidence Image',viewEvidence:'View Evidence Image',replaceEvidence:'Replace Image',deleteEvidence:'Delete Evidence Image',
 evidenceSaved:'Receipt evidence image saved',evidenceDeleted:'Evidence image deleted',confirmDeleteEvidence:'Delete the attached evidence image?',
@@ -782,7 +787,7 @@ function sanitizeParsedReceipt(parsed){
     const target=[parsed.subtotal,parsed.total].filter(x=>Number(x)>0),n=parsed.itemsExpected;
     if(list.length<=10&&n<=6){let best=list.slice(0,n),bestD=Infinity;const combos=[];const rec=(start,arr)=>{if(arr.length===n){combos.push([...arr]);return}for(let i=start;i<list.length;i++)rec(i+1,[...arr,list[i]])};rec(0,[]);for(const c of combos){const sm=c.reduce((s,x)=>s+Number(x.readTotal??x.price*x.qty),0),d=target.length?Math.min(...target.map(t=>Math.abs(sm-t))):0;if(d<bestD){bestD=d;best=c}}list=best.sort((a,b)=>(a.y??999999)-(b.y??999999))}
   }
-  parsed.itemRows=list;parsed.items=list.length;return parsed
+  parsed.itemRows=list;parsed.items=list.length;return normalizeReceiptRowAnomalies(parsed)
 }
 function normalizedNameKey(s){return normalizeOcrText(s).toUpperCase().replace(/[^A-Z0-9\u0600-\u06FF]+/g,' ').trim()}
 function levenshtein(a,b){a=normalizedNameKey(a);b=normalizedNameKey(b);const m=a.length,n=b.length;if(!m||!n)return Math.max(m,n);let prev=Array.from({length:n+1},(_,i)=>i);for(let i=1;i<=m;i++){const cur=[i];for(let j=1;j<=n;j++)cur[j]=Math.min(cur[j-1]+1,prev[j]+1,prev[j-1]+(a[i-1]===b[j-1]?0:1));prev=cur}return prev[n]}
@@ -924,7 +929,7 @@ async function runFocusedEnglishVerifier(base){
   out.category=inferCategory(`${out.store||''}\n${out.itemRows.map(x=>x.name).join('\n')}`);
   const itemMatch=itemRowsReconcile(out.itemRows,Number(out.subtotal),Number(out.total)),finance=candidateFinanceVerified(out),countOk=!out.itemsExpected||out.items===out.itemsExpected;
   out.totalReliable=finance||itemMatch;
-  out.accepted=!!(out.total!=null&&out.items&&itemMatch&&countOk);
+  out.accepted=!!(out.total!=null&&out.items&&itemMatch&&countOk&&!receiptNeedsRowAudit(out));
   out.score=Math.max(Number(out.score||0),out.accepted?99:82);
   out.engine=out.accepted?'Tesseract Local OCR + Focused Header/Table Verification':(out.engine||'Tesseract Local OCR');
   return sanitizeParsedReceipt(applyLearnedNames(out))
@@ -1126,7 +1131,7 @@ function rowHeader(s){return /(?:\bitem\b|description|product|service|الصنف
 function rowStop(s){return /^(?:T\.?\s*Pcs|Total\s*Pieces|Total\s*Qty|Total\s*items?|Subtotal|Sub\s*Total|G\.?\s*Amt|Tax|VAT|Adv|Bal\.?\s*Amt|Gross|Grand\s*Total|Net\s*Amount|Booked\s*By|Advance\s*balance|Terms?|المجموع|الإجمالي|الضريبة)/i.test(s.trim())}
 function parseSpatialItemText(text,pending=''){
   let s=normalizeOcrText(text);if(!s||rowHeader(s)||rowStop(s))return null;const monies=decimalMoneyTokens(s);if(!monies.length)return null;
-  const first=monies[0],before=s.slice(0,first.index).trim();const ints=[];for(const m of before.matchAll(/\b(\d{1,3})\b/g)){const n=Number(m[1]);if(n>=1&&n<=999)ints.push({n,index:m.index,len:m[1].length})}if(!ints.length)return null;
+  const first=monies[0],before=s.slice(0,first.index).trim();const ints=[];for(const m of before.matchAll(/\b(\d{1,3})\b/g)){const n=Number(m[1]);if(n>=1&&n<=50)ints.push({n,index:m.index,len:m[1].length})}if(!ints.length)return null;
   const q=ints[ints.length-1];let name=before.slice(0,q.index).trim().replace(/^\s*\d{1,3}\s*[).:#-]?\s*/,'').trim();if(pending)name=(pending+' '+name).replace(/\s+/g,' ').trim();if(name.length<2||merchantCandidateBad(name)||/^(?:item|description|service)$/i.test(name))return null;
   const qty=q.n,last=monies[monies.length-1].value,unit=monies.length>=2?monies[monies.length-2].value:Number((last/qty).toFixed(2));
   return{name,qty,price:unit,readTotal:last,confidence:1}
@@ -1163,10 +1168,62 @@ function candidateItemsVerified(p){return !!p&&itemRowsReconcile(p.itemRows||[],
 function candidateFinanceVerified(p){
   return !!p&&Number.isFinite(Number(p.subtotal))&&Number.isFinite(Number(p.tax))&&Number.isFinite(Number(p.total))&&Math.abs(Number(p.subtotal)+Number(p.tax)-Number(p.total))<=.15
 }
+function receiptIsPharmacyLike(p){
+  const s=`${p?.store||''} ${p?.category||''} ${(p?.itemRows||[]).map(x=>x?.name||'').join(' ')}`;
+  return /pharmacy|medical|صيدلية|دواء|health/i.test(s)
+}
+function itemNameAuditScore(name){
+  const s=normalizeOcrText(name||'').trim(),letters=(s.match(/[A-Za-z\u0600-\u06FF]/g)||[]).length;
+  let score=0;if(!s||letters<3)score+=5;if(s.length<=3)score+=4;if(/^[\W_]+$/u.test(s))score+=8;if(/["':;]$/.test(s)&&letters<9)score+=2;
+  if(/^(?:sts?|weep|weston(?:\s*1)?|item|description|unknown|غرض)$/i.test(s))score+=6;
+  return score
+}
+function normalizeReceiptRowAnomalies(parsed){
+  if(!parsed)return parsed;
+  const targets=[Number(parsed.subtotal),Number(parsed.total)].filter(v=>Number.isFinite(v)&&v>0);
+  parsed.itemRows=(parsed.itemRows||[]).map(it=>{
+    const x={...it};let q=Math.max(1,Number(x.qty)||1),p=Number(x.price||0),rt=Number(x.readTotal);
+    if(!Number.isFinite(rt)||rt<=0)rt=Number((p*q).toFixed(2));
+    // Typical OCR decimal split: printed 3.15 is misread as Qty 315 + Unit 0.01.
+    if(q>=100&&p>0&&p<=.10&&rt>=.20&&Math.abs(q*p-rt)<=Math.max(.08,rt*.02)){
+      x.qty=1;x.price=Number(rt.toFixed(2));x.readTotal=Number(rt.toFixed(2));x._rowRepair='decimal-split';
+    }else{
+      x.qty=q;if(Number.isFinite(p))x.price=p;if(Number.isFinite(rt))x.readTotal=rt;
+    }
+    return x
+  });
+  parsed.items=parsed.itemRows.length;
+  return parsed
+}
+function receiptNeedsRowAudit(p){
+  if(!p)return true;normalizeReceiptRowAnomalies(p);const rows=p.itemRows||[];if(!rows.length)return true;
+  const pharmacy=receiptIsPharmacyLike(p),single=rows.length===1;
+  for(const it of rows){
+    const q=Math.max(1,Number(it.qty)||1),price=Number(it.price||0),rt=Number(it.readTotal??price*q),name=String(it.name||'');
+    if(q>50)return true;
+    if(q>=20&&price>0&&price<.20)return true;
+    if(itemNameAuditScore(name)>=6)return true;
+    if(!Number.isFinite(price)||price<=0||!Number.isFinite(rt)||rt<=0)return true;
+    if(Math.abs(price*q-rt)>Math.max(.18,rt*.06))return true;
+    // A single medicine line such as 10 × 2.05 = 20.50 is arithmetically valid,
+    // but OCR often created the quantity from digits in the amount column. Force an independent pass.
+    if(pharmacy&&single&&q>=4&&q<=30&&price<=Math.max(6,rt*.35))return true;
+  }
+  if(p.itemsExpected&&Number(p.itemsExpected)!==rows.length)return true;
+  return false
+}
+function receiptRowQuality(p){
+  if(!p)return-999;normalizeReceiptRowAnomalies(p);let s=0;for(const it of p.itemRows||[]){s+=12-itemNameAuditScore(it.name);const q=Number(it.qty||1),price=Number(it.price||0);if(q<=20)s+=2;if(price>=.10)s+=2}if(receiptNeedsRowAudit(p))s-=70;return s
+}
+function cloudBodyNeedsRowAudit(body){
+  if(!body)return true;const r=body.receipt||{},items=(Array.isArray(r.items)?r.items:[]).map(it=>({name:String(it.name||''),qty:Number(it.quantity??it.qty??1)||1,price:Number(it.unit_price??it.price??0)||0,readTotal:Number(it.line_total??0)||null}));
+  const p={store:r.merchant_name_en||'',category:inferCategory(`${r.merchant_name_en||''} ${items.map(x=>x.name).join(' ')}`),subtotal:r.subtotal??null,tax:r.tax??null,total:r.total??null,itemRows:items,itemsExpected:Number(r.printed_item_count)||0};
+  normalizeReceiptRowAnomalies(p);return receiptNeedsRowAudit(p)
+}
 function receiptCanBeDeclaredComplete(p){
   if(!p||p.total==null||!(p.itemRows||[]).length)return false;
   const countOk=!p.itemsExpected||Number(p.itemsExpected)===(p.itemRows||[]).length;
-  return candidateItemsVerified(p)&&countOk
+  return candidateItemsVerified(p)&&countOk&&!receiptNeedsRowAudit(p)
 }
 
 function spatialReceiptParseLines(lines,engine='PaddleOCR PP-OCRv5 Arabic/English • Spatial OCR'){
@@ -1185,11 +1242,11 @@ function receiptCandidateStrength(p){
 }
 function mergeReceiptCandidates(...candidates){
   const list=candidates.filter(Boolean);if(!list.length)return null;list.sort((a,b)=>receiptCandidateStrength(b)-receiptCandidateStrength(a));let out={...list[0],itemRows:[...(list[0].itemRows||[])]};
-  const bestItems=[...list].sort((a,b)=>{const sa=(a.itemRows||[]).length*10+(a.totalReliable?30:0),sb=(b.itemRows||[]).length*10+(b.totalReliable?30:0);return sb-sa})[0];
+  const bestItems=[...list].sort((a,b)=>{const sa=(a.itemRows||[]).length*10+(a.totalReliable?30:0)+receiptRowQuality(a),sb=(b.itemRows||[]).length*10+(b.totalReliable?30:0)+receiptRowQuality(b);return sb-sa})[0];
   if((bestItems?.itemRows||[]).length>(out.itemRows||[]).length)out.itemRows=[...bestItems.itemRows];
   for(const c of list){if(!out.store&&c.store)out.store=c.store;if(!out.date&&c.date)out.date=c.date;if(out.subtotal==null&&c.subtotal!=null)out.subtotal=c.subtotal;if(out.tax==null&&c.tax!=null)out.tax=c.tax;if(out.total==null&&c.total!=null)out.total=c.total;if(!out.itemsExpected&&c.itemsExpected)out.itemsExpected=c.itemsExpected;if(!out.pieces&&c.pieces)out.pieces=c.pieces}
   out.items=out.itemRows?.length||0;const sum=(out.itemRows||[]).reduce((s,x)=>s+Number((x.readTotal??x.price*x.qty)||0),0),finance=out.subtotal!=null&&out.tax!=null&&out.total!=null&&Math.abs((+out.subtotal)+(+out.tax)-(+out.total))<=.15,itemMatch=out.total!=null&&out.items&&[out.subtotal,out.total].filter(Number.isFinite).some(t=>Math.abs(sum-t)<=Math.max(.15,Math.abs(t)*.015)),countOk=!out.itemsExpected||out.itemsExpected===out.items;
-  out.totalReliable=finance||itemMatch;out.accepted=!!(out.total!=null&&out.items&&itemMatch&&countOk);out.score=Math.max(...list.map(x=>x.score||0),out.accepted?96:0);out.category=inferCategory(`${out.store||''}\n${(out.itemRows||[]).map(x=>x.name).join('\n')}`);return out
+  out.totalReliable=finance||itemMatch;out.category=inferCategory(`${out.store||''}\n${(out.itemRows||[]).map(x=>x.name).join('\n')}`);normalizeReceiptRowAnomalies(out);out.accepted=!!(out.total!=null&&out.items&&itemMatch&&countOk&&!receiptNeedsRowAudit(out));out.score=Math.max(...list.map(x=>x.score||0),out.accepted?96:0);return out
 }
 function paddleEvidencePayload(parsed,result){return{lines:(parsed?._paddleLines||paddleLines(result)).slice(0,260).map(x=>({text:x.text,x0:x.x0,y0:x.y0,x1:x.x1,y1:x.y1,score:x.score})),text:(parsed?._paddleRows||spatialRows(paddleLines(result))).map(r=>r.text).join('\n').slice(0,16000)}}
 function mergePaddleWithTextStructurer(local,remote){
@@ -1234,7 +1291,7 @@ async function runPaddleUniversalReader(options={}){
     try{$('#ocrStatus').textContent=lang==='ar'?'الـ OCR اكتمل؛ تنظيم الحقول الصعبة من النص فقط…':'OCR complete; structuring difficult fields from text only…';const remote=await postPaddleTextEvidence(lastPaddleEvidence,12000);parsed=mergePaddleWithTextStructurer(parsed,remote)}catch(e){console.warn('Text structurer fallback',e)}
   }
   parsed=sanitizeParsedReceipt(applyLearnedNames(parsed));
-  if(options.apply!==false&&parsed.accepted){applyParsedReceipt(parsed);showScanResult(parsed);saveDraftNow(true);$('#ocrMeterBar').style.width='100%';$('#ocrStatus').textContent=lang==='ar'?'تمت القراءة محليًا والتحقق حسابيًا.':'On-device OCR complete and arithmetically verified.';setLocalAIStatus('ready',lang==='ar'?'PaddleOCR نجح؛ لم نحتج لإرسال صورة الفاتورة إلى السحابة.':'PaddleOCR succeeded; the receipt image did not need cloud OCR.',100)}
+  if(options.apply!==false&&receiptCanBeDeclaredComplete(parsed)){applyParsedReceipt(parsed);showScanResult(parsed);saveDraftNow(true);$('#ocrMeterBar').style.width='100%';$('#ocrStatus').textContent=lang==='ar'?'تمت القراءة محليًا والتحقق حسابيًا.':'On-device OCR complete and arithmetically verified.';setLocalAIStatus('ready',lang==='ar'?'PaddleOCR نجح؛ لم نحتج لإرسال صورة الفاتورة إلى السحابة.':'PaddleOCR succeeded; the receipt image did not need cloud OCR.',100)}
   return parsed
 }
 async function runDigitalTilePaddleReader(options={}){
@@ -1289,7 +1346,7 @@ async function handlePdfReceiptFile(file){
     const rendered=await renderPdfPage(best.page,1700);sourceCanvas=document.createElement('canvas');sourceCanvas.width=rendered.width;sourceCanvas.height=rendered.height;sourceCanvas.getContext('2d').drawImage(rendered,0,0);currentCanvas=prepareDigitalDocumentCanvas(sourceCanvas);sourceBitmap=null;enhanceLevel=1;showCurrentCanvas();
     const direct=spatialReceiptParseLines(best.lines,'PDF.js • Direct Digital Text');pdfTextCandidate=sanitizeParsedReceipt(applyLearnedNames(direct));
     if(best.lines.length>=6)receiptSourceMode='pdfText';else receiptSourceMode='pdfRaster';setSourceMode(receiptSourceMode);saveDraftNow(true);
-    if(pdfTextCandidate?.accepted){
+    if(receiptCanBeDeclaredComplete(pdfTextCandidate)){
       applyParsedReceipt(pdfTextCandidate);showScanResult(pdfTextCandidate);saveDraftNow(true);$('#ocrStatus').textContent=lang==='ar'?`تمت قراءة PDF مباشرة من النص الرقمي — الصفحة ${best.n}.`:`PDF read directly from digital text — page ${best.n}.`;setLocalAIStatus('ready',lang==='ar'?'لم نحتج OCR للصورة؛ تم استخراج النص الأصلي من PDF.':'No image OCR was needed; original PDF text was extracted.',100);return pdfTextCandidate
     }
     $('#ocrStatus').textContent=lang==='ar'?`النص الرقمي غير مكتمل؛ جارٍ قراءة الصفحة ${best.n} كرندر عالي الدقة…`:`Digital text is incomplete; OCRing page ${best.n} as a high-resolution render…`;
@@ -1389,12 +1446,13 @@ function cloudReceiptToParsed(payload){
     if(!business&&(clashes||/\b(kandoora|kandora|pyjama|pajama|undershirt|vest|lungi|towel|washing|wash)\b/i.test(mk)))canonicalMerchant='';
   }
   const vals=[canonicalMerchant,r.date,r.total,r.subtotal,r.tax,items.length].filter(v=>v!==null&&v!==undefined&&v!==''&&v!==0).length;
-  return{
+  const out={
     store:canonicalMerchant,date:r.date||'',category:inferCategory(`${canonicalMerchant} ${(r.items||[]).map(x=>x.name||'').join(' ')}`),
     subtotal:r.subtotal??null,tax:r.tax??null,total:r.total??null,itemRows:items,items:items.length,itemsExpected:Number(r.printed_item_count)||0,
     score:Number(payload?.score??0)||Math.min(100,vals*14),fields:vals,vatEvidence:Number(r.tax||0)>0,totalReliable:r.total!=null,
-    localAI:true,engine:'PaddleOCR + Tesseract • Strict Row Verification • PDF.js • Cloud Last',warnings:Array.isArray(r.warnings)?r.warnings:[],readerMeta:payload?.meta||null,accepted:payload?.accepted!==false&&itemRowsReconcile(items,Number(r.subtotal),Number(r.total))
-  }
+    localAI:true,engine:'PaddleOCR + Tesseract • Row Ambiguity Guard • PDF.js • Cloud Last',warnings:Array.isArray(r.warnings)?r.warnings:[],readerMeta:payload?.meta||null,accepted:false
+  };
+  normalizeReceiptRowAnomalies(out);out.accepted=payload?.accepted!==false&&itemRowsReconcile(out.itemRows,Number(out.subtotal),Number(out.total))&&!receiptNeedsRowAudit(out);return out
 }
 async function checkCloudReaderHealth(){
   try{
@@ -1577,6 +1635,7 @@ function cloudPayloadQuality(body){
   if(r.tax!=null)s+=8;
   s+=Math.min(60,items.length*9);
   s-=warnings.filter(x=>/does not match|Printed item count|Printed pieces|manual review/i.test(x)).length*18;
+  if(cloudBodyNeedsRowAudit(body))s-=190;
   return s
 }
 
@@ -1751,10 +1810,11 @@ async function runCloudReceiptReader(){
   }
 
   const lr=legacyBody?.receipt||{},li=Array.isArray(lr.items)?lr.items:[];
-  const stableClientParsed=legacyBody?cloudReceiptToParsed(legacyBody):null;const stableAccepted=!!legacyBody && legacyBody.accepted!==false && li.length>0 && lr.total!=null && itemRowsReconcile(stableClientParsed?.itemRows||[],Number(stableClientParsed?.subtotal),Number(stableClientParsed?.total));
+  const stableClientParsed=legacyBody?cloudReceiptToParsed(legacyBody):null;const stableAccepted=!!legacyBody && legacyBody.accepted!==false && li.length>0 && lr.total!=null && receiptCanBeDeclaredComplete(stableClientParsed);
+  const stableNeedsAudit=!!stableClientParsed&&receiptNeedsRowAudit(stableClientParsed);
 
-  // IMPORTANT: once the stable reader accepts a receipt, STOP. Do not run any new
-  // fallback just because an optional field is blank. This protects prior successes.
+  // A stable result still stops immediately when its item rows are trustworthy.
+  // If arithmetic is valid but row semantics are suspicious (quantity/name split), continue to an independent verification pass.
   if(stableAccepted){
     const parsed=stableClientParsed||cloudReceiptToParsed(legacyBody);
     parsed.itemsExpected=Number(lr.printed_item_count)||parsed.itemsExpected;
@@ -1764,8 +1824,12 @@ async function runCloudReceiptReader(){
     setLocalAIStatus('ready',(lang==='ar'?'نجحت القراءة بالمسار المستقر؛ لم يتم تشغيل أي قارئ احتياطي.':'Stable read succeeded; no fallback reader was started.')+time,100);
     return parsed
   }
+  if(stableNeedsAudit){
+    $('#ocrStatus').textContent=lang==='ar'?'الإجماليات صحيحة لكن أحد صفوف الأصناف ملتبس؛ جارٍ التحقق المستقل قبل الاعتماد…':'Totals are valid, but an item row is ambiguous; running independent verification before accepting it…';
+    setLocalAIStatus('loading',lang==='ar'?'تم اكتشاف كمية/اسم صنف يحتاج تحققًا إضافيًا تلقائيًا.':'An item quantity/name needs an automatic second verification pass.',46);
+  }
 
-  // STAGE 2 — only receipts that the frozen stable path cannot accept reach this
+  // STAGE 2 — receipts the stable path cannot safely accept reach this
   // layout-agnostic full-image rescue. No JSON dependency on the browser side.
   $('#ocrMeterBar').style.width='50%';
   $('#ocrStatus').textContent=lang==='ar'?'الفاتورة تحتاج إنقاذًا عامًا؛ جارٍ قراءة الصورة كاملة…':'The receipt needs universal rescue; reading the complete image…';
@@ -1792,10 +1856,25 @@ async function runCloudReceiptReader(){
   let body=universalBody;
   if(!body || cloudPayloadQuality(legacyBody)>cloudPayloadQuality(body))body=legacyBody;
   if(!body)throw universalErr||legacyErr||new Error('Cloud receipt readers unavailable');
+  if(cloudBodyNeedsRowAudit(body)){
+    body=await tryAlternateCloudReceipt(body);
+    if(cloudBodyNeedsRowAudit(body))body=await trySegmentCloudReceipt(body);
+  }
 
   $('#ocrMeterBar').style.width='90%';
-  const parsed=cloudReceiptToParsed(body);
+  let parsed=cloudReceiptToParsed(body);
   parsed.itemsExpected=Number(body?.receipt?.printed_item_count)||parsed.itemsExpected;
+  if(receiptNeedsRowAudit(parsed)){
+    try{
+      $('#ocrStatus').textContent=lang==='ar'?'الصف ما زال ملتبسًا؛ تدقيق محلي مركز للاسم والكمية…':'The row is still ambiguous; running focused local verification of name and quantity…';
+      const focused=await runFocusedEnglishVerifier(parsed);
+      const merged=mergeReceiptCandidates(focused,parsed);
+      if(merged&&receiptCanBeDeclaredComplete(merged))parsed=merged;
+    }catch(e){console.warn('Focused cloud-row audit failed',e)}
+  }
+  if(receiptNeedsRowAudit(parsed)){
+    try{const hybrid=await tryLocalHybridReceiptRescue(body,parsed);if(hybrid&&receiptCanBeDeclaredComplete(hybrid))parsed=hybrid}catch(e){console.warn('Hybrid cloud-row audit failed',e)}
+  }
 
   if(body?.accepted===false){
     const r=body?.receipt||{};
@@ -1817,6 +1896,12 @@ async function runCloudReceiptReader(){
   }
 
   applyParsedReceipt(parsed);showScanResult(parsed);saveDraftNow(true);$('#ocrMeterBar').style.width='100%';
+  if(receiptNeedsRowAudit(parsed)){
+    parsed.accepted=false;parsed.warnings=[...(parsed.warnings||[]),lang==='ar'?'صف صنف ما زال يحتاج مراجعة يدوية؛ لم يتم اعتباره تحققًا ناجحًا.':'An item row still needs manual review and was not marked verified.'];
+    $('#ocrStatus').textContent=lang==='ar'?'تمت تعبئة أفضل قراءة، لكن اسم/كمية صنف واحد ما زال يحتاج مراجعة قبل الحفظ.':'Best available read was filled, but one item name/quantity still needs review before saving.';
+    setLocalAIStatus('fallback',lang==='ar'?'تم منع اعتماد صف ملتبس تلقائيًا.':'Ambiguous row was prevented from being auto-verified.');
+    return parsed
+  }
   const ms=Number(body?.meta?.elapsed_ms||0),sid=body?.meta?.scan_id?` • Scan ${body.meta.scan_id}`:'',time=ms?` • ${(ms/1000).toFixed(1)}s`:'';
   const fallbackUsed=body===universalBody;
   $('#ocrStatus').textContent=t('scanDone')+(fallbackUsed?(lang==='ar'?' • الإنقاذ العام':' • universal rescue'):(lang==='ar'?' • القارئ المستقر':' • stable reader'))+time+sid;
@@ -1835,7 +1920,7 @@ async function runSmartReceiptReader(){
     try{
       localCandidate=await runPaddleUniversalReader({apply:false,textFallback:false});
       if(pdfTextCandidate)localCandidate=mergeReceiptCandidates(localCandidate,pdfTextCandidate);
-      if(localCandidate?.accepted){applyParsedReceipt(localCandidate);showScanResult(localCandidate);saveDraftNow(true);$('#ocrMeterBar').style.width='100%';$('#ocrStatus').textContent=lang==='ar'?'تمت القراءة محليًا والتحقق من الأصناف والإجماليات.':'Read locally and verified items/totals.';setLocalAIStatus('ready',lang==='ar'?'القارئ الأساسي نجح؛ لم نحتج للمسار السحابي.':'Primary local reader succeeded; cloud fallback was not needed.',100);return localCandidate}
+      if(receiptCanBeDeclaredComplete(localCandidate)){localCandidate.accepted=true;applyParsedReceipt(localCandidate);showScanResult(localCandidate);saveDraftNow(true);$('#ocrMeterBar').style.width='100%';$('#ocrStatus').textContent=lang==='ar'?'تمت القراءة محليًا والتحقق من الأصناف والإجماليات.':'Read locally and verified items/totals.';setLocalAIStatus('ready',lang==='ar'?'القارئ الأساسي نجح؛ لم نحتج للمسار السحابي.':'Primary local reader succeeded; cloud fallback was not needed.',100);return localCandidate}
       localErr=new Error('On-device OCR needs digital rescue');console.warn('PaddleOCR partial result',localCandidate)
     }catch(e){localErr=e;console.warn('PaddleOCR unavailable/partial',e)}
 
@@ -1845,7 +1930,7 @@ async function runSmartReceiptReader(){
       try{
         $('#ocrMeterBar').style.width='32%';$('#ocrStatus').textContent=lang==='ar'?'تشغيل إنقاذ المستند الرقمي: قص وتكبير وقراءة شرائح متداخلة…':'Running digital-document rescue: crop, upscale and overlapping tile OCR…';
         let digital=await runDigitalTilePaddleReader({apply:false,textFallback:false});digital=mergeReceiptCandidates(digital,localCandidate,pdfTextCandidate);
-        if(digital?.accepted){applyParsedReceipt(digital);showScanResult(digital);saveDraftNow(true);$('#ocrMeterBar').style.width='100%';$('#ocrStatus').textContent=lang==='ar'?'تمت قراءة لقطة الشاشة/المستند الرقمي بدقة مكبرة والتحقق حسابيًا.':'Screenshot/digital document read with enlarged tile OCR and verified.';setLocalAIStatus('ready',lang==='ar'?'نجح مسار اللقطات الرقمية المحلي؛ لم نرسل صورة الفاتورة إلى السحابة.':'Local digital-document rescue succeeded; no receipt image was sent to cloud.',100);return digital}
+        if(receiptCanBeDeclaredComplete(digital)){digital.accepted=true;applyParsedReceipt(digital);showScanResult(digital);saveDraftNow(true);$('#ocrMeterBar').style.width='100%';$('#ocrStatus').textContent=lang==='ar'?'تمت قراءة لقطة الشاشة/المستند الرقمي بدقة مكبرة والتحقق حسابيًا.':'Screenshot/digital document read with enlarged tile OCR and verified.';setLocalAIStatus('ready',lang==='ar'?'نجح مسار اللقطات الرقمية المحلي؛ لم نرسل صورة الفاتورة إلى السحابة.':'Local digital-document rescue succeeded; no receipt image was sent to cloud.',100);return digital}
         localCandidate=mergeReceiptCandidates(digital,localCandidate,pdfTextCandidate)
       }catch(e){console.warn('Digital document rescue failed',e);localErr=e}
     }
@@ -1963,13 +2048,13 @@ function extractStoreEnglish(lines,layoutLines=[]){
     }
   }
   candidates.sort((a,b)=>b.score-a.score||b.text.length-a.text.length);
-  return candidates[0]?.text||''
+  return canonicalMerchantName(candidates[0]?.text||'')
 }
 function extractStore(lines,layoutLines=[]){
   // Fallback only: even when the bilingual pass is used, store output is forced to English.
   return extractStoreEnglish(lines,layoutLines)
 }
-function chooseStore(primary,english){const b=repairBusinessOcr(englishOnlyText(english||'')),a=repairBusinessOcr(englishOnlyText(primary||''));return b||a}
+function chooseStore(primary,english){const b=repairBusinessOcr(englishOnlyText(english||'')),a=repairBusinessOcr(englishOnlyText(primary||''));return canonicalMerchantName(b||a)}
 function scriptCleanItemName(text){
   let c=cleanItemName(text)
     .replace(/\b(?:item|name|description|desc|qty|quantity|amount|total|price|unit)\b/gi,' ')
@@ -2121,7 +2206,7 @@ function parseReceiptSmart(res,secondPass=false,numericRes=null,regions=null){
   return{score:Math.min(100,score),fields,vatEvidence,items:items.length,itemsExpected:expected,itemRows:items,category,store,date,total:fin.total,subtotal:fin.subtotal,tax:fin.tax,totalReliable:fin.totalReliable,rawConfidence:Number(res?.confidence||0),secondPass}
 }
 function applyParsedReceipt(r){if(r.store)$('#storeName').value=r.store;if(r.date)$('#invoiceDate').value=r.date;renderCategoryOptions(r.category||'other');if(r.subtotal!=null)$('#subtotal').value=Number(r.subtotal).toFixed(2);if(r.tax!=null)$('#tax').value=Number(r.tax).toFixed(2);if(r.total!=null)$('#finalTotal').value=Number(r.total).toFixed(2);if(r.itemRows?.length){$('#items').innerHTML='';r.itemRows.forEach(it=>addItem({name:it.name,price:it.price,qty:it.qty}))}calcTotals();scheduleDraftSave(true)}
-function showScanResult(r){const el=$('#scanResult');el.style.display='block';const vat=r.vatEvidence?` · ${t('vatDetected')}`:'';const checked=r.total!=null&&r.subtotal!=null&&r.tax!=null&&Math.abs((r.subtotal+r.tax)-r.total)<=.12?(lang==='ar'?' · ✓ الأرقام متطابقة حسابيًا':' · ✓ Totals cross-checked'):'';const countCheck=r.itemsExpected?(r.items===r.itemsExpected?(lang==='ar'?` · ✓ تم العثور على ${r.itemsExpected} أصناف`:` · ✓ ${r.itemsExpected} items matched`):(lang==='ar'?` · ⚠ المتوقع ${r.itemsExpected} أصناف وتم العثور على ${r.items}`:` · ⚠ Expected ${r.itemsExpected}, found ${r.items}`)):'';const rowCheck=(r.itemRows?.length&&!itemRowsReconcile(r.itemRows,Number(r.subtotal),Number(r.total)))?(lang==='ar'?` · ⚠ مجموع الأصناف ${itemRowsSum(r.itemRows).toFixed(2)} غير مطابق`:` · ⚠ Item rows sum ${itemRowsSum(r.itemRows).toFixed(2)} does not reconcile`):'';const ai=r.engine?(lang==='ar'?` · ✓ ${r.engine}`:` · ✓ ${r.engine}`):(r.localAI?(lang==='ar'?' · OCR متخصص':' · Specialized OCR'):'');const meta=r.readerMeta||{};const scan=meta.scan_id?` · Scan ${String(meta.scan_id).slice(0,8)}`:'';const verified=meta.verified?(lang==='ar'?' · تحقق ثانٍ ✓':' · Verified ✓'):'';el.textContent=`${t('quality')}: ${r.score}% · ${r.fields} ${t('fieldsDetected')} · ${r.items} ${t('itemsCount')}${vat}${checked}${countCheck}${rowCheck}${ai}${verified}${scan}`}
+function showScanResult(r){const el=$('#scanResult');el.style.display='block';const vat=r.vatEvidence?` · ${t('vatDetected')}`:'';const checked=r.total!=null&&r.subtotal!=null&&r.tax!=null&&Math.abs((r.subtotal+r.tax)-r.total)<=.12?(lang==='ar'?' · ✓ الأرقام متطابقة حسابيًا':' · ✓ Totals cross-checked'):'';const countCheck=r.itemsExpected?(r.items===r.itemsExpected?(lang==='ar'?` · ✓ تم العثور على ${r.itemsExpected} أصناف`:` · ✓ ${r.itemsExpected} items matched`):(lang==='ar'?` · ⚠ المتوقع ${r.itemsExpected} أصناف وتم العثور على ${r.items}`:` · ⚠ Expected ${r.itemsExpected}, found ${r.items}`)):'';const rowCheck=(r.itemRows?.length&&!itemRowsReconcile(r.itemRows,Number(r.subtotal),Number(r.total)))?(lang==='ar'?` · ⚠ مجموع الأصناف ${itemRowsSum(r.itemRows).toFixed(2)} غير مطابق`:` · ⚠ Item rows sum ${itemRowsSum(r.itemRows).toFixed(2)} does not reconcile`):(receiptNeedsRowAudit(r)?(lang==='ar'?' · ⚠ اسم/كمية صنف تحت التحقق':' · ⚠ Item name/quantity under review'):'');const ai=r.engine?(lang==='ar'?` · ✓ ${r.engine}`:` · ✓ ${r.engine}`):(r.localAI?(lang==='ar'?' · OCR متخصص':' · Specialized OCR'):'');const meta=r.readerMeta||{};const scan=meta.scan_id?` · Scan ${String(meta.scan_id).slice(0,8)}`:'';const verified=meta.verified?(lang==='ar'?' · تحقق ثانٍ ✓':' · Verified ✓'):'';el.textContent=`${t('quality')}: ${r.score}% · ${r.fields} ${t('fieldsDetected')} · ${r.items} ${t('itemsCount')}${vat}${checked}${countCheck}${rowCheck}${ai}${verified}${scan}`}
 
 window.addEventListener('pagehide',()=>saveDraftNow(true));window.addEventListener('beforeunload',()=>saveDraftNow(false));
 // Backup / restore
@@ -2158,7 +2243,7 @@ $('#restoreInput').onchange=async e=>{
 clearForm(false);applyLang();ensurePersistentStorage();restoreDraft();setLocalAIStatus('loading',lang==='ar'?'جارٍ التحقق من اتصال Cloudflare AI…':'Checking Cloudflare AI connection…',5);setTimeout(checkCloudReaderHealth,250);
 </script>
 
-<footer class="app-version-footer" id="appVersionFooter" data-version="5.3.0">الإصدار 5.3.0</footer>
+<footer class="app-version-footer" id="appVersionFooter" data-version="5.4.0">الإصدار 5.4.0</footer>
 <script>if('serviceWorker' in navigator){window.addEventListener('load',async()=>{try{const r=await navigator.serviceWorker.register('/sw.js',{updateViaCache:'none'});r.update().catch(()=>{})}catch(e){}});}</script>
 </body>
 </html>
