@@ -1,7 +1,6 @@
 const FALLBACK_MODEL = '@cf/meta/llama-3.2-11b-vision-instruct';
 const STRUCTURED_MODEL = FALLBACK_MODEL;
 const MODEL = FALLBACK_MODEL;
-const ARABIC_OCR_MODEL_URL = 'https://paddle-model-ecology.bj.bcebos.com/paddlex/official_inference_model/paddle3.0.0/arabic_PP-OCRv5_mobile_rec_infer.tar';
 
 const LEGACY_PROMPT = `You are a literal OCR transcriber specialized in many different UAE receipt and tax-invoice layouts.
 
@@ -81,7 +80,7 @@ Rules:
 9. If only one money value is printed for a row, use it as line total.
 10. Read decimals exactly. If unclear, leave blank instead of guessing.
 11. No JSON, markdown, explanation or code fences.`;
-const VERSION = '5.0.1';
+const VERSION = '5.1.0';
 
 const PROMPT = `Read the COMPLETE receipt/tax invoice image literally. The receipt may be thermal paper, POS, pharmacy, laundry, restaurant, screenshot, digital job order, Arabic/English, narrow, wide, long, or short.
 
@@ -1303,17 +1302,8 @@ async function readReceipt(env,image,mode='legacy'){
 export default {
   async fetch(request,env){
     const url=new URL(request.url);
-    if(url.pathname==='/api/ocr-model-ar'){
-      if(request.method!=='GET')return new Response('Method not allowed',{status:405});
-      try{
-        const upstream=await fetch(ARABIC_OCR_MODEL_URL,{headers:{'accept':'application/octet-stream'}});
-        if(!upstream.ok)return new Response(`Arabic OCR model upstream HTTP ${upstream.status}`,{status:502});
-        const h=new Headers(upstream.headers);h.set('content-type','application/x-tar');h.set('cache-control','public, max-age=31536000, immutable');h.set('access-control-allow-origin','*');
-        return new Response(upstream.body,{status:200,headers:h})
-      }catch(e){return new Response(`Arabic OCR model proxy failed: ${e?.message||e}`,{status:502})}
-    }
     if(url.pathname==='/api/health'){
-      return new Response(JSON.stringify({ok:true,engine:'PaddleOCR v5 On-device + Stable Cloud Fallback',primary:FALLBACK_MODEL,structured:STRUCTURED_MODEL,version:VERSION,base:'4.4.0'}),{headers:headers()});
+      return new Response(JSON.stringify({ok:true,engine:'PaddleOCR + PDF.js Digital Document Pipeline + Stable Cloud Fallback',primary:FALLBACK_MODEL,structured:STRUCTURED_MODEL,version:VERSION,base:'4.4.0'}),{headers:headers()});
     }
     if(url.pathname==='/api/receipt'){
       if(request.method!=='POST')return new Response(JSON.stringify({ok:false,error:'Method not allowed'}),{status:405,headers:headers()});
