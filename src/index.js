@@ -84,10 +84,12 @@ Rules:
 8A. Quantity is valid ONLY from a separate Qty/Quantity/Pcs cell on the SAME row. Never derive it from money or totals.
 8B. Description tokens such as 10MG, 20MG, 500ML, 1L, 100G, sizes, model numbers and strength/pack text are part of the item name, not quantity. If no explicit quantity is visible, use 1.
 8C. On dark receipts, read white-on-black text literally and preserve row/column alignment.
+8D. A word such as Men, Household, Pr, Washing, Tablet or MG may be only a fragment of a longer description. Follow the SAME visual row left/right and join all description fragments before emitting ITEM. Never emit a generic fragment alone when adjacent text belongs to that row.
+8E. For medicine names, inspect every character at high attention. Do not normalize a drug name to a familiar spelling; preserve the printed brand/strength text exactly.
 9. If only one money value is printed for a row, use it as line total and leave unit price blank.
 10. Read decimals exactly. If unclear, leave blank instead of guessing.
 11. No JSON, markdown, explanation or code fences.`;
-const VERSION = '5.4.0';
+const VERSION = '5.5.0';
 
 const PROMPT = `Read the COMPLETE receipt/tax invoice image literally. The receipt may be thermal paper, POS, pharmacy, laundry, restaurant, screenshot, digital job order, Arabic/English, narrow, wide, long, or short.
 
@@ -167,6 +169,8 @@ Rules:
 3. Quantity comes ONLY from a separate Qty/Quantity/Pcs cell in the SAME row. Never infer it from price/total arithmetic.
 3A. Numbers embedded in the description such as 10MG, 20MG, 500ML, 1L, 100G, sizes/model/strength text are part of the item name, not quantity. If no explicit quantity cell is visible, use quantity 1.
 3B. Dark receipts may be white text on black; preserve literal row spelling and column alignment.
+3C. Description text can be split into several visual fragments. Reconstruct the full description from fragments on the SAME row; generic words like Men/Household/Pr/Washing/MG are not complete item names when neighboring row text exists.
+3D. Medicine brand names require character-by-character transcription. Never guess or autocorrect a drug name.
 3C. If there is only one money column such as AED/Amount, that value is line_total; leave unit price blank if not separately printed.
 4. T.Pcs / Total Pieces / Total Qty is PIECES, not COUNT.
 5. Preserve both English and Arabic names when both are printed; never invent a translation.
