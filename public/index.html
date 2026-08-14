@@ -170,7 +170,7 @@ button,input,textarea,select{font:inherit}button{cursor:pointer}.app{max-width:1
             <div class="ai-local-head"><div class="ai-local-title"><span>🧠</span><span data-i18n="localAIReader">القارئ الذكي المحلي</span></div><span class="ai-local-badge" id="aiLocalBadge" data-i18n="aiChecking">جارٍ التحقق…</span></div>
             <div class="ai-local-detail" id="aiLocalDetail" data-i18n="aiLocalNote">يعمل داخل الهاتف بدون API أو اشتراك. في أول تشغيل فقط يتم تنزيل النموذج وحفظه في ذاكرة المتصفح.</div>
             <div class="ai-local-meter" id="aiLocalMeter"><i id="aiLocalMeterBar"></i></div>
-            <div class="ai-local-tech"><span id="aiDeviceBadge">Cloudflare</span><span>Workers AI • Stable Llama + Structured Vision Rescue</span><span data-i18n="aiPrivate">معالجة سحابية آمنة</span></div>
+            <div class="ai-local-tech"><span id="aiDeviceBadge">Cloudflare</span><span>Workers AI • Stable 4.4 Reader + Universal Text Rescue</span><span data-i18n="aiPrivate">معالجة سحابية آمنة</span></div>
           </div>
         </div>
         <div class="footer-note" data-i18n="ocrNote">لأفضل نتيجة: اجعل الفاتورة كاملة داخل الصورة وبإضاءة متساوية. تتم معالجة التباين والقص تلقائيًا، ويمكنك مراجعة كل البيانات قبل الحفظ.</div>
@@ -1012,7 +1012,7 @@ function cloudReceiptToParsed(payload){
     store:canonicalMerchant,date:r.date||'',category:inferCategory(`${canonicalMerchant} ${(r.items||[]).map(x=>x.name||'').join(' ')}`),
     subtotal:r.subtotal??null,tax:r.tax??null,total:r.total??null,itemRows:items,items:items.length,itemsExpected:Number(r.printed_item_count)||0,
     score:Number(payload?.score??0)||Math.min(100,vals*14),fields:vals,vatEvidence:Number(r.tax||0)>0,totalReliable:r.total!=null,
-    localAI:true,engine:'Cloudflare AI • Stable Llama + Structured Vision Rescue',warnings:Array.isArray(r.warnings)?r.warnings:[],readerMeta:payload?.meta||null,accepted:payload?.accepted!==false
+    localAI:true,engine:'Cloudflare AI • Stable 4.4 Reader + Universal Text Rescue',warnings:Array.isArray(r.warnings)?r.warnings:[],readerMeta:payload?.meta||null,accepted:payload?.accepted!==false
   }
 }
 async function checkCloudReaderHealth(){
@@ -1343,13 +1343,14 @@ async function runCloudReceiptReader(){
   const focus=sourceCanvas||currentCanvas;if(!focus)throw new Error('No receipt image');
   clearRecognitionFieldsForNewImage();
 
-  // STEP 1 — stable reader FIRST. This is the proven path for AL MAQAM and the pharmacy.
+  // STAGE 1 — frozen stable path. This is intentionally isolated so new rescue
+  // logic can never disable receipts that already worked in the 4.4.x family.
   const legacyImage=buildCloudReceiptComposite(focus,false);
   if(!legacyImage)throw new Error('Could not prepare receipt image');
 
   $('#ocrMeter').style.display='block';$('#ocrMeterBar').style.width='18%';
   $('#ocrStatus').textContent=lang==='ar'?'جارٍ القراءة بالقارئ المستقر…':'Reading with the stable receipt reader…';
-  setLocalAIStatus('loading',lang==='ar'?'القارئ المستقر يعمل أولًا؛ لن يتم تشغيل القراءة المنظمة إذا نجح.':'Stable reader runs first; structured vision will not run if it succeeds.',24);
+  setLocalAIStatus('loading',lang==='ar'?'المسار المستقر يعمل أولًا وبشكل مستقل.':'The stable path runs first and independently.',22);
 
   let legacyBody=null,legacyErr=null;
   try{
@@ -1358,7 +1359,7 @@ async function runCloudReceiptReader(){
     legacyErr=e;
     if(cloudErrorIsRetriable(e?.message,e?.status,e?.body)){
       try{
-        $('#ocrMeterBar').style.width='34%';
+        $('#ocrMeterBar').style.width='32%';
         $('#ocrStatus').textContent=lang==='ar'?'إعادة محاولة خفيفة بالقارئ المستقر…':'Quick stable-reader retry…';
         const compactLegacy=buildCloudReceiptComposite(focus,true);
         legacyBody=await postCloudReceipt(compactLegacy,12000,'legacy');
@@ -1368,46 +1369,44 @@ async function runCloudReceiptReader(){
   }
 
   const lr=legacyBody?.receipt||{},li=Array.isArray(lr.items)?lr.items:[];
-  const legacySuspicious=!legacyBody
-    || legacyBody.accepted===false
-    || !lr.merchant_name_en
-    || lr.total==null
-    || li.length===0
-    || (Number(lr.printed_piece_count||0)>0 && Math.abs(li.reduce((s,x)=>s+(Number(x.quantity)||0),0)-Number(lr.printed_piece_count||0))>.001);
+  const stableAccepted=!!legacyBody && legacyBody.accepted!==false && li.length>0 && lr.total!=null;
 
-  if(legacyBody&&!legacySuspicious){
+  // IMPORTANT: once the stable reader accepts a receipt, STOP. Do not run any new
+  // fallback just because an optional field is blank. This protects prior successes.
+  if(stableAccepted){
     const parsed=cloudReceiptToParsed(legacyBody);
-    parsed.itemsExpected=Number(legacyBody?.receipt?.printed_item_count)||parsed.itemsExpected;
+    parsed.itemsExpected=Number(lr.printed_item_count)||parsed.itemsExpected;
     applyParsedReceipt(parsed);showScanResult(parsed);saveDraftNow(true);$('#ocrMeterBar').style.width='100%';
     const ms=Number(legacyBody?.meta?.elapsed_ms||0),sid=legacyBody?.meta?.scan_id?` • Scan ${legacyBody.meta.scan_id}`:'',time=ms?` • ${(ms/1000).toFixed(1)}s`:'';
     $('#ocrStatus').textContent=t('scanDone')+(lang==='ar'?' • القارئ المستقر':' • stable reader')+time+sid;
-    setLocalAIStatus('ready',(lang==='ar'?'تمت القراءة بالقارئ المستقر؛ لم نحتج للقراءة المنظمة.':'Stable reader succeeded; structured vision was not needed.')+time,100);
+    setLocalAIStatus('ready',(lang==='ar'?'نجحت القراءة بالمسار المستقر؛ لم يتم تشغيل أي قارئ احتياطي.':'Stable read succeeded; no fallback reader was started.')+time,100);
     return parsed
   }
 
-  // STEP 2 — difficult receipt only: ONE structured Llama Vision pass on the complete image.
-  $('#ocrMeterBar').style.width='52%';
-  $('#ocrStatus').textContent=lang==='ar'?'التصميم يحتاج قراءة منظمة؛ جارٍ استخراج جدول الفاتورة كاملًا…':'Different layout detected; extracting the complete receipt with structured vision…';
-  setLocalAIStatus('loading',lang==='ar'?'تشغيل Llama Vision المنظم على صورة واحدة كاملة فقط.':'Running one structured Llama Vision pass on the complete image.',58);
+  // STAGE 2 — only receipts that the frozen stable path cannot accept reach this
+  // layout-agnostic full-image rescue. No JSON dependency on the browser side.
+  $('#ocrMeterBar').style.width='50%';
+  $('#ocrStatus').textContent=lang==='ar'?'الفاتورة تحتاج إنقاذًا عامًا؛ جارٍ قراءة الصورة كاملة…':'The receipt needs universal rescue; reading the complete image…';
+  setLocalAIStatus('loading',lang==='ar'?'قراءة كاملة للصورة مع تمريرتين نصيتين مستقلتين للأصناف والبيانات.':'Full-image rescue with independent text passes for fields and items.',55);
 
   let universalBody=null,universalErr=null;
   try{
     const fullImage=buildCloudFullReceiptImage(focus,false);
-    universalBody=await postCloudReceipt(fullImage,18000,'structured')
+    universalBody=await postCloudReceipt(fullImage,26000,'universal')
   }catch(e){
     universalErr=e;
     if(cloudErrorIsRetriable(e?.message,e?.status,e?.body)){
       try{
-        $('#ocrMeterBar').style.width='70%';
-        $('#ocrStatus').textContent=lang==='ar'?'إعادة محاولة منظمة أخف…':'Retrying structured vision with a lighter image…';
+        $('#ocrMeterBar').style.width='72%';
+        $('#ocrStatus').textContent=lang==='ar'?'إعادة محاولة عامة بصورة أخف…':'Retrying universal rescue with a lighter image…';
         const compactFull=buildCloudFullReceiptImage(focus,true);
-        universalBody=await postCloudReceipt(compactFull,11000,'structured');
+        universalBody=await postCloudReceipt(compactFull,16000,'universal');
         universalBody.meta={...(universalBody.meta||{}),client_retry:true}
       }catch(e2){universalErr=e2}
     }
   }
 
-  // Never discard a usable stable result merely because the fallback timed out.
+  // A failed rescue can NEVER overwrite a stronger stable partial result.
   let body=universalBody;
   if(!body || cloudPayloadQuality(legacyBody)>cloudPayloadQuality(body))body=legacyBody;
   if(!body)throw universalErr||legacyErr||new Error('Cloud receipt readers unavailable');
@@ -1417,7 +1416,6 @@ async function runCloudReceiptReader(){
   parsed.itemsExpected=Number(body?.receipt?.printed_item_count)||parsed.itemsExpected;
 
   if(body?.accepted===false){
-    // Keep trustworthy scalar fields when available, but never fabricate item rows.
     const r=body?.receipt||{};
     const financeConsistent=r.total!=null && (
       (r.subtotal!=null&&r.tax!=null&&Math.abs((Number(r.subtotal)+Number(r.tax))-Number(r.total))<=.08)
@@ -1426,10 +1424,10 @@ async function runCloudReceiptReader(){
     const scalarOk=financeConsistent && !!(r.merchant_name_en||r.date) && r.total!=null;
     if(scalarOk){
       parsed.itemRows=[];parsed.items=0;
-      parsed.warnings=[...(parsed.warnings||[]),lang==='ar'?'تم حفظ الحقول الموثوقة فقط؛ الأصناف تحتاج مراجعة.':'Only trustworthy scalar fields were kept; items need review.'];
+      parsed.warnings=[...(parsed.warnings||[]),lang==='ar'?'تم الاحتفاظ بالحقول الموثوقة فقط؛ لم تُعتمد أصناف غير مؤكدة.':'Only verified scalar fields were retained; uncertain items were not applied.'];
       applyParsedReceipt(parsed);showScanResult(parsed);saveDraftNow(true);$('#ocrMeterBar').style.width='100%';
-      $('#ocrStatus').textContent=lang==='ar'?'تمت تعبئة البيانات الموثوقة فقط؛ لم يتم اعتماد أصناف غير مؤكدة.':'Only verified fields were filled; uncertain items were not applied.';
-      setLocalAIStatus('fallback',lang==='ar'?'راجع الأصناف فقط.':'Review item rows only.');
+      $('#ocrStatus').textContent=lang==='ar'?'تمت تعبئة البيانات الموثوقة فقط؛ راجع الأصناف.':'Verified fields were filled; review the item rows.';
+      setLocalAIStatus('fallback',lang==='ar'?'البيانات الأساسية محفوظة؛ الأصناف تحتاج مراجعة.':'Core fields kept; item rows need review.');
       return parsed
     }
     clearRecognitionFieldsForNewImage();showScanResult(parsed);$('#ocrMeterBar').style.width='100%';
@@ -1439,9 +1437,9 @@ async function runCloudReceiptReader(){
   applyParsedReceipt(parsed);showScanResult(parsed);saveDraftNow(true);$('#ocrMeterBar').style.width='100%';
   const ms=Number(body?.meta?.elapsed_ms||0),sid=body?.meta?.scan_id?` • Scan ${body.meta.scan_id}`:'',time=ms?` • ${(ms/1000).toFixed(1)}s`:'';
   const fallbackUsed=body===universalBody;
-  $('#ocrStatus').textContent=t('scanDone')+(fallbackUsed?(lang==='ar'?' • القراءة المنظمة الاحتياطية':' • Structured Vision rescue'):(lang==='ar'?' • القارئ المستقر':' • stable reader'))+time+sid;
+  $('#ocrStatus').textContent=t('scanDone')+(fallbackUsed?(lang==='ar'?' • الإنقاذ العام':' • universal rescue'):(lang==='ar'?' • القارئ المستقر':' • stable reader'))+time+sid;
   setLocalAIStatus('ready',(fallbackUsed
-    ?(lang==='ar'?'اكتملت القراءة المنظمة بعد تعذر المسار المستقر.':'Structured vision completed the read after the stable path was incomplete.')
+    ?(lang==='ar'?'اكتملت قراءة الفاتورة بالإنقاذ العام دون تغيير المسار المستقر.':'Universal rescue completed without modifying the stable reader.')
     :(lang==='ar'?'اكتملت القراءة بالقارئ المستقر.':'Stable receipt reading complete.'))+time,100);
   return parsed
 }
@@ -1743,6 +1741,6 @@ $('#restoreInput').onchange=async e=>{
 clearForm(false);applyLang();ensurePersistentStorage();restoreDraft();setLocalAIStatus('loading',lang==='ar'?'جارٍ التحقق من اتصال Cloudflare AI…':'Checking Cloudflare AI connection…',5);setTimeout(checkCloudReaderHealth,250);
 </script>
 
-<footer class="app-version-footer" id="appVersionFooter" data-version="4.6.3">الإصدار 4.6.3</footer>
+<footer class="app-version-footer" id="appVersionFooter" data-version="4.6.4">الإصدار 4.6.4</footer>
 </body>
 </html>
