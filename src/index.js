@@ -80,7 +80,7 @@ Rules:
 9. If only one money value is printed for a row, use it as line total.
 10. Read decimals exactly. If unclear, leave blank instead of guessing.
 11. No JSON, markdown, explanation or code fences.`;
-const VERSION = '4.6.4';
+const VERSION = '4.6.5';
 
 const PROMPT = `Read the COMPLETE receipt/tax invoice image literally. The receipt may be thermal paper, POS, pharmacy, laundry, restaurant, screenshot, digital job order, Arabic/English, narrow, wide, long, or short.
 
@@ -463,13 +463,151 @@ function responseText(result){
 function cleanLine(s){
   return String(s||'').replace(/^[-*•\s]+/,'').replace(/^`+|`+$/g,'').trim();
 }
+
+function standaloneReceiptDate(lines){
+  const textual=/\b([0-3]?\d)\s+(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+(20\d{2})\b/i;
+  const numeric=/\b([0-3]?\d[-/.][01]?\d[-/.]20\d{2})\b/;
+  for(let i=0;i<(lines||[]).length;i++){
+    const line=txt(lines[i]);
+    if(!line)continue;
+    if(/\b(deliv(?:ery|ered)?|expected|due\s*date|print\s*time|expiry|expire|valid\s*until)\b/i.test(line))continue;
+    let m=line.match(textual);
+    if(m){
+      const d=validDate(`${m[1]} ${m[2]} ${m[3]}`);
+      if(d)return d
+    }
+    m=line.match(numeric);
+    if(m){
+      const d=validDate(m[1]);
+      if(d)return d
+    }
+  }
+  return null
+}
+function plainTableHeader(line){
+  const s=txt(line);
+  return (
+    /\b(item|description|product|service|article|details?)\b/i.test(s)
+    || /(?:الصنف|الوصف|البيان|الخدمة|المنتج)/.test(s)
+  ) && (
+    /\b(qty|quantity|pcs?|pieces?)\b/i.test(s)
+    || /(?:الكمية|كمية|عدد)/.test(s)
+  )
+}
+function plainTableStop(line){
+  const s=txt(line);
+  return /^(?:t\.?\s*pcs|total\s*pcs|total\s*pieces|total\s*qty|total\s*items?|subtotal|sub\s*total|g\.?\s*amt|tax|vat|adv|bal\.?\s*amt|gross|grand\s*total|net\s*amount|amount\s*due|booked\s*by|advance\s*balance|store\s*timing|terms?\s*(?:and|&)?\s*conditions?|outstanding\s*balance)\b/i.test(s)
+    || /^(?:المجموع|الإجمالي|الاجمالي|الضريبة|شروط|الإجمالي الكلي)/.test(s)
+}
+function plainMoneyMatches(line){
+  const out=[],re=/(^|[\s:|])(\d{1,7}(?:[.,]\d{1,2}))(?=\s|$|[|])/g;
+  let m;
+  while((m=re.exec(line))!==null){
+    out.push({value:r2(m[2]),index:m.index+(m[1]?.length||0),raw:m[2]})
+  }
+  return out
+}
+function parsePlainReceiptRow(line,pending=''){
+  let s=txt(line).replace(/\s+/g,' ').trim();
+  if(!s||plainTableHeader(s)||plainTableStop(s))return null;
+  const monies=plainMoneyMatches(s);
+  if(!monies.length)return null;
+
+  const firstMoney=monies[0],lastMoney=monies[monies.length-1];
+  const before=s.slice(0,firstMoney.index).trim();
+
+  // Quantity is the final small integer before the money columns.
+  // This naturally ignores a leading serial-number column.
+  const ints=[];
+  const ire=/\b(\d{1,3})\b/g; let im;
+  while((im=ire.exec(before))!==null){
+    const n=Number(im[1]);
+    if(n>=1&&n<=999)ints.push({n,index:im.index,len:im[1].length})
+  }
+  if(!ints.length)return null;
+  const qtok=ints[ints.length-1];
+  let quantity=qtok.n;
+  if(!Number.isFinite(quantity)||quantity<=0||quantity>999)return null;
+
+  let name=before.slice(0,qtok.index).trim();
+  // Remove serial-number/menu artifacts at the beginning.
+  name=name.replace(/^\s*(?:menu\s*)?\d{1,3}\s*[\).:#-]?\s*/i,'').trim();
+  name=name.replace(/^\s*(?:item|description|product|service)\s*[:|-]?\s*/i,'').trim();
+  if(pending)name=`${pending} ${name}`.replace(/\s+/g,' ').trim();
+  if(!name||summaryName(name))return null;
+  if(/\b(?:trn|invoice|receipt|customer|cashier|bill|order|date|time|total|vat|tax|balance|terms?)\b/i.test(name))return null;
+
+  let unit=null,lineTotal=null;
+  if(monies.length>=2){
+    unit=monies[monies.length-2].value;
+    lineTotal=lastMoney.value;
+  }else{
+    // Single AED/Amount column = printed row total.
+    lineTotal=lastMoney.value;
+    unit=quantity>0?r2(lineTotal/quantity):null
+  }
+  if(lineTotal==null||lineTotal<=0)return null;
+
+  const en=/[A-Za-z]/.test(name)?name:'';
+  const ar=/[\u0600-\u06FF]/.test(name)?name:'';
+  return{
+    name,
+    name_en:en||null,
+    name_ar:ar||null,
+    quantity,
+    unit_price:unit,
+    line_total:lineTotal
+  }
+}
+function extractPlainTableItems(lines){
+  const src=(lines||[]).map(x=>txt(x).replace(/\s+/g,' ').trim()).filter(Boolean);
+  let header=-1;
+  for(let i=0;i<src.length;i++){if(plainTableHeader(src[i])){header=i;break}}
+  const start=header>=0?header+1:0;
+  const items=[];
+  let pending='';
+  let numericRows=0;
+
+  for(let i=start;i<src.length;i++){
+    const line=src[i];
+    if(header>=0&&plainTableStop(line)){
+      if(numericRows>0)break;
+      continue
+    }
+    const row=parsePlainReceiptRow(line,pending);
+    if(row){
+      items.push(row);numericRows++;pending='';
+      continue
+    }
+
+    // Wrapped item descriptions are common on thermal receipts.
+    // Keep short textual continuation lines only while inside the table.
+    if(header>=0 && !plainTableStop(line) && !plainTableHeader(line)
+       && !plainMoneyMatches(line).length
+       && !/\b(?:tax\s*invoice|invoice|receipt|trn|customer|cashier|date|time|total|vat|tax|balance)\b/i.test(line)
+       && line.length>=2 && line.length<=70){
+      if(/[\u0600-\u06FF]/.test(line) && items.length){
+        const last=items[items.length-1];
+        if(!last.name_ar){
+          last.name_ar=line;
+          last.name=`${last.name}${last.name?' — ':''}${line}`.trim()
+        }
+      }else{
+        pending=(pending?pending+' ':'')+line;
+        if(pending.length>90)pending=''
+      }
+    }
+  }
+  return dedupeSegmentItems(items)
+}
+
 function parseProtocol(rawText){
   const raw=txt(rawText).replace(/```(?:text|txt)?/gi,'').replace(/```/g,'');
   const out={store:null,storeCandidates:[],date:null,count:null,pieces:null,rate:null,subtotal:null,tax:null,total:null,items:[],warnings:[]};
   const lines=raw.split(/\n+/).map(cleanLine).filter(Boolean);
 
   for(const line of lines){
-    const p=line.split('|').map(x=>x.trim()), key=(p[0]||'').toUpperCase().replace(/\s+/g,'_');
+    const p=line.split('|').map(x=>x.trim()), key=(p[0]||'').toUpperCase().replace(/\s+/g,'_').replace(/[:=\-]+$/,'');
     if(key==='STORE'){out.store=merchant(p.slice(1).join('|'));continue}
     if(key==='STORE_CANDIDATE'){const c=merchant(p.slice(1).join('|'));if(c)out.storeCandidates.push(c);continue}
     if(key==='DATE_RAW'||key==='DATE'){out.date=validDate(p[1]);continue}
@@ -512,16 +650,22 @@ function parseProtocol(rawText){
     const m=raw.match(/(?:^|\n)\s*(?:DATE_RAW|DATE|INVOICE_DATE|INVOICE DATE)\s*(?:\||:|=|-)\s*([^\n]+)/im);
     if(m)out.date=validDate(m[1]);
   }
+  if(!out.date)out.date=standaloneReceiptDate(lines);
   if(out.count==null){
     const m=raw.match(/(?:COUNT|TOTAL\s*ITEMS?)\s*(?:\||:|=|-)\s*(\d+)/i);
     if(m)out.count=num(m[1]);
   }
+  if(out.pieces==null){
+    const m=raw.match(/\b(?:T\.?\s*Pcs|Total\s*Pieces|Total\s*Qty|Total\s*Quantity)\s*(?:\||:|=|-)?\s*(\d{1,4})\b/i);
+    if(m){const n=num(m[1]);out.pieces=n!=null&&n>0?Math.round(n):null}
+  }
+
   if(out.rate==null){
     const m=raw.match(/(?:VAT_RATE|VAT\s*RATE|VAT)\s*(?:\||:|=|-)?\s*(\d+(?:\.\d+)?)\s*%/i);
     if(m)out.rate=num(m[1]);
   }
   if(out.total==null){
-    const m=raw.match(/(?:GRAND\s*TOTAL|NET\s*AMOUNT|GROSS|AMOUNT\s*DUE|FINAL\s*TOTAL|TOTAL)\s*[:=|\-]?\s*(\d+(?:[.,]\d{1,2})?)/i);
+    const m=raw.match(/(?:GRAND\s*TOTAL|NET\s*AMOUNT|GROSS|AMOUNT\s*DUE|FINAL\s*TOTAL|ADV|TOTAL)\s*[:=|\-]?\s*(\d+(?:[.,]\d{1,2})?)/i);
     if(m)out.total=r2(m[1]);
   }
   if(out.tax==null){
@@ -533,6 +677,11 @@ function parseProtocol(rawText){
     if(m)out.subtotal=r2(m[1]);
   }
 
+
+  if(!out.items.length){
+    const plainItems=extractPlainTableItems(lines);
+    if(plainItems.length)out.items=plainItems;
+  }
 
   out.store=chooseMerchant(out.store,out.storeCandidates);
   return {out,lines,raw};
@@ -1087,7 +1236,7 @@ export default {
         const result=mode==='segments'?await readReceiptSegments(env,images):await readReceipt(env,image,mode);
         return new Response(JSON.stringify({
           ok:true,...result,
-          meta:{engine:mode==='universal'?'Cloudflare Workers AI • Universal Plain-Text Rescue':'Cloudflare Workers AI • Stable 4.4 Llama Primary',model:FALLBACK_MODEL,structured:false,version:VERSION,base:'4.4.0',scan_id:scanId,elapsed_ms:Date.now()-started,images:1,inference_calls:result.inference_calls||1,repair_used:!!result.repair_used,models_used:result.models_used||[FALLBACK_MODEL]}
+          meta:{engine:mode==='universal'?'Cloudflare Workers AI • Universal Table Parser':'Cloudflare Workers AI • Stable 4.4 Llama Primary',model:FALLBACK_MODEL,structured:false,version:VERSION,base:'4.4.0',scan_id:scanId,elapsed_ms:Date.now()-started,images:1,inference_calls:result.inference_calls||1,repair_used:!!result.repair_used,models_used:result.models_used||[FALLBACK_MODEL]}
         }),{headers:headers()});
       }catch(e){
         console.error('receipt-reader',e);
