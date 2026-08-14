@@ -170,7 +170,7 @@ button,input,textarea,select{font:inherit}button{cursor:pointer}.app{max-width:1
             <div class="ai-local-head"><div class="ai-local-title"><span>🧠</span><span data-i18n="localAIReader">القارئ الذكي المحلي</span></div><span class="ai-local-badge" id="aiLocalBadge" data-i18n="aiChecking">جارٍ التحقق…</span></div>
             <div class="ai-local-detail" id="aiLocalDetail" data-i18n="aiLocalNote">يعمل داخل الهاتف بدون API أو اشتراك. في أول تشغيل فقط يتم تنزيل النموذج وحفظه في ذاكرة المتصفح.</div>
             <div class="ai-local-meter" id="aiLocalMeter"><i id="aiLocalMeterBar"></i></div>
-            <div class="ai-local-tech"><span id="aiDeviceBadge">Cloudflare</span><span>Workers AI • Stable 4.4 Reader + Universal Text Rescue</span><span data-i18n="aiPrivate">معالجة سحابية آمنة</span></div>
+            <div class="ai-local-tech"><span id="aiDeviceBadge">Cloudflare</span><span>Workers AI • Stable 4.4 Reader + Universal Table Parser</span><span data-i18n="aiPrivate">معالجة سحابية آمنة</span></div>
           </div>
         </div>
         <div class="footer-note" data-i18n="ocrNote">لأفضل نتيجة: اجعل الفاتورة كاملة داخل الصورة وبإضاءة متساوية. تتم معالجة التباين والقص تلقائيًا، ويمكنك مراجعة كل البيانات قبل الحفظ.</div>
@@ -249,7 +249,7 @@ const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 document.addEventListener('submit',e=>e.preventDefault(),true);const secureButtonTypes=()=>{$$('button').forEach(b=>{if(!b.hasAttribute('type'))b.type='button'})};secureButtonTypes();window.addEventListener('pageshow',secureButtonTypes);
 const CATEGORIES=['groceries','dining','shopping','transport','health','bills','entertainment','home','other'];
 const I18N={
- ar:{appTitle:'مصاريف الشهر',appSub:'إدارة ذكية للفواتير والمشتريات الشهرية',backup:'نسخة احتياطية',restore:'استعادة',dashboard:'الرئيسية',dashboardMonth:'الشهر المعروض',currentMonth:'الشهر الحالي',previousMonth:'الشهر السابق',nextMonth:'الشهر التالي',newInvoice:'تسجيل فاتورة جديدة',monthlyRecords:'السجلات الشهرية',monthSpend:'إجمالي الشهر',invoiceCount:'عدد الفواتير',savedLocally:'محفوظة على الجهاز',avgInvoice:'متوسط الفاتورة',monthAverage:'متوسط الشهر الحالي',budgetRemaining:'المتبقي من الميزانية',monthlyBudget:'الميزانية الشهرية',budgetAmount:'قيمة الميزانية',saveBudget:'حفظ الميزانية',budgetSaved:'تم حفظ ميزانية الشهر',spentOfBudget:'تم إنفاق',noBudget:'لم تحدد ميزانية بعد',categoryDistribution:'التوزيع حسب التصنيف',storesDistribution:'التوزيع حسب المحلات',topFive:'أعلى 5',dailySpend:'الإنفاق اليومي',recentInvoices:'أحدث الفواتير',viewAll:'عرض الكل',receiptScan:'تصوير / رفع الفاتورة',ocrAuto:'Cloudflare Llama Vision — Line OCR',takePhoto:'تصوير بالكاميرا',choosePhoto:'اختيار صورة من الألبوم',rotateLeft:'↶ تدوير',rotateRight:'↷ تدوير',enhanceAgain:'✨ تحسين',scanAgain:'إعادة القراءة الذكية',enhanced:'محسّنة للقراءة',ocrHint:'تُرسل صورة واحدة مرتبة بحيث يأخذ جدول الأصناف أكبر مساحة. يعيد Llama سطورًا نصية بسيطة، ثم يحللها الـWorker محليًا بدون JSON.',ocrNote:'القارئ المستقر يعمل أولًا كما في النسخ الناجحة. إذا كانت الفاتورة ذات تصميم مختلف، يستخدم الموقع نفس Llama Vision لكن بوضع JSON منظم رسميًا لقراءة الصورة كاملة واستخراج جميع صفوف الأصناف والتاريخ والإجماليات، ثم يدمج أفضل الحقول فقط بعد التحقق الحسابي.',invoiceData:'بيانات الفاتورة',storeName:'اسم المحل',invoiceDate:'تاريخ الفاتورة',category:'التصنيف',subtotal:'المبلغ قبل الضريبة',tax:'الضريبة',finalTotal:'الإجمالي النهائي',purchases:'المشتريات',addItem:'+ إضافة غرض',itemsSubtotal:'مجموع الأغراض',calculatedTax:'الضريبة',calculatedTotal:'الإجمالي',clear:'مسح',approve:'اعتماد وحفظ الفاتورة',printReport:'طباعة التقرير',item:'الغرض',price:'السعر',qty:'العدد',noData:'لا توجد فواتير محفوظة لهذا الشهر.',delete:'حذف',edit:'تعديل',saved:'تم حفظ الفاتورة بنجاح',updated:'تم تحديث الفاتورة',required:'يرجى إدخال اسم المحل وتاريخ الفاتورة والإجمالي النهائي.',scanning:'جارٍ قراءة الفاتورة…',preparing:'جارٍ تحسين الصورة وقص الحواف…',scanDone:'تم تحليل الفاتورة. راجع البيانات ثم اعتمدها.',scanFail:'تعذر استخراج البيانات بدقة. يمكنك تعديلها أو إدخالها يدويًا.',ocrNeedsNet:'يتطلب القارئ الذكي اتصالًا بالإنترنت للوصول إلى Cloudflare Worker. القارئ المحلي الاحتياطي يعمل عند تعذر الاتصال.',localAIReader:'القارئ الذكي السحابي',aiChecking:'جارٍ التحقق من Cloudflare…',aiLoading:'جارٍ الاتصال بـ Cloudflare AI…',aiReady:'متصل وجاهز',aiFallback:'قارئ محلي احتياطي',aiError:'تعذر الاتصال بالقارئ السحابي',aiLocalNote:'القارئ الأساسي عبر Cloudflare Worker: طلب Llama واحد، وجدول الأصناف يأخذ أكبر مساحة، ثم تحليل محلي سريع.',aiPrivate:'المعالجة عبر Worker آمن',aiAnalyzing:'جارٍ قراءة مناطق الفاتورة المكبرة عبر Cloudflare AI…',aiMerged:'اكتملت القراءة السريعة والتحقق من الفاتورة',currency:'د.إ',invoice:'فاتورة',itemsCount:'أغراض',confirmDelete:'هل تريد حذف هذه الفاتورة؟',backupDone:'تم تنزيل النسخة الاحتياطية',restoreDone:'تمت استعادة النسخة الاحتياطية',restoreFail:'ملف النسخة الاحتياطية غير صالح',quality:'جودة الاستخراج',vatDetected:'تم اكتشاف ضريبة القيمة المضافة 5%',fieldsDetected:'حقول مكتشفة',jan:'يناير',feb:'فبراير',mar:'مارس',apr:'أبريل',may:'مايو',jun:'يونيو',jul:'يوليو',aug:'أغسطس',sep:'سبتمبر',oct:'أكتوبر',nov:'نوفمبر',dec:'ديسمبر',groceries:'بقالة ومواد غذائية',dining:'مطاعم ومقاهي',shopping:'تسوق',transport:'مواصلات ووقود',health:'صحة وصيدلية',bills:'فواتير وخدمات',entertainment:'ترفيه',home:'منزل',other:'أخرى',
+ ar:{appTitle:'مصاريف الشهر',appSub:'إدارة ذكية للفواتير والمشتريات الشهرية',backup:'نسخة احتياطية',restore:'استعادة',dashboard:'الرئيسية',dashboardMonth:'الشهر المعروض',currentMonth:'الشهر الحالي',previousMonth:'الشهر السابق',nextMonth:'الشهر التالي',newInvoice:'تسجيل فاتورة جديدة',monthlyRecords:'السجلات الشهرية',monthSpend:'إجمالي الشهر',invoiceCount:'عدد الفواتير',savedLocally:'محفوظة على الجهاز',avgInvoice:'متوسط الفاتورة',monthAverage:'متوسط الشهر الحالي',budgetRemaining:'المتبقي من الميزانية',monthlyBudget:'الميزانية الشهرية',budgetAmount:'قيمة الميزانية',saveBudget:'حفظ الميزانية',budgetSaved:'تم حفظ ميزانية الشهر',spentOfBudget:'تم إنفاق',noBudget:'لم تحدد ميزانية بعد',categoryDistribution:'التوزيع حسب التصنيف',storesDistribution:'التوزيع حسب المحلات',topFive:'أعلى 5',dailySpend:'الإنفاق اليومي',recentInvoices:'أحدث الفواتير',viewAll:'عرض الكل',receiptScan:'تصوير / رفع الفاتورة',ocrAuto:'Cloudflare Llama Vision — Line OCR',takePhoto:'تصوير بالكاميرا',choosePhoto:'اختيار صورة من الألبوم',rotateLeft:'↶ تدوير',rotateRight:'↷ تدوير',enhanceAgain:'✨ تحسين',scanAgain:'إعادة القراءة الذكية',enhanced:'محسّنة للقراءة',ocrHint:'تُرسل صورة واحدة مرتبة بحيث يأخذ جدول الأصناف أكبر مساحة. يعيد Llama سطورًا نصية بسيطة، ثم يحللها الـWorker محليًا بدون JSON.',ocrNote:'القارئ المستقر يعمل أولًا كما في النسخ الناجحة ولا يتم تغييره. إذا كانت الفاتورة ذات تصميم مختلف، يقرأ مسار الإنقاذ الصورة المحسنة كاملة ثم يحلل جدول الأصناف نصيًا حتى لو لم يُرجع النموذج صيغة ITEM المنظمة، ويستخرج التاريخ المطبوع وعدد القطع والإجماليات مع تحقق حسابي قبل تعبئة الحقول.',invoiceData:'بيانات الفاتورة',storeName:'اسم المحل',invoiceDate:'تاريخ الفاتورة',category:'التصنيف',subtotal:'المبلغ قبل الضريبة',tax:'الضريبة',finalTotal:'الإجمالي النهائي',purchases:'المشتريات',addItem:'+ إضافة غرض',itemsSubtotal:'مجموع الأغراض',calculatedTax:'الضريبة',calculatedTotal:'الإجمالي',clear:'مسح',approve:'اعتماد وحفظ الفاتورة',printReport:'طباعة التقرير',item:'الغرض',price:'السعر',qty:'العدد',noData:'لا توجد فواتير محفوظة لهذا الشهر.',delete:'حذف',edit:'تعديل',saved:'تم حفظ الفاتورة بنجاح',updated:'تم تحديث الفاتورة',required:'يرجى إدخال اسم المحل وتاريخ الفاتورة والإجمالي النهائي.',scanning:'جارٍ قراءة الفاتورة…',preparing:'جارٍ تحسين الصورة وقص الحواف…',scanDone:'تم تحليل الفاتورة. راجع البيانات ثم اعتمدها.',scanFail:'تعذر استخراج البيانات بدقة. يمكنك تعديلها أو إدخالها يدويًا.',ocrNeedsNet:'يتطلب القارئ الذكي اتصالًا بالإنترنت للوصول إلى Cloudflare Worker. القارئ المحلي الاحتياطي يعمل عند تعذر الاتصال.',localAIReader:'القارئ الذكي السحابي',aiChecking:'جارٍ التحقق من Cloudflare…',aiLoading:'جارٍ الاتصال بـ Cloudflare AI…',aiReady:'متصل وجاهز',aiFallback:'قارئ محلي احتياطي',aiError:'تعذر الاتصال بالقارئ السحابي',aiLocalNote:'القارئ الأساسي عبر Cloudflare Worker: طلب Llama واحد، وجدول الأصناف يأخذ أكبر مساحة، ثم تحليل محلي سريع.',aiPrivate:'المعالجة عبر Worker آمن',aiAnalyzing:'جارٍ قراءة مناطق الفاتورة المكبرة عبر Cloudflare AI…',aiMerged:'اكتملت القراءة السريعة والتحقق من الفاتورة',currency:'د.إ',invoice:'فاتورة',itemsCount:'أغراض',confirmDelete:'هل تريد حذف هذه الفاتورة؟',backupDone:'تم تنزيل النسخة الاحتياطية',restoreDone:'تمت استعادة النسخة الاحتياطية',restoreFail:'ملف النسخة الاحتياطية غير صالح',quality:'جودة الاستخراج',vatDetected:'تم اكتشاف ضريبة القيمة المضافة 5%',fieldsDetected:'حقول مكتشفة',jan:'يناير',feb:'فبراير',mar:'مارس',apr:'أبريل',may:'مايو',jun:'يونيو',jul:'يوليو',aug:'أغسطس',sep:'سبتمبر',oct:'أكتوبر',nov:'نوفمبر',dec:'ديسمبر',groceries:'بقالة ومواد غذائية',dining:'مطاعم ومقاهي',shopping:'تسوق',transport:'مواصلات ووقود',health:'صحة وصيدلية',bills:'فواتير وخدمات',entertainment:'ترفيه',home:'منزل',other:'أخرى',
 receiptEvidence:'صورة الفاتورة كدليل',evidenceAttached:'صورة دليل مرفقة',noEvidence:'لا توجد صورة دليل',
 addEvidence:'إضافة صورة دليل',viewEvidence:'عرض صورة الدليل',replaceEvidence:'استبدال الصورة',deleteEvidence:'حذف صورة الدليل',
 evidenceSaved:'تم حفظ صورة الفاتورة كدليل',evidenceDeleted:'تم حذف صورة الدليل',confirmDeleteEvidence:'هل تريد حذف صورة الدليل المرفقة؟',
@@ -1012,7 +1012,7 @@ function cloudReceiptToParsed(payload){
     store:canonicalMerchant,date:r.date||'',category:inferCategory(`${canonicalMerchant} ${(r.items||[]).map(x=>x.name||'').join(' ')}`),
     subtotal:r.subtotal??null,tax:r.tax??null,total:r.total??null,itemRows:items,items:items.length,itemsExpected:Number(r.printed_item_count)||0,
     score:Number(payload?.score??0)||Math.min(100,vals*14),fields:vals,vatEvidence:Number(r.tax||0)>0,totalReliable:r.total!=null,
-    localAI:true,engine:'Cloudflare AI • Stable 4.4 Reader + Universal Text Rescue',warnings:Array.isArray(r.warnings)?r.warnings:[],readerMeta:payload?.meta||null,accepted:payload?.accepted!==false
+    localAI:true,engine:'Cloudflare AI • Stable 4.4 Reader + Universal Table Parser',warnings:Array.isArray(r.warnings)?r.warnings:[],readerMeta:payload?.meta||null,accepted:payload?.accepted!==false
   }
 }
 async function checkCloudReaderHealth(){
@@ -1340,12 +1340,13 @@ async function tryLocalHybridReceiptRescue(body,cloudParsed){
 }
 
 async function runCloudReceiptReader(){
-  const focus=sourceCanvas||currentCanvas;if(!focus)throw new Error('No receipt image');
+  const stableFocus=sourceCanvas||currentCanvas,rescueFocus=currentCanvas||sourceCanvas;
+  if(!stableFocus)throw new Error('No receipt image');
   clearRecognitionFieldsForNewImage();
 
-  // STAGE 1 — frozen stable path. This is intentionally isolated so new rescue
-  // logic can never disable receipts that already worked in the 4.4.x family.
-  const legacyImage=buildCloudReceiptComposite(focus,false);
+  // STAGE 1 — frozen stable path. It keeps using the same original image path
+  // that already worked in the 4.4.x family.
+  const legacyImage=buildCloudReceiptComposite(stableFocus,false);
   if(!legacyImage)throw new Error('Could not prepare receipt image');
 
   $('#ocrMeter').style.display='block';$('#ocrMeterBar').style.width='18%';
@@ -1361,7 +1362,7 @@ async function runCloudReceiptReader(){
       try{
         $('#ocrMeterBar').style.width='32%';
         $('#ocrStatus').textContent=lang==='ar'?'إعادة محاولة خفيفة بالقارئ المستقر…':'Quick stable-reader retry…';
-        const compactLegacy=buildCloudReceiptComposite(focus,true);
+        const compactLegacy=buildCloudReceiptComposite(stableFocus,true);
         legacyBody=await postCloudReceipt(compactLegacy,12000,'legacy');
         legacyBody.meta={...(legacyBody.meta||{}),client_retry:true}
       }catch(e2){legacyErr=e2}
@@ -1391,7 +1392,7 @@ async function runCloudReceiptReader(){
 
   let universalBody=null,universalErr=null;
   try{
-    const fullImage=buildCloudFullReceiptImage(focus,false);
+    const fullImage=buildCloudFullReceiptImage(rescueFocus,false);
     universalBody=await postCloudReceipt(fullImage,26000,'universal')
   }catch(e){
     universalErr=e;
@@ -1399,7 +1400,7 @@ async function runCloudReceiptReader(){
       try{
         $('#ocrMeterBar').style.width='72%';
         $('#ocrStatus').textContent=lang==='ar'?'إعادة محاولة عامة بصورة أخف…':'Retrying universal rescue with a lighter image…';
-        const compactFull=buildCloudFullReceiptImage(focus,true);
+        const compactFull=buildCloudFullReceiptImage(rescueFocus,true);
         universalBody=await postCloudReceipt(compactFull,16000,'universal');
         universalBody.meta={...(universalBody.meta||{}),client_retry:true}
       }catch(e2){universalErr=e2}
@@ -1741,6 +1742,6 @@ $('#restoreInput').onchange=async e=>{
 clearForm(false);applyLang();ensurePersistentStorage();restoreDraft();setLocalAIStatus('loading',lang==='ar'?'جارٍ التحقق من اتصال Cloudflare AI…':'Checking Cloudflare AI connection…',5);setTimeout(checkCloudReaderHealth,250);
 </script>
 
-<footer class="app-version-footer" id="appVersionFooter" data-version="4.6.4">الإصدار 4.6.4</footer>
+<footer class="app-version-footer" id="appVersionFooter" data-version="4.6.5">الإصدار 4.6.5</footer>
 </body>
 </html>
