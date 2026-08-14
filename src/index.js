@@ -1,303 +1,79 @@
-const OCR_MODEL = '@cf/moondream/moondream3.1-9B-A2B';
-const FALLBACK_MODEL = '@cf/meta/llama-3.2-11b-vision-instruct';
-const MODEL = OCR_MODEL;
-const GEMMA_MODEL = '@cf/google/gemma-4-26b-a4b-it';
+const VERSION = '4.6.1';
+const STRUCT_MODEL = '@cf/zai-org/glm-4.7-flash';
 
-const RECEIPT_SCHEMA = {
-  type:'object',
-  additionalProperties:false,
-  properties:{
-    merchant_name_en:{type:'string'},
-    merchant_candidates:{type:'array',items:{type:'string'}},
-    date_raw:{type:'string'},
-    currency:{type:'string'},
-    printed_item_count:{type:'string'},
-    printed_piece_count:{type:'string'},
-    vat_rate_percent:{type:'string'},
-    subtotal:{type:'string'},
-    tax:{type:'string'},
-    total:{type:'string'},
-    prices_include_tax:{type:'string',enum:['yes','no','unknown']},
-    table_structure:{type:'string',enum:['unit_and_total','single_amount','unknown']},
-    items_complete:{type:'boolean'},
-    items:{
-      type:'array',
-      items:{
-        type:'object',additionalProperties:false,
-        properties:{
-          name_en:{type:'string'},name_ar:{type:'string'},quantity:{type:'string'},
-          unit_price:{type:'string'},line_total:{type:'string'}
-        },
-        required:['name_en','name_ar','quantity','unit_price','line_total']
-      }
-    },
-    item_region:{
-      type:'object',additionalProperties:false,
-      properties:{detected:{type:'boolean'},left:{type:'number'},top:{type:'number'},right:{type:'number'},bottom:{type:'number'}},
-      required:['detected','left','top','right','bottom']
-    },
-    confidence:{
-      type:'object',additionalProperties:false,
-      properties:{merchant:{type:'number'},date:{type:'number'},items:{type:'number'},totals:{type:'number'}},
-      required:['merchant','date','items','totals']
-    }
-  },
-  required:['merchant_name_en','merchant_candidates','date_raw','currency','printed_item_count','printed_piece_count','vat_rate_percent','subtotal','tax','total','prices_include_tax','table_structure','items_complete','items','item_region','confidence']
-};
-
-const TABLE_SCHEMA = {
+const STRUCT_SCHEMA = {
   type:'object',additionalProperties:false,
   properties:{
-    printed_item_count:{type:'string'},printed_piece_count:{type:'string'},
-    table_structure:{type:'string',enum:['unit_and_total','single_amount','unknown']},
-    items_complete:{type:'boolean'},
-    items:{type:'array',items:{type:'object',additionalProperties:false,properties:{
-      name_en:{type:'string'},name_ar:{type:'string'},quantity:{type:'string'},unit_price:{type:'string'},line_total:{type:'string'}
-    },required:['name_en','name_ar','quantity','unit_price','line_total']}},
-    confidence:{type:'number'}
+    store:{anyOf:[{type:'string'},{type:'null'}]},
+    store_candidates:{type:'array',items:{type:'string'}},
+    date_raw:{anyOf:[{type:'string'},{type:'null'}]},
+    printed_item_count:{anyOf:[{type:'integer'},{type:'null'}]},
+    printed_piece_count:{anyOf:[{type:'integer'},{type:'null'}]},
+    vat_rate_percent:{anyOf:[{type:'number'},{type:'null'}]},
+    subtotal:{anyOf:[{type:'number'},{type:'null'}]},
+    tax:{anyOf:[{type:'number'},{type:'null'}]},
+    total:{anyOf:[{type:'number'},{type:'null'}]},
+    items:{type:'array',items:{
+      type:'object',additionalProperties:false,
+      properties:{
+        name_en:{type:'string'},name_ar:{type:'string'},quantity:{type:'number'},
+        unit_price:{anyOf:[{type:'number'},{type:'null'}]},line_total:{anyOf:[{type:'number'},{type:'null'}]}
+      },
+      required:['name_en','name_ar','quantity','unit_price','line_total']
+    }}
   },
-  required:['printed_item_count','printed_piece_count','table_structure','items_complete','items','confidence']
+  required:['store','store_candidates','date_raw','printed_item_count','printed_piece_count','vat_rate_percent','subtotal','tax','total','items']
 };
 
-const GEMMA_SYSTEM = `You are a forensic receipt/document OCR engine for UAE expense records. Extract only text and numbers that are visibly present. Do not invent translations, merchant names, items, taxes, or dates. The document may be Arabic, English, bilingual, photographed, tilted, thermal, POS, digital, pharmacy, laundry, restaurant, supermarket, service invoice, or another layout.`;
+const STRUCT_JSON_PROMPT = `You are a forensic receipt parser. The input is OCR text from multiple overlapping views of ONE receipt. Duplicate lines are expected.
+Extract only facts visibly supported by the OCR. Do not translate or invent.
 
-const GEMMA_RECEIPT_PROMPT = `Read the COMPLETE receipt from top to bottom and fill the JSON schema.
+Critical rules:
+- store = the customer-facing merchant/outlet/trade name, never an item description, customer name, employee, management company, payment method, invoice number, or address.
+- If no defensible store name is visible, return null. It is better to leave store null than to use an item name.
+- date_raw = invoice/order/transaction date exactly as printed; never use delivery/due/print time and never swap day/month.
+- items = one object per DISTINCT purchasable/service row. Deduplicate overlap copies.
+- Preserve English and Arabic item text separately. Leave a language as empty string if absent.
+- If a row has one money column, that number is line_total; unit_price may be null. Quantity stays independent.
+- printed_item_count is number of distinct rows only when explicitly printed. T.Pcs/Total Pieces/Total Qty belongs in printed_piece_count.
+- subtotal can be G.Amt, VATable Sales, Excl.VAT, Taxable Sales, Subtotal, Net W/Out Tax.
+- tax is the tax/VAT AMOUNT, not the percentage.
+- total is the final payable/gross/net/grand total, not balance remaining if a final total exists.
+- Do not silently change a digit to make arithmetic work. Return the digits actually supported by OCR.`;
 
-Merchant:
-- merchant_name_en is the customer-facing outlet/trade/store that issued the receipt, not a parent, facilities-management, property-management, mall, building, or municipality name.
-- merchant_candidates contains other prominent business/legal names visible near the header.
 
-Date:
-- date_raw is the transaction/invoice/order date exactly as printed. Never swap day and month. Ignore delivery/due/print dates unless no transaction date exists.
+const STRUCT_PROMPT = `You receive OCR TEXT extracted from 3 overlapping segments of ONE UAE receipt/tax invoice.
+The OCR text can contain duplicated lines because the segments overlap.
 
-Items:
-- Extract EVERY distinct purchasable product/service row.
-- Preserve English and Arabic names independently when both are printed; never translate missing text.
-- Keep quantity and money from the SAME visual row.
-- If the table has Qty plus ONE AED/Amount column, that printed money is line_total; leave unit_price empty.
-- If both unit price and line total are printed, copy both.
-- T.Pcs / Total Pieces / Total Qty is printed_piece_count, not printed_item_count.
-- printed_item_count is only an explicit count of distinct rows such as Total item / # of Items.
-- Do not turn headings, totals, VAT, payment lines, customer/order numbers, dates, balances, or terms into items.
+Return ONLY these plain protocol lines. No JSON. No markdown. No explanation.
 
-Totals:
-- subtotal is the amount before VAT when explicitly labeled (Subtotal, Excl.VAT, VATable Sales, Taxable Sales, G.Amt, Net W/Out Tax, etc.).
-- tax is the monetary VAT/tax amount, not the rate.
-- total is the final payable/gross/net/grand total.
-- A receipt may print item row prices VAT-inclusive, so item row sum may equal total instead of subtotal.
-
-Layout:
-- item_region is the smallest normalized rectangle containing the item table/list. Coordinates are 0..1 relative to the complete image. Set detected=false only if no item table/list is visible.
-- items_complete=true only when you are confident every visible item row was captured.
-
-Use empty strings for unreadable scalar values instead of guessing.`;
-
-const GEMMA_TABLE_PROMPT = `This image is a HIGH-RESOLUTION crop of the item/service table from a receipt. Extract every complete purchasable row into the JSON schema.
-- Preserve English and Arabic text separately; never translate.
-- Quantity and money must come from the same row.
-- With one AED/Amount column, put that amount in line_total and leave unit_price empty.
-- T.Pcs / Total Pieces / Total Qty is printed_piece_count, not printed_item_count.
-- Exclude totals/VAT/payment/customer/order/date/terms rows.
-- items_complete=true only if all visible purchase rows were captured.`;
-
-const LEGACY_PROMPT = `You are a literal OCR transcriber specialized in many different UAE receipt and tax-invoice layouts.
-
-The composite contains three FULL-WIDTH horizontal panels from the SAME receipt:
-- TOP: merchant/header and invoice date.
-- MIDDLE: item/service table.
-- BOTTOM: totals/VAT/payment summary.
-
-Do NOT return JSON. Return ONLY plain text protocol lines:
-
-STORE|best customer-facing merchant/trade/store name
-STORE_CANDIDATE|major English business/organization name from the header
-STORE_CANDIDATE|another major English business/organization name if present
+HEADER_LINE|prominent English business/header line
+HEADER_LINE|another prominent English business/header line
+STORE|customer-facing shop/outlet/trade name in English
 DATE_RAW|invoice/transaction date exactly as printed
-COUNT|number of DISTINCT ITEM ROWS only when explicitly printed as Total item / No. of items
-VAT_RATE|number
+COUNT|number of DISTINCT purchasable item rows, only if explicitly printed
+PIECES|total pieces / T.Pcs / total quantity, only if explicitly printed
+VAT_RATE|VAT percentage
 SUBTOTAL|amount before VAT/tax
 VAT|tax amount
-TOTAL|final payable/gross total
-ITEM|English item text|Arabic item text|quantity|unit price|line total
-ITEM|English item text|Arabic item text|quantity|unit price|line total
-
-MERCHANT RULES:
-1. STORE means the CUSTOMER-FACING OUTLET/TRADE NAME that actually issued the receipt, not necessarily the first legal company name.
-2. Emit every major English organization/trade name in the header as STORE_CANDIDATE in TOP-TO-BOTTOM visual order.
-3. If a parent/owner/management/holding company appears above a pharmacy, laundry, restaurant, shop, branch, clinic, market, salon, etc., choose the customer-facing outlet as STORE.
-   Generic example: "ABC Facilities Management L.L.C." above "CITY PHARMACY - BRANCH" => STORE is CITY PHARMACY - BRANCH.
-4. Exclude addresses, mall/location text, municipality/building names, phone, TRN, TAX INVOICE, invoice number, customer name and payment system names from STORE.
-
-DATE RULES:
-5. DATE_RAW must be copied EXACTLY in the same order printed. Never swap day and month.
-   Example: 02-08-2026 => DATE_RAW|02-08-2026.
-   A text date such as 21 Jul 2026 => DATE_RAW|21 Jul 2026.
-6. Use the transaction/invoice date, not Delivery Date, due date or Print Time.
-
-ITEM RULES:
-7. Emit ONE ITEM line for every distinct purchasable row.
-8. Copy English and Arabic item names literally. Never translate or spell-correct.
-9. quantity, unit_price and line_total must belong to the SAME row.
-10. COUNT is ONLY a printed count of distinct item rows. Do NOT use T.Pcs, Total Pieces, Total Qty or total quantity as COUNT.
-11. Never include VAT, totals, balance, dates, TRN, invoice/order/customer numbers or table headings as ITEM rows.
-
-TOTAL RULES:
-12. SUBTOTAL is the amount before VAT/tax. Labels vary: Excl.VAT, Subtotal, Net W/Out Tax, G.Amt or similar.
-13. VAT is the tax amount, not the percentage.
-14. TOTAL is the final amount payable. Labels vary: Grand Total, Total, Gross, Amount Due, Adv when it clearly equals subtotal + tax, or similar.
-15. Read decimal points character-by-character. 12.00, 0.60 and 12.60 are different.
-16. If a field is unreadable, leave it empty rather than guessing.
-17. No markdown, no commentary and no code fences. Only protocol lines.`;
-
-const LEGACY_REPAIR_PROMPT = `You are a second-pass OCR verifier for the SAME UAE receipt image.
-The first pass was incomplete or internally inconsistent.
-
-Read the receipt again independently. Focus on the actual item/service table and the labeled financial summary.
-Do NOT copy examples, instructions, placeholders or field descriptions into values.
-
-Return ONLY:
-STORE|actual customer-facing merchant name visibly printed on the receipt
-DATE_RAW|invoice/transaction date exactly as printed
-COUNT|distinct item-row count only when explicitly printed as Total item / No. of Items / # of Items
-PIECES|total pieces / T.Pcs / Total Qty only when explicitly printed
-VAT_RATE|percentage
-SUBTOTAL|amount before tax
-VAT|tax amount
-TOTAL|final payable/gross/net amount
+TOTAL|final/gross/payable amount
 ITEM|English item text|Arabic item text|quantity|unit price|line total
 
 Rules:
-1. STORE must be ACTUAL text visible on the receipt. NEVER output phrases such as "best customer-facing merchant/trade/store name", "store name", "merchant name", or any instruction text.
-2. Read every DISTINCT purchase row. Do not output totals, customer details, dates, payment methods, terms or balances as items.
-3. Common subtotal labels include Excl.VAT, VATable Sales, Taxable Sales, Subtotal, Net W/Out Tax, G.Amt and Net Amount Before Tax.
-4. VAT labels include VAT Amount, VAT 5%, Tax.
-5. Common final-total labels include Grand Total, Gross, Net Amount, Total, Amount Due and final paid amount.
-6. T.Pcs / Total Pieces / Total Qty is PIECES, not COUNT.
-7. Keep dates in the printed order. Never swap day and month.
-8. Copy item names literally; do not translate or spell-correct.
-9. If only one money value is printed for a row, use it as line total.
-10. Read decimals exactly. If unclear, leave blank instead of guessing.
-11. No JSON, markdown, explanation or code fences.`;
-const VERSION = '4.6.0';
-
-const PROMPT = `Read the COMPLETE receipt/tax invoice image literally. The receipt may be thermal paper, POS, pharmacy, laundry, restaurant, screenshot, digital job order, Arabic/English, narrow, wide, long, or short.
-
-Return ONLY protocol lines:
-STORE|actual customer-facing merchant/outlet/trade name
-STORE_CANDIDATE|another prominent business/legal name if visible
-DATE_RAW|invoice/transaction/order date exactly as printed
-COUNT|explicit number of DISTINCT purchase/service rows only
-PIECES|explicit T.Pcs / Total Pieces / Total Qty only
-VAT_RATE|explicit tax percentage
-SUBTOTAL|pre-tax / VATable / Excl.VAT amount
-VAT|tax amount
-TOTAL|final payable / gross / net amount
-ITEM|English item text|Arabic item text|quantity|unit price|line total
-
-Rules:
-1. Inspect the entire image from top to bottom. Do not assume fixed locations.
-2. Read EVERY distinct purchase/service row. Never stop after the first row.
-3. Keep quantity, unit price and line total from the SAME row.
-4. If the receipt has ONE amount/AED column, that value is the LINE TOTAL. Leave unit price blank if it is not printed.
-5. T.Pcs / Total Pieces / Total Qty is PIECES, not COUNT.
-6. Do not include headings, invoice/order/customer numbers, payment methods, balances, dates, totals, VAT, or terms as ITEM rows.
-7. STORE must be actual visible text. Prefer the customer-facing outlet over a parent/management company.
-8. Preserve DATE_RAW exactly. Never swap day and month.
-9. Copy item names literally. Preserve both English and Arabic when both are printed. Never invent a translation.
-10. Common pre-tax labels: VATable Sales, Taxable Sales, Excl.VAT, G.Amt, Subtotal, Net W/Out Tax.
-11. Common tax labels: VAT Amount, VAT 5%, Tax.
-12. Common final labels: Net Amount, Gross, Grand Total, Total, Amount Due, Adv when it is clearly the final paid amount.
-13. Decimal accuracy is critical.
-14. If uncertain, leave a field blank rather than guessing.
-15. No JSON, markdown, commentary, examples or code fences.`;
-
-const REPAIR_PROMPT = `Re-read the COMPLETE receipt image independently because the previous extraction did not reconcile.
-
-Return ONLY protocol lines:
-STORE|actual customer-facing merchant/outlet
-DATE_RAW|printed transaction/invoice/order date
-COUNT|explicit distinct item-row count
-PIECES|explicit total pieces/quantity
-VAT_RATE|explicit percentage
-SUBTOTAL|pre-tax/VATable amount
-VAT|tax amount
-TOTAL|final payable amount
-ITEM|English text|Arabic text|quantity|unit price|line total
-
-Prioritize:
-- finding ALL item/service rows;
-- distinguishing row count from total pieces;
-- treating a single amount column as line total;
-- preserving exact date order;
-- reconciling item rows with printed financial totals.
-
-Never guess. No JSON, markdown, commentary or examples.`;
-
-const ALT_LAYOUT_PROMPT = `You are a literal OCR transcriber for a UAE receipt/tax invoice of ANY layout.
-
-The supplied image is an ALTERNATE MAGNIFIED VIEW of one receipt:
-- LEFT COLUMN: the complete receipt for context.
-- RIGHT COLUMN: four overlapping enlarged sections, in top-to-bottom order.
-The enlarged sections are coverage only. DO NOT assume merchant, date, items or totals are at fixed positions.
-
-Return ONLY plain protocol lines:
-
-STORE|actual customer-facing merchant/trade/store name visibly printed on the receipt
-STORE_CANDIDATE|another major English business/legal/outlet name visibly printed
-DATE_RAW|invoice/transaction date exactly as printed
-COUNT|distinct purchasable item-row count only if explicitly printed
-PIECES|T.Pcs / Total Pieces / Total Qty / summed quantity only if explicitly printed
-VAT_RATE|percentage number
-SUBTOTAL|amount before VAT/tax
-VAT|tax amount
-TOTAL|final payable/gross/net total
-ITEM|English item text|Arabic item text|quantity|unit price|line total
-
-RULES:
-1. Read the ACTUAL receipt, not these instructions. Never output example/placeholder phrases.
-2. STORE is the outlet the customer used. If a parent/management company and a pharmacy/laundry/shop/restaurant are both visible, choose the outlet.
-3. Preserve DATE_RAW exactly in printed order. Never swap day/month.
-4. Read EVERY DISTINCT purchase/service row from the whole receipt.
-5. T.Pcs / Total Qty / Total Pieces is PIECES, not COUNT.
-6. Common pre-tax labels include VATable Sales, Taxable Sales, Excl.VAT, Subtotal, G.Amt, Net W/Out Tax.
-7. Common tax labels include VAT Amount, VAT 5%, Tax.
-8. Common final labels include Net Amount, Gross, Grand Total, Total, Amount Due, Adv when it is the final paid amount.
-9. Copy item names literally. Do not translate or spell-correct.
-10. Exclude customer/order/invoice numbers, payment methods, balances, dates, VAT/totals and terms from ITEM rows.
-11. If a number/text is unclear, leave it blank instead of guessing.
-12. No JSON, markdown, commentary or code fences.`;
-
-const SEGMENT_PROMPT = `You are reading ONE enlarged vertical segment of a UAE receipt/tax invoice.
-Another overlapping segment of the SAME receipt is read separately and both results will be merged by software.
-
-Extract ONLY text that is actually visible in this segment.
-Return plain protocol lines only:
-
-STORE|actual customer-facing merchant/outlet name, only if visibly present
-STORE_CANDIDATE|another prominent business/legal name, only if visibly present
-DATE_RAW|invoice/order/transaction date exactly as printed, only if visibly present
-COUNT|distinct purchasable item-row count, only if explicitly printed as item count
-PIECES|T.Pcs / Total Pieces / Total Qty, only if explicitly printed
-VAT_RATE|percentage number
-SUBTOTAL|pre-tax amount
-VAT|tax amount
-TOTAL|final payable/gross/net amount
-ITEM|English item text|Arabic item text|quantity|unit price|line total
-
-Rules:
-1. This is not a fixed template. Find table rows wherever they appear.
-2. Read EVERY complete purchase/service row visible in this segment.
-3. Do not invent rows that are cut off. If a row crosses the segment edge and is incomplete, omit it; the overlapping segment will capture it.
-4. Preserve item names literally; never translate or spell-correct.
-5. Quantity, unit price and line total must come from the SAME row.
-6. T.Pcs / Total Qty / Total Pieces is PIECES, not COUNT.
-7. Exclude table headings, customer name, invoice/order numbers, payment method, balance, terms, VAT/totals and dates from ITEM.
-8. Common pre-tax labels: VATable Sales, Taxable Sales, Excl.VAT, G.Amt, Subtotal, Net W/Out Tax.
-9. Common tax labels: VAT Amount, VAT 5%, Tax.
-10. Common final labels: Net Amount, Gross, Grand Total, Total, Amount Due, Adv when it is clearly the final paid amount.
-11. Preserve printed date order exactly. Never swap day/month.
-12. If merchant name is not visible in this segment, do not guess one.
-13. No JSON, markdown, explanation or code fences.`;
+1. STORE is the business the customer visited. If both a parent/management/legal entity and a pharmacy/laundry/shop/restaurant name appear, choose the pharmacy/laundry/shop/restaurant.
+2. Example: "ZAS Medical Facilities Management" + "ALAIN PHARMACY - SOLE PROPRIETORSHIP L.L.C. - BRANCH" => STORE is ALAIN PHARMACY - SOLE PROPRIETORSHIP L.L.C. - BRANCH.
+3. Keep prominent business candidates as HEADER_LINE too.
+4. Remove markdown markers such as ** from names.
+5. DATE_RAW must preserve the printed order. 02-08-2026 means 2 August 2026 and must stay 02-08-2026. Use invoice/transaction date, not delivery/due/print time.
+6. Emit exactly one ITEM line per DISTINCT purchase row. Overlap duplicates must appear once only.
+7. T.Pcs / Total Pieces / total quantity is PIECES, not COUNT.
+8. Copy item names literally. Do not translate or spell-correct. If only one language exists, leave the other language field empty.
+9. If a row has one monetary value, use it as line total and leave unit price empty.
+10. Exclude totals, VAT, balance, advance, payment method, customer, bill/order numbers, booked-by, terms and conditions from ITEM.
+11. SUBTOTAL may be labeled Excl.VAT, Net W/Out Tax, G.Amt, Net Amount, Subtotal, etc.
+12. VAT is the tax AMOUNT. VAT_RATE is the percentage.
+13. TOTAL may be Grand Total, Gross, Total, Amount Due, or the final paid amount. Bal.Amt/Outstanding is a remaining balance and should not replace a clearly printed gross/final total.
+14. If a value is unclear, leave it blank rather than guessing.`;
 
 function headers(extra={}) {
   return {'content-type':'application/json; charset=utf-8','cache-control':'no-store',...extra};
@@ -310,12 +86,14 @@ function num(v){
     .replace(/[۰-۹]/g,d=>'۰۱۲۳۴۵۶۷۸۹'.indexOf(d))
     .replace(/٫/g,'.').replace(/٬/g,'')
     .replace(/[^0-9.\-]/g,'');
-  const n=Number(s); return Number.isFinite(n)?n:null;
+  const n=Number(s);return Number.isFinite(n)?n:null;
 }
 function r2(v){const n=num(v);return n==null?null:Math.round((n+Number.EPSILON)*100)/100}
-function clamp(v){const n=Number(v);return Number.isFinite(n)?Math.max(0,Math.min(1,n)):0}
+function stripMarks(v){
+  return txt(v).replace(/[*_#`~]+/g,' ').replace(/[“”"'<>]+/g,' ').replace(/\s+/g,' ').trim();
+}
 function validDate(v){
-  let s=txt(v).trim();
+  let s=txt(v).trim().replace(/[,]+/g,' ');
   if(!s)return null;
   let y,m,d,match;
   if((match=s.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/))){
@@ -325,7 +103,11 @@ function validDate(v){
   }else{
     const months={jan:1,january:1,feb:2,february:2,mar:3,march:3,apr:4,april:4,may:5,jun:6,june:6,jul:7,july:7,aug:8,august:8,sep:9,september:9,oct:10,october:10,nov:11,november:11,dec:12,december:12};
     match=s.match(/^(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})$/);
-    if(match){d=+match[1];m=months[match[2].toLowerCase()];y=+match[3];}
+    if(match){d=+match[1];m=months[match[2].toLowerCase()];y=+match[3]}
+    if(!match){
+      match=s.match(/^([A-Za-z]+)\s+(\d{1,2})\s+(\d{4})$/);
+      if(match){m=months[match[1].toLowerCase()];d=+match[2];y=+match[3]}
+    }
   }
   if(!y||!m||!d)return null;
   const z=new Date(Date.UTC(y,m-1,d));
@@ -333,70 +115,51 @@ function validDate(v){
   return `${String(y).padStart(4,'0')}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
 }
 function merchant(v){
-  let s=txt(v)
-    .replace(/[*_#`~]+/g,' ')
+  let s=stripMarks(v)
     .replace(/[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]+/g,' ')
     .replace(/\s+/g,' ').trim();
-  s=s.replace(/\b(?:TAX\s*INVOICE|INVOICE|RECEIPT|JOB\s*ORDER|TRN|MOB(?:ILE)?|TEL(?:EPHONE)?)\b.*$/i,'').trim();
-  if(/^(?:best\s+)?customer[-\s]*facing\s+(?:merchant|outlet|trade|store)|^(?:store|merchant|business)\s*name$|actual\s+(?:store|merchant)\s+name|name\s+visibly\s+printed/i.test(s))return null;
-  if(/\b(?:best customer-facing merchant\/trade\/store name|customer-facing merchant\/trade\/store name)\b/i.test(s))return null;
+  s=s.replace(/^(?:STORE|MERCHANT|BUSINESS|HEADER_LINE)\s*(?:\||:|=|-)?\s*/i,'').trim();
+  s=s.replace(/\b(?:TAX\s*INVOICE|INVOICE|RECEIPT|JOB\s*ORDER|TRN|MOB(?:ILE)?|TEL(?:EPHONE)?|BILL\s*NO)\b.*$/i,'').trim();
   return /[A-Za-z]{3}/.test(s)?s:null;
 }
-
-function merchantKey(v){
-  return txt(v).toLowerCase().replace(/[^a-z0-9]+/g,' ').replace(/\s+/g,' ').trim();
-}
-function merchantCandidateScore(name,index=0,preferred=false){
-  const s=txt(name),k=merchantKey(s); if(!k||!/^[\s\S]*[a-z]{2}/i.test(k))return -999;
-  let score=10 + Math.min(12,index*3);
-  if(preferred)score+=18;
-
-  // Strong customer-facing business signals.
-  if(/\b(pharmacy|laundry|laundromat|dry\s*clean|restaurant|cafe|coffee|bakery|supermarket|hypermarket|grocery|market|salon|barber|clinic|hospital|optical|boutique|store|shop|mart|garage|workshop|tailor|cafeteria|roastery)\b/i.test(s))score+=82;
-  else if(/\b(trading|services|medical|dental|electronics|furniture|fashion|jewellery|jewelry|flowers|florist|stationery|typing|printing|car\s*wash|rent\s*a\s*car)\b/i.test(s))score+=28;
-
-  if(/\bbranch\b/i.test(s))score+=9;
-  if(/\b(sole\s+proprietorship|establishment)\b/i.test(s))score+=5;
-
-  // Strong signals that a line is a parent/legal/administrative entity rather than the outlet.
-  if(/\bfacilit(?:y|ies)\s+management\b/i.test(s))score-=105;
-  if(/\b(property|properties|real\s*estate)\s+management\b/i.test(s))score-=48;
-  if(/\b(holding|holdings|investment|investments)\b/i.test(s))score-=42;
-  if(/\bmanagement\b/i.test(s))score-=24;
-  if(/\b(head\s*office|corporate|parent\s*company)\b/i.test(s))score-=28;
-  if(/\b(municipality|building|street|road|mall)\b/i.test(s))score-=35;
-  if(/\b(tax\s*invoice|invoice|receipt|trn|customer|cashier|bill\s*no|order\s*no)\b/i.test(s))score-=80;
-
-  // Legal suffixes are neutral, not evidence of being the storefront.
-  if(s.length>=5&&s.length<=100)score+=5;
+function merchantKey(v){return stripMarks(v).toLowerCase().replace(/[^a-z0-9]+/g,' ').replace(/\s+/g,' ').trim()}
+function merchantScore(v,index=0){
+  const s=merchant(v);if(!s)return -999;
+  let score=0;
+  if(/\b(pharmacy|laundry|laundromat|dry\s*clean|restaurant|cafe|coffee|bakery|supermarket|hypermarket|grocery|market|salon|barber|clinic|hospital|optical|boutique|store|shop|mart|garage|workshop|tailor|cafeteria|roastery|medical\s+(?:center|centre))\b/i.test(s))score+=90;
+  if(/\b(branch|sole\s+proprietorship)\b/i.test(s))score+=12;
+  if(/\b(facilit(?:y|ies)\s+management|property\s+management|municipality|payment|payments|bank|visa|mastercard)\b/i.test(s))score-=125;
+  if(/\b(tax\s*invoice|invoice|receipt|customer|cashier|address|street|mall|mobile|telephone|trn)\b/i.test(s))score-=80;
+  if(s.length>=5&&s.length<=80)score+=12;
+  score+=Math.max(0,8-index);
   return score;
 }
-function chooseMerchant(preferred,candidates){
-  const all=[];
-  const push=(v,pref=false)=>{
-    const s=merchant(v);if(!s)return;
-    const key=merchantKey(s);
-    if(all.some(x=>x.key===key)){if(pref)all.find(x=>x.key===key).preferred=true;return}
-    all.push({name:s,key,preferred:pref,index:all.length});
-  };
-  push(preferred,true);
-  for(const c of candidates||[])push(c,false);
-  if(!all.length)return null;
-  for(const x of all)x.score=merchantCandidateScore(x.name,x.index,x.preferred);
-  all.sort((a,b)=>b.score-a.score);
-  return all[0].name;
+function chooseMerchant(preferred,candidates=[],items=[]){
+  // Header OCR evidence is intentionally considered before the structurer's preferred value.
+  const all=[...candidates,preferred].map(merchant).filter(Boolean);
+  const unique=[];const seen=new Set();
+  for(const s of all){const k=merchantKey(s);if(!k||seen.has(k))continue;seen.add(k);unique.push(s)}
+  const itemNames=(items||[]).flatMap(x=>[x?.name,x?.name_en,x?.name_ar]).filter(Boolean);
+  let best=null,bestScore=-999;
+  unique.forEach((s,i)=>{
+    const itemLike=itemNames.some(n=>tokenSimilarity(s,n)>=.58||merchantKey(s)===merchantKey(n));
+    if(itemLike)return;
+    let sc=merchantScore(s,i);
+    // A real store candidate should normally carry a business/outlet signal or be a very prominent header.
+    const business=/\b(pharmacy|laundry|laundromat|cleaners?|restaurant|cafe|coffee|bakery|supermarket|hypermarket|grocery|market|salon|barber|clinic|hospital|optical|boutique|store|shop|mart|garage|workshop|tailor|cafeteria|roastery|medical\s+(?:center|centre))\b/i.test(s);
+    if(business)sc+=35;
+    if(i<4)sc+=10;
+    if(sc>bestScore){best=s;bestScore=sc}
+  });
+  // Never fill a weak header as a merchant. Blank is safer than an item leaking into STORE.
+  return bestScore>=34?best:null;
 }
-
 function summaryName(s){
-  return /^(?:vat|tax|subtotal|sub\s*total|vata?ble\s*sales|taxable\s*sales|net\s*w\/?out\s*tax|net\s*amount|gross|g\.?\s*amt|excl\.?\s*vat|grand\s*total|total|balance|bal\.?\s*amt|outstanding|amount\s*due|total\s*item|t\.?\s*pcs|cash|card|visa|online|change|trn|invoice|job\s*order|ضريبة|الإجمالي|الاجمالي|المجموع)/i.test(txt(s));
+  return /^(?:vat|tax|subtotal|sub\s*total|excl\.?\s*vat|grand\s*total|gross|g\.?\s*amt|total|balance|bal\.?\s*amt|outstanding|amount\s*due|total\s*item|t\.?\s*pcs|cash|card|change|trn|invoice|job\s*order|ضريبة|الإجمالي|الاجمالي|المجموع)/i.test(stripMarks(s));
 }
 function responseText(result){
   if(typeof result==='string')return result;
-  const candidates=[
-    result?.response, result?.answer, result?.result,
-    result?.choices?.[0]?.message?.content,
-    result?.choices?.[0]?.text
-  ];
+  const candidates=[result?.response,result?.answer,result?.result,result?.choices?.[0]?.message?.content,result?.choices?.[0]?.text,result?.data];
   for(const c of candidates){
     if(typeof c==='string'&&c.trim())return c;
     if(Array.isArray(c)){
@@ -407,677 +170,412 @@ function responseText(result){
   return '';
 }
 function responseObject(result){
-  const candidates=[result?.response,result?.result,result?.answer,result?.choices?.[0]?.message?.parsed,result?.choices?.[0]?.message?.content,result?.choices?.[0]?.text];
+  const candidates=[result?.response,result?.result,result?.data,result?.choices?.[0]?.message?.parsed,result?.choices?.[0]?.message?.content,result?.choices?.[0]?.text,result];
   for(const c of candidates){
-    if(c&&typeof c==='object'&&!Array.isArray(c))return c;
+    if(c&&typeof c==='object'&&!Array.isArray(c)){
+      if(c.response&&typeof c.response==='object')return c.response;
+      if(c.store!==undefined||c.items!==undefined)return c;
+    }
     if(typeof c==='string'&&c.trim()){
       let s=c.trim().replace(/^```(?:json)?\s*/i,'').replace(/```$/,'').trim();
-      try{return JSON.parse(s)}catch(e){}
+      try{const o=JSON.parse(s);if(o&&typeof o==='object')return o.response&&typeof o.response==='object'?o.response:o}catch{}
+      const a=s.indexOf('{'),b=s.lastIndexOf('}');
+      if(a>=0&&b>a){try{const o=JSON.parse(s.slice(a,b+1));if(o&&typeof o==='object')return o.response&&typeof o.response==='object'?o.response:o}catch{}}
     }
   }
-  return null
+  return null;
 }
-function safeRegion(v){
-  if(!v||v.detected!==true)return null;
-  const left=clamp(v.left),top=clamp(v.top),right=clamp(v.right),bottom=clamp(v.bottom);
-  if(right-left<.08||bottom-top<.05)return null;
-  return {detected:true,left,top,right,bottom}
+function dataUriToBlob(uri,index=0){
+  if(typeof uri!=='string'||!uri.startsWith('data:image/'))throw new Error(`Invalid image segment ${index+1}`);
+  const m=uri.match(/^data:([^;,]+);base64,(.+)$/s);if(!m)throw new Error(`Invalid image data ${index+1}`);
+  const bytes=Uint8Array.from(atob(m[2]),c=>c.charCodeAt(0));
+  if(bytes.byteLength>5_000_000)throw new Error(`Image segment ${index+1} is too large`);
+  return {name:`receipt-${index+1}.${m[1].includes('png')?'png':'jpg'}`,blob:new Blob([bytes],{type:m[1]})};
 }
-function structuredReceiptToParsed(o){
-  o=o&&typeof o==='object'?o:{};
-  const out={
-    store:merchant(o.merchant_name_en),
-    storeCandidates:Array.isArray(o.merchant_candidates)?o.merchant_candidates.map(merchant).filter(Boolean):[],
-    date:validDate(o.date_raw),count:null,pieces:null,rate:null,subtotal:null,tax:null,total:null,items:[],warnings:[]
-  };
-  const count=num(o.printed_item_count),pieces=num(o.printed_piece_count),rate=num(o.vat_rate_percent);
-  out.count=count!=null&&count>0?Math.round(count):null;
-  out.pieces=pieces!=null&&pieces>0?Math.round(pieces):null;
-  out.rate=rate!=null&&rate>=0?rate:null;
-  out.subtotal=r2(o.subtotal);out.tax=r2(o.tax);out.total=r2(o.total);
-  const structure=txt(o.table_structure)||'unknown';
-  for(const row of Array.isArray(o.items)?o.items:[]){
-    const en=txt(row?.name_en),ar=txt(row?.name_ar),name=en&&ar?`${en} — ${ar}`:(en||ar);
-    if(!name||summaryName(name))continue;
-    let qty=num(row?.quantity);if(!Number.isFinite(qty)||qty<=0||qty>999)qty=1;
-    let unit=r2(row?.unit_price),line=r2(row?.line_total);
-    if(structure==='single_amount'&&line==null&&unit!=null){line=unit;unit=null}
-    if(qty>1&&line!=null&&unit!=null&&Math.abs(unit-line)<=.01&&structure==='single_amount')unit=null;
-    if(line==null&&unit!=null)line=r2(unit*qty);
-    if(unit==null&&line!=null&&qty)unit=r2(line/qty);
-    out.items.push({name,name_en:en||null,name_ar:ar||null,quantity:qty,unit_price:unit,line_total:line});
-  }
-  out.store=chooseMerchant(out.store,out.storeCandidates);
-  const parsed={out,lines:[],raw:JSON.stringify(o)};
-  return parsed
-}
-function receiptToOut(r){
-  const out={store:merchant(r?.merchant_name_en),storeCandidates:[],date:validDate(r?.date),count:null,pieces:null,rate:null,subtotal:r2(r?.subtotal),tax:r2(r?.tax),total:r2(r?.total),items:[],warnings:Array.isArray(r?.warnings)?[...r.warnings]:[]};
-  const c=num(r?.printed_item_count),p=num(r?.printed_piece_count),rate=num(r?.vat_rate_percent);
-  out.count=c!=null&&c>0?Math.round(c):null;out.pieces=p!=null&&p>0?Math.round(p):null;out.rate=rate!=null&&rate>=0?rate:null;
-  for(const row of Array.isArray(r?.items)?r.items:[]){
-    const name=txt(row?.name),en=txt(row?.name_en),ar=txt(row?.name_ar),qty=num(row?.quantity)||1,unit=r2(row?.unit_price),line=r2(row?.line_total);
-    if(name&&!summaryName(name))out.items.push({name,name_en:en||null,name_ar:ar||null,quantity:qty,unit_price:unit,line_total:line});
-  }
-  return out
-}
-function mergeTableStructured(baseReceipt,table){
-  const out=receiptToOut(baseReceipt||{}),structure=txt(table?.table_structure)||'unknown',items=[];
-  for(const row of Array.isArray(table?.items)?table.items:[]){
-    const en=txt(row?.name_en),ar=txt(row?.name_ar),name=en&&ar?`${en} — ${ar}`:(en||ar);
-    if(!name||summaryName(name))continue;
-    let qty=num(row?.quantity);if(!Number.isFinite(qty)||qty<=0||qty>999)qty=1;
-    let unit=r2(row?.unit_price),line=r2(row?.line_total);
-    if(structure==='single_amount'&&line==null&&unit!=null){line=unit;unit=null}
-    if(qty>1&&line!=null&&unit!=null&&Math.abs(unit-line)<=.01&&structure==='single_amount')unit=null;
-    if(line==null&&unit!=null)line=r2(unit*qty);
-    if(unit==null&&line!=null)unit=r2(line/qty);
-    items.push({name,name_en:en||null,name_ar:ar||null,quantity:qty,unit_price:unit,line_total:line});
-  }
-  if(items.length)out.items=items;
-  const c=num(table?.printed_item_count),p=num(table?.printed_piece_count);
-  if(c!=null&&c>0)out.count=Math.round(c);if(p!=null&&p>0)out.pieces=Math.round(p);
-  return {out,lines:[],raw:JSON.stringify(table||{})}
-}
-
-function cleanLine(s){
-  return String(s||'').replace(/^[-*•\s]+/,'').replace(/^`+|`+$/g,'').trim();
-}
-function parseProtocol(rawText){
-  const raw=txt(rawText).replace(/```(?:text|txt)?/gi,'').replace(/```/g,'');
-  const out={store:null,storeCandidates:[],date:null,count:null,pieces:null,rate:null,subtotal:null,tax:null,total:null,items:[],warnings:[]};
-  const lines=raw.split(/\n+/).map(cleanLine).filter(Boolean);
-
-  for(const line of lines){
-    const p=line.split('|').map(x=>x.trim()), key=(p[0]||'').toUpperCase().replace(/\s+/g,'_');
-    if(key==='STORE'){out.store=merchant(p.slice(1).join('|'));continue}
-    if(key==='STORE_CANDIDATE'){const c=merchant(p.slice(1).join('|'));if(c)out.storeCandidates.push(c);continue}
-    if(key==='DATE_RAW'||key==='DATE'){out.date=validDate(p[1]);continue}
-    if(key==='COUNT'){const n=num(p[1]);out.count=n!=null&&n>0?Math.round(n):null;continue}
-    if(key==='PIECES'){const n=num(p[1]);out.pieces=n!=null&&n>0?Math.round(n):null;continue}
-    if(key==='VAT_RATE'){const n=num(p[1]);out.rate=n!=null&&n>=0?n:null;continue}
-    if(key==='SUBTOTAL'){out.subtotal=r2(p[1]);continue}
-    if(key==='VAT'){out.tax=r2(p[1]);continue}
-    if(key==='TOTAL'){out.total=r2(p[1]);continue}
-    if(key==='ITEM'){
-      const en=txt(p[1]), ar=txt(p[2]);
-      let qty=num(p[3]), unit=r2(p[4]), total=r2(p[5]);
-      if(!Number.isFinite(qty)||qty<=0||qty>999)qty=1;
-      const name=en&&ar?`${en} — ${ar}`:(en||ar);
-      if(!name||summaryName(name))continue;
-      if(total==null&&unit!=null)total=r2(unit*qty);
-      if(unit==null&&total!=null&&qty)unit=r2(total/qty);
-      out.items.push({name,name_en:en||null,name_ar:ar||null,quantity:qty,unit_price:unit,line_total:total});
+function normalizeLine(v){return stripMarks(v).replace(/\s+/g,' ').trim()}
+function lineKey(v){return normalizeLine(v).toLowerCase().replace(/[^a-z0-9\u0600-\u06ff.]+/g,' ').replace(/\s+/g,' ').trim()}
+function mergeTranscripts(parts){
+  const out=[],seen=new Set();
+  for(const part of parts){
+    for(const raw of txt(part).split(/\n+/)){
+      const line=normalizeLine(raw);if(!line)continue;
+      const key=lineKey(line);
+      if(key.length>2&&!seen.has(key)){seen.add(key);out.push(line)}
     }
   }
-
-  // Conservative label fallbacks if the model slightly misses the protocol delimiter.
-  if(!out.store){
-    const m=raw.match(/(?:^|\n)\s*(?:STORE|MERCHANT|BUSINESS)\s*(?:\||:|=|-)\s*([^\n]+)/im);
-    if(m)out.store=merchant(m[1]);
-  }
-  if(!out.store){
-    const biz=lines.find(x=>/(laundr[yv]|laundromat|restaurant|caf[eé]|coffee|bakery|supermarket|hypermarket|grocery|market|pharmacy|salon|barber|trading|services|automatic|clinic|hospital|optical|shop|store)/i.test(x)&&!/(near|mall|invoice|receipt|tax|trn|phone|mob)/i.test(x));
-    if(biz)out.store=merchant(biz.replace(/^(?:STORE|MERCHANT|BUSINESS)\s*(?:\||:|=|-)?\s*/i,''));
-  }
-  for(const line of lines){
-    if(/^STORE_CANDIDATE\s*\|/i.test(line))continue;
-    if(/\b(?:pharmacy|laundry|laundromat|restaurant|cafe|coffee|bakery|supermarket|hypermarket|grocery|market|salon|barber|clinic|hospital|optical|boutique|store|shop|trading|facilities management|holding|management)\b/i.test(line)
-      && !/\b(?:tax invoice|invoice|receipt|trn|telephone|mobile|customer|bill no|order no)\b/i.test(line)){
-      const c=merchant(line.replace(/^(?:STORE|MERCHANT|BUSINESS)\s*(?:\||:|=|-)?\s*/i,''));
-      if(c)out.storeCandidates.push(c);
-    }
-  }
-  if(!out.date){
-    const m=raw.match(/(?:^|\n)\s*(?:DATE_RAW|DATE|INVOICE_DATE|INVOICE DATE)\s*(?:\||:|=|-)\s*([^\n]+)/im);
-    if(m)out.date=validDate(m[1]);
-  }
-  if(out.count==null){
-    const m=raw.match(/(?:COUNT|TOTAL\s*ITEMS?)\s*(?:\||:|=|-)\s*(\d+)/i);
-    if(m)out.count=num(m[1]);
-  }
-  if(out.rate==null){
-    const m=raw.match(/(?:VAT_RATE|VAT\s*RATE|VAT)\s*(?:\||:|=|-)?\s*(\d+(?:\.\d+)?)\s*%/i);
-    if(m)out.rate=num(m[1]);
-  }
-  if(out.total==null){
-    const m=raw.match(/(?:GRAND\s*TOTAL|NET\s*AMOUNT|GROSS|AMOUNT\s*DUE|FINAL\s*TOTAL|TOTAL)\s*[:=|\-]?\s*(\d+(?:[.,]\d{1,2})?)/i);
-    if(m)out.total=r2(m[1]);
-  }
-  if(out.tax==null){
-    const m=raw.match(/\b(?:VAT\s*AMOUNT|VAT(?!_RATE)(?:\s*\d+(?:\.\d+)?\s*%)?|TAX)\s*[:=|\-]?\s*(\d+(?:[.,]\d{1,2})?)/i);
-    if(m)out.tax=r2(m[1]);
-  }
-  if(out.subtotal==null){
-    const m=raw.match(/(?:VATABLE\s*SALES|TAXABLE\s*SALES|SUBTOTAL|SUB\s*TOTAL|EXCL\.?\s*VAT|NET\s*W\/?OUT\s*TAX|NET\s*WITHOUT\s*TAX|G\.?\s*AMT)\s*[:=|\-]?\s*(\d+(?:[.,]\d{1,2})?)/i);
-    if(m)out.subtotal=r2(m[1]);
-  }
-
-
-  out.store=chooseMerchant(out.store,out.storeCandidates);
-  return {out,lines,raw};
+  return out.join('\n');
 }
-
-function segmentItemKey(v){
-  return txt(v||'').toLowerCase()
-    .replace(/[\u0600-\u06FF]/g,' ')
-    .replace(/[^a-z0-9]+/g,' ')
-    .replace(/\b(?:wash(?:ing)?|iron(?:ing)?|service|men|household|pr)\b/g,' ')
-    .replace(/\s+/g,' ').trim();
+function headerCandidatesFromTranscript(transcript){
+  const lines=txt(transcript).split(/\n+/).map(normalizeLine).filter(Boolean);
+  const result=[];
+  for(let i=0;i<Math.min(lines.length,28);i++){
+    const s=lines[i];
+    if(/\b(tax\s*invoice|invoice\s*no|receipt|trn|bill\s*no|customer|cashier|copy)\b/i.test(s)&&i>2)break;
+    if(/[A-Za-z]{3}/.test(s)&&!/\d{5,}|@|www\.|https?:|near\b|street\b|road\b|mob\b|tel\b/i.test(s))result.push(s);
+  }
+  return result;
 }
-function segmentItemTokenSimilarity(a,b){
-  const A=new Set(segmentItemKey(a).split(' ').filter(x=>x.length>1));
-  const B=new Set(segmentItemKey(b).split(' ').filter(x=>x.length>1));
-  if(!A.size||!B.size)return 0;
-  let hit=0;for(const x of A)if(B.has(x))hit++;
+function fallbackDate(transcript){
+  const lines=txt(transcript).split(/\n+/).map(normalizeLine).filter(Boolean);
+  for(const line of lines.slice(0,45)){
+    if(/\b(deliv|delivery|due|expiry|print\s*time)\b/i.test(line))continue;
+    const labeled=line.match(/\b(?:date|invoice\s*date|transaction\s*date)\b[^\dA-Za-z]{0,8}((?:\d{1,2}[-/.]\d{1,2}[-/.]\d{4})|(?:\d{1,2}\s+[A-Za-z]{3,9}\s+\d{4}))/i);
+    if(labeled){const d=validDate(labeled[1]);if(d)return d}
+  }
+  for(const line of lines.slice(0,45)){
+    if(/\b(deliv|delivery|due|expiry)\b/i.test(line))continue;
+    const m=line.match(/(\d{1,2}[-/.]\d{1,2}[-/.]\d{4}|\d{1,2}\s+[A-Za-z]{3,9}\s+\d{4})/);
+    if(m){const d=validDate(m[1]);if(d)return d}
+  }
+  return null;
+}
+function fallbackMoney(transcript,labelRe){
+  const lines=txt(transcript).split(/\n+/);
+  for(const l of lines){
+    if(!labelRe.test(l))continue;
+    const nums=[...l.matchAll(/-?\d+(?:[.,]\d{1,3})?/g)].map(m=>r2(m[0])).filter(v=>v!=null);
+    if(nums.length)return nums[nums.length-1];
+  }
+  return null;
+}
+function cleanItemName(v){return stripMarks(v).replace(/^[|:;,\-\s]+|[|:;,\-\s]+$/g,'').replace(/\s+/g,' ').trim()}
+function nameKey(v){return cleanItemName(v).toLowerCase().replace(/[^\p{L}\p{N}]+/gu,' ').replace(/\s+/g,' ').trim()}
+function tokenSimilarity(a,b){
+  const A=new Set(nameKey(a).split(' ').filter(x=>x.length>1)),B=new Set(nameKey(b).split(' ').filter(x=>x.length>1));
+  if(!A.size||!B.size)return 0;let hit=0;for(const x of A)if(B.has(x))hit++;
   return hit/Math.max(A.size,B.size);
 }
-function dedupeSegmentItems(items){
+function sameMoney(a,b,t=.04){return a!=null&&b!=null&&Math.abs(Number(a)-Number(b))<=t}
+function dedupeItems(rows){
   const out=[];
-  for(const row of items||[]){
-    const money=rowMoney(row),qty=Number(row?.quantity)||1;
-    let duplicate=-1;
+  for(const row of rows){
+    if(!row?.name||summaryName(row.name))continue;
+    let idx=-1;
     for(let i=0;i<out.length;i++){
-      const x=out[i],xm=rowMoney(x),xq=Number(x?.quantity)||1;
-      const sameQty=Math.abs(qty-xq)<.001;
-      const sameMoney=money!=null&&xm!=null&&Math.abs(money-xm)<=.06;
-      const sim=segmentItemTokenSimilarity(row?.name,x?.name);
-      const exact=txt(row?.name).toLowerCase()===txt(x?.name).toLowerCase();
-      if(sameQty&&sameMoney&&(exact||sim>=.72)){duplicate=i;break}
+      const x=out[i],qsame=Number(x.quantity||1)===Number(row.quantity||1);
+      const money=sameMoney(x.line_total,row.line_total)||sameMoney(x.unit_price,row.unit_price);
+      const sim=Math.max(tokenSimilarity(x.name,row.name),tokenSimilarity(x.name_en||'',row.name_en||''));
+      if(qsame&&money&&sim>=.50){idx=i;break}
     }
-    if(duplicate<0){out.push({...row});continue}
-    const x=out[duplicate];
-    if(!x.name_en&&row.name_en)x.name_en=row.name_en;
-    if(!x.name_ar&&row.name_ar)x.name_ar=row.name_ar;
-    if((x.name||'').length<(row.name||'').length)x.name=row.name;
-    if(x.unit_price==null&&row.unit_price!=null)x.unit_price=row.unit_price;
-    if(x.line_total==null&&row.line_total!=null)x.line_total=row.line_total;
+    if(idx<0)out.push({...row});
+    else{
+      const x=out[idx];
+      if(!x.name_en&&row.name_en)x.name_en=row.name_en;
+      if(!x.name_ar&&row.name_ar)x.name_ar=row.name_ar;
+      if(x.unit_price==null&&row.unit_price!=null)x.unit_price=row.unit_price;
+      if(x.line_total==null&&row.line_total!=null)x.line_total=row.line_total;
+      x.name=x.name_en&&x.name_ar?`${x.name_en} — ${x.name_ar}`:(x.name_en||x.name_ar||x.name);
+    }
   }
   return out;
 }
-function mergeSegmentProtocols(raws){
-  const merged=parseProtocol((raws||[]).filter(Boolean).join('\n'));
-  merged.out.items=dedupeSegmentItems(merged.out.items);
-  return merged;
-}
 
-function itemSuspicionScore(item){
-  const n=txt(item?.name||'').toLowerCase();
-  let s=0;
-  if(!n)s+=100;
-  if(/\b(customer|bill|cashier|order|invoice|trn|mobile|phone|time|date|balance|discount|service\s*fee|gross|total|vat|tax|cash|visa|online|change|amounts?|point|booked|advance)\b/i.test(n))s+=70;
-  if(/\b(thank|terms?|condition|street|building|mall|branch|pharmacy|laundry)\b/i.test(n))s+=25;
-  if((item?.line_total==null)&&(item?.unit_price==null))s+=45;
-  if(Number(item?.quantity||1)<=0||Number(item?.quantity||1)>100)s+=30;
-  if(n.length<2)s+=30;
-  return s;
+function itemNoiseLine(s){
+  s=normalizeLine(s);
+  const dateLike=/(?:\b(?:date|time|deliv(?:ery)?|due|expiry|print)\b)|(?:\d{1,2}[-\/.]\d{1,2}[-\/.]\d{4})|(?:\b\d{1,2}\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+\d{4}\b)|(?:\b\d{1,2}:\d{2}(?::\d{2})?\s*(?:am|pm)?\b)/i.test(s);
+  const tableHeader=/(?:item\s*name|description).*(?:qty|quantity).*(?:amount|price|rate|aed|total)|^(?:item|description)\s+(?:qty|quantity)\b/i.test(s);
+  return !s||dateLike||tableHeader||/\b(?:terms?\s*(?:and|&)\s*conditions?|booked\s*by|advance\s*balance|store\s*timing|invoice|receipt|customer|cashier|order\s*(?:no|date)|bill\s*(?:no|#)|trn|mobile|telephone|address|street|road|mall|outstanding|balance|vatable\s*sales|taxable\s*sales|vat\s*amount|grand\s*total|net\s*amount|g\.?\s*amt|bal\.?\s*amt|discount|service\s*fees?|change\s*back|all\s*amounts|t\.?\s*pcs|total\s*items?)\b/i.test(s);
 }
-function rowMoneyOptions(item){
-  const q=Math.max(1,Number(item?.quantity)||1),opts=[],seen=new Set();
-  const push=(value,mode,penalty=0)=>{
-    value=r2(value);if(value==null||value<0)return;
-    const key=value.toFixed(2);if(seen.has(key))return;seen.add(key);
-    opts.push({value,mode,penalty})
-  };
-  if(item?.line_total!=null)push(item.line_total,'line_total',0);
-  if(item?.unit_price!=null){
-    push(Number(item.unit_price)*q,'unit_times_qty',.15);
-    // Many POS/laundry receipts print one AED amount column that is already the row total.
-    push(Number(item.unit_price),'single_money_column',q>1?.35:.20);
+function transcriptItemRow(line,prev='',next=''){
+  let s=normalizeLine(line).replace(/[│┃]/g,'|').replace(/\|/g,' ').replace(/\s+/g,' ').trim();
+  if(itemNoiseLine(s)||!/[A-Za-z\u0600-\u06ff]/.test(s))return null;
+  // Remove a serial-number column without touching quantity later in the row.
+  s=s.replace(/^\s*\d{1,2}\s+(?=[A-Za-z\u0600-\u06ff])/,'');
+  const nums=[...s.matchAll(/\d{1,4}(?:[.,]\d{1,3})?/g)].map(m=>({raw:m[0],value:num(m[0]),index:m.index,end:m.index+m[0].length})).filter(x=>x.value!=null);
+  if(nums.length<2)return null;
+  const last=nums[nums.length-1];
+  // A purchasable row normally ends in a monetary value. Reject dates/IDs and large integer tails.
+  const moneyLike=/[.,]\d{1,3}$/.test(last.raw)||last.value<=9999;
+  if(!moneyLike||last.value<0)return null;
+  let qi=-1;
+  const firstMoney=nums.findIndex(x=>/[.,]\d{1,3}$/.test(x.raw));
+  const qtySearchEnd=firstMoney>0?firstMoney:nums.length-1;
+  // Quantity is normally the LAST small integer before the monetary columns.
+  // This avoids treating product strengths such as "10 MG" as Qty when a later "1" is the actual quantity.
+  for(let i=qtySearchEnd-1;i>=0;i--){
+    const v=nums[i].value;
+    if(Number.isInteger(v)&&v>=1&&v<=99){qi=i;break}
   }
-  return opts;
+  if(qi<0)return null;
+  const q=nums[qi].value;
+  let name=cleanItemName(s.slice(0,nums[qi].index));
+  if(!name||name.length<2||summaryName(name))return null;
+  // A wrapped description can occur immediately before or after the numeric row.
+  const prevText=cleanItemName(prev),nextText=cleanItemName(next);
+  const generic=/^(?:men|women|ladies|gents|household|item|service)$/i.test(name)||name.split(/\s+/).length<=1;
+  if(generic&&nextText&&!itemNoiseLine(nextText)&&!/[0-9]/.test(nextText)&&/[A-Za-z\u0600-\u06ff]{3}/.test(nextText))name=cleanItemName(`${name} ${nextText}`);
+  else if(prevText&&!itemNoiseLine(prevText)&&!/[0-9]/.test(prevText)&&/[A-Za-z\u0600-\u06ff]{3}/.test(prevText)&&/[-&]\s*$/.test(normalizeLine(prev)))name=cleanItemName(`${prevText} ${name}`);
+  if(summaryName(name)||/^(?:item|description|qty|quantity|service|amount|aed)$/i.test(name))return null;
+  const after=nums.slice(qi+1);
+  if(!after.length)return null;
+  const total=r2(after[after.length-1].value);
+  let unit=null;
+  if(after.length>=2){
+    const maybeUnit=after[after.length-2];
+    if(maybeUnit.value>0&&maybeUnit.value<=9999)unit=r2(maybeUnit.value)
+  }
+  if(unit==null&&total!=null&&q>0)unit=r2(total/q);
+  const en=/[A-Za-z]/.test(name)?name.replace(/[\u0600-\u06ff]+/g,' ').replace(/\s+/g,' ').trim():'';
+  const ar=/[\u0600-\u06ff]/.test(name)?name.replace(/[A-Za-z]+/g,' ').replace(/\s+/g,' ').trim():'';
+  return {name:en&&ar?`${en} — ${ar}`:(en||ar||name),name_en:en||null,name_ar:ar||null,quantity:q,unit_price:unit,line_total:total};
 }
-function rowMoney(item){
-  const opts=rowMoneyOptions(item);return opts.length?opts[0].value:null;
+function extractItemsFromTranscript(transcript){
+  const lines=txt(transcript).split(/\n+/).map(normalizeLine).filter(Boolean),rows=[];
+  for(let i=0;i<lines.length;i++){
+    const row=transcriptItemRow(lines[i],lines[i-1]||'',lines[i+1]||'');
+    if(row)rows.push(row)
+  }
+  return dedupeItems(rows);
 }
-function normalizeRowMoneyChoice(item,choice){
-  const x={...item},q=Math.max(1,Number(x.quantity)||1);
-  if(!choice)return x;
-  const total=r2(choice.value);
-  if(choice.mode==='single_money_column'){
-    x.line_total=total;x.unit_price=r2(total/q);
-  }else if(choice.mode==='unit_times_qty'){
-    x.line_total=total;if(x.unit_price==null)x.unit_price=r2(total/q);
+function itemSetScore(items,r){
+  if(!items?.length)return -9999;
+  const qsum=items.reduce((s,x)=>s+(Number(x.quantity)||1),0),sum=r2(items.reduce((s,x)=>s+(Number(x.line_total)||0),0));
+  let score=items.length*5;
+  if(r.count!=null)score-=Math.abs(items.length-r.count)*28;else score+=Math.min(items.length,8)*2;
+  if(r.pieces!=null)score-=Math.abs(qsum-r.pieces)*22;
+  const targets=[r.subtotal,r.total].filter(v=>v!=null);
+  if(targets.length&&sum!=null){const d=Math.min(...targets.map(t=>Math.abs(sum-t)));score+=d<=.08?55:d<=.20?35:Math.max(-70,-d*14)}
+  return score;
+}
+function chooseBestItemSet(structuredItems,fallbackItems,r){
+  const sets=[];
+  const add=x=>{x=dedupeItems(x||[]);if(x.length)sets.push(x)};
+  add(structuredItems);add(fallbackItems);add([...(structuredItems||[]),...(fallbackItems||[])]);
+  if(!sets.length)return [];
+  sets.sort((a,b)=>itemSetScore(b,r)-itemSetScore(a,r));
+  return sets[0];
+}
+function moneyCandidates(parts,labelRe,excludeRe=null){
+  const map=new Map();
+  for(const part of parts||[]){
+    for(const line of txt(part).split(/\n+/)){
+      const s=normalizeLine(line);if(!labelRe.test(s)||(excludeRe&&excludeRe.test(s)))continue;
+      const vals=[...s.matchAll(/-?\d+(?:[.,]\d{1,3})?/g)].map(m=>r2(m[0])).filter(v=>v!=null&&v>=0&&v<100000);
+      if(!vals.length)continue;
+      const v=vals[vals.length-1],k=v.toFixed(2),o=map.get(k)||{value:v,count:0};o.count++;map.set(k,o)
+    }
+  }
+  return [...map.values()].sort((a,b)=>b.count-a.count).slice(0,8);
+}
+function fallbackRate(transcript){
+  const m=txt(transcript).match(/\b(?:VAT|Tax)\s*([0-9]{1,2}(?:\.\d+)?)\s*%/i);if(!m)return null;
+  const n=num(m[1]);return n!=null&&n>=0&&n<30?n:null;
+}
+function reconcileFinancialCandidates(r,parts,transcript){
+  if(r.rate==null)r.rate=fallbackRate(transcript);
+  const sub=moneyCandidates(parts,/\b(?:g\.?\s*amt|vatable\s*sales|taxable\s*sales|excl\.?\s*vat|sub\s*total|subtotal|net\s*w\/?out\s*tax|net\s*without\s*tax)\b/i,/\b(?:grand\s*total|balance)\b/i);
+  const tax=moneyCandidates(parts,/\b(?:vat\s*amount|vat\s*\d+(?:\.\d+)?\s*%|tax)\b/i,/\b(?:tax\s*invoice|taxable)\b/i);
+  const total=moneyCandidates(parts,/\b(?:grand\s*total|gross|net\s*amount|amount\s*due|final\s*total|adv)\b/i,/\b(?:balance|bal\.?\s*amt|outstanding)\b/i);
+  const add=(arr,v)=>{if(v==null)return;const k=Number(v).toFixed(2);if(!arr.some(x=>x.value.toFixed(2)===k))arr.push({value:Number(v),count:.5})};
+  add(sub,r.subtotal);add(tax,r.tax);add(total,r.total);
+  if(!total.length&&r.total!=null)add(total,r.total);
+  let best=null;
+  for(const a of sub)for(const b of tax)for(const c of total){
+    const diff=Math.abs((a.value+b.value)-c.value);
+    const near=(r.subtotal!=null?Math.min(1,Math.abs(a.value-r.subtotal))*.4:0)+(r.tax!=null?Math.min(1,Math.abs(b.value-r.tax))*.4:0)+(r.total!=null?Math.min(1,Math.abs(c.value-r.total))*.25:0);
+    const score=diff*100+near-(a.count+b.count+c.count)*.35;
+    if(!best||score<best.score)best={a,b,c,diff,score}
+  }
+  if(best&&best.diff<=.06){r.subtotal=r2(best.a.value);r.tax=r2(best.b.value);r.total=r2(best.c.value);r.financial_consensus=true}
+  return r;
+}
+function parseProtocol(structured,transcript,parts=[]){
+  const out={store:null,headers:[],date:null,count:null,pieces:null,rate:null,subtotal:null,tax:null,total:null,items:[],warnings:[]};
+  let raw='',lines=[];
+  const json=structured&&structured.kind==='json'?structured.data:null;
+  if(json){
+    raw=JSON.stringify(json);lines=[];
+    out.store=merchant(json.store);
+    out.headers=(Array.isArray(json.store_candidates)?json.store_candidates:[]).map(merchant).filter(Boolean);
+    out.date=validDate(json.date_raw);
+    const ncount=num(json.printed_item_count),npieces=num(json.printed_piece_count),rate=num(json.vat_rate_percent);
+    out.count=ncount!=null&&ncount>0?Math.round(ncount):null;
+    out.pieces=npieces!=null&&npieces>0?Math.round(npieces):null;
+    out.rate=rate!=null&&rate>=0&&rate<100?rate:null;
+    out.subtotal=r2(json.subtotal);out.tax=r2(json.tax);out.total=r2(json.total);
+    for(const it of Array.isArray(json.items)?json.items:[]){
+      const en=cleanItemName(it?.name_en),ar=cleanItemName(it?.name_ar);let qty=num(it?.quantity),unit=r2(it?.unit_price),total=r2(it?.line_total);
+      if(!Number.isFinite(qty)||qty<=0||qty>999)qty=1;
+      const name=en&&ar?`${en} — ${ar}`:(en||ar);if(!name||summaryName(name))continue;
+      if(total==null&&unit!=null)total=r2(unit*qty);if(unit==null&&total!=null&&qty)unit=r2(total/qty);
+      out.items.push({name,name_en:en||null,name_ar:ar||null,quantity:qty,unit_price:unit,line_total:total})
+    }
   }else{
-    x.line_total=total;
-    if(x.unit_price==null)x.unit_price=r2(total/q);
-    if(q>1&&Math.abs(Number(x.unit_price||0)-Number(total))<=.01)x.unit_price=r2(total/q);
+    raw=txt(structured?.data??structured).replace(/```(?:text|txt)?/gi,'').replace(/```/g,'');
+    lines=raw.split(/\n+/).map(normalizeLine).filter(Boolean);
+    for(const line of lines){
+      const p=line.split('|').map(x=>x.trim()),key=(p[0]||'').toUpperCase().replace(/\s+/g,'_');
+      if(key==='HEADER_LINE'){const h=merchant(p.slice(1).join('|'));if(h)out.headers.push(h);continue}
+      if(key==='STORE'){out.store=merchant(p.slice(1).join('|'));continue}
+      if(key==='DATE_RAW'||key==='DATE'){out.date=validDate(p[1]);continue}
+      if(key==='COUNT'){const n=num(p[1]);out.count=n!=null&&n>0?Math.round(n):null;continue}
+      if(key==='PIECES'){const n=num(p[1]);out.pieces=n!=null&&n>0?Math.round(n):null;continue}
+      if(key==='VAT_RATE'){const n=num(p[1]);out.rate=n!=null&&n>=0&&n<100?n:null;continue}
+      if(key==='SUBTOTAL'){out.subtotal=r2(p[1]);continue}
+      if(key==='VAT'){out.tax=r2(p[1]);continue}
+      if(key==='TOTAL'){out.total=r2(p[1]);continue}
+      if(key==='ITEM'){
+        const en=cleanItemName(p[1]),ar=cleanItemName(p[2]);let qty=num(p[3]),unit=r2(p[4]),total=r2(p[5]);
+        if(!Number.isFinite(qty)||qty<=0||qty>999)qty=1;const name=en&&ar?`${en} — ${ar}`:(en||ar);if(!name||summaryName(name))continue;
+        if(total==null&&unit!=null)total=r2(unit*qty);if(unit==null&&total!=null&&qty)unit=r2(total/qty);
+        out.items.push({name,name_en:en||null,name_ar:ar||null,quantity:qty,unit_price:unit,line_total:total})
+      }
+    }
   }
-  return x
+
+  if(!out.date)out.date=fallbackDate(transcript);
+  if(out.subtotal==null)out.subtotal=fallbackMoney(transcript,/\b(excl\.?\s*vat|net\s*w\/?out\s*tax|net\s*without\s*tax|g\.?\s*amt|vatable\s*sales|taxable\s*sales|sub\s*total|subtotal)\b/i);
+  if(out.tax==null)out.tax=fallbackMoney(transcript,/\b(vat\s*amount|tax)\b/i);
+  if(out.total==null)out.total=fallbackMoney(transcript,/\b(grand\s*total|gross|amount\s*due|final\s*total|adv|net\s*amount)\b/i);
+  if(out.total==null)out.total=fallbackMoney(transcript,/^\s*total\b/i);
+  reconcileFinancialCandidates(out,parts,transcript);
+
+  const fallbackItems=extractItemsFromTranscript(transcript);
+  out.items=chooseBestItemSet(dedupeItems(out.items),fallbackItems,out);
+
+  // Merchant selection happens AFTER item extraction so item descriptions can never leak into STORE.
+  const headerCandidates=[];
+  const evidenceParts=(parts||[]).slice(0,2); // full receipt + upper high-resolution view
+  for(const p of evidenceParts)headerCandidates.push(...headerCandidatesFromTranscript(p));
+  headerCandidates.push(...out.headers);
+  out.store=chooseMerchant(out.store,headerCandidates,out.items);
+  return {out,raw,lines};
 }
-function bestMoneyAssignment(rows,targets){
-  const validTargets=(targets||[]).filter(v=>v!=null&&Number.isFinite(Number(v))).map(Number);
-  if(!rows.length||!validTargets.length)return null;
-  let states=[{sum:0,choices:[],penalty:0}];
-  for(const r of rows){
-    const opts=rowMoneyOptions(r.item||r);if(!opts.length)return null;
-    const next=[];
-    for(const st of states)for(const o of opts){
-      next.push({sum:r2(st.sum+o.value),choices:[...st.choices,o],penalty:st.penalty+(o.penalty||0)})
-    }
-    const by=new Map();
-    for(const st of next){
-      const k=Math.round(st.sum*100),old=by.get(k);
-      if(!old||st.penalty<old.penalty)by.set(k,st)
-    }
-    states=[...by.values()];
-    if(states.length>700){
-      states.sort((a,b)=>{
-        const ad=Math.min(...validTargets.map(t=>Math.abs(a.sum-t))),bd=Math.min(...validTargets.map(t=>Math.abs(b.sum-t)));
-        return (ad+a.penalty*.02)-(bd+b.penalty*.02)
-      });
-      states=states.slice(0,700)
-    }
-  }
-  let best=null;
-  for(const st of states){
-    const diff=Math.min(...validTargets.map(t=>Math.abs(st.sum-t))),score=diff*1000+st.penalty;
-    if(!best||score<best.score)best={...st,diff,score}
-  }
-  return best
-}
-function chooseBestItemSubset(items,expectedCount,targets){
-  if(!Number.isInteger(expectedCount)||expectedCount<=0||items.length<=expectedCount||items.length>12)return null;
-  const usable=items.map((x,i)=>({item:x,i,sus:itemSuspicionScore(x)}));
-  const validTargets=(targets||[]).filter(v=>v!=null&&Number.isFinite(Number(v))).map(Number);
-  if(!validTargets.length)return null;
-  let best=null;
-  const pick=(start,left,chosen)=>{
-    if(left===0){
-      const rows=chosen.map(i=>usable[i]),money=bestMoneyAssignment(rows,validTargets);if(!money)return;
-      const suspicion=rows.reduce((s,r)=>s+r.sus,0),score=money.diff*1000+suspicion+money.penalty;
-      if(!best||score<best.score)best={indices:chosen.slice(),money,score};return
-    }
-    for(let i=start;i<=usable.length-left;i++){chosen.push(i);pick(i+1,left-1,chosen);chosen.pop()}
-  };
-  pick(0,expectedCount,[]);
-  if(!best)return null;
-  const tolerance=Math.max(.08,Math.min(.35,Math.max(...validTargets)*.006));
-  if(best.money.diff>tolerance)return null;
-  return best.indices.map((i,j)=>normalizeRowMoneyChoice(items[i],best.money.choices[j]))
-}
-
-function chooseBestPieceSubset(items,pieceTarget,targets){
-  if(!Number.isInteger(pieceTarget)||pieceTarget<=0||items.length<2||items.length>14)return null;
-  const validTargets=(targets||[]).filter(v=>v!=null&&Number.isFinite(Number(v))).map(Number);
-  if(!validTargets.length)return null;
-  const rows=items.map((x,i)=>({i,item:x,qty:Number(x.quantity)||1,sus:itemSuspicionScore(x)}));
-  let best=null;const maxMask=1<<rows.length;
-  for(let mask=1;mask<maxMask;mask++){
-    let q=0,sus=0,count=0,selected=[];
-    for(let i=0;i<rows.length;i++){if(!(mask&(1<<i)))continue;q+=rows[i].qty;count++;sus+=rows[i].sus;selected.push(rows[i])}
-    if(Math.abs(q-pieceTarget)>.001)continue;
-    const money=bestMoneyAssignment(selected,validTargets);if(!money)continue;
-    const score=money.diff*1000+sus+count*.15+money.penalty;
-    if(!best||score<best.score)best={selected,money,score}
-  }
-  if(!best)return null;
-  const tolerance=Math.max(.08,Math.min(.40,Math.max(...validTargets)*.007));
-  if(best.money.diff>tolerance)return null;
-  return best.selected.map((r,j)=>normalizeRowMoneyChoice(r.item,best.money.choices[j]))
-}
-
-function reconcileItemRows(r,warnings){
-  const original=r.items||[];
-  if(!original.length)return;
-
-  const targets=[];
-  if(r.subtotal!=null)targets.push(r.subtotal);
-  if(r.total!=null&&r.tax!=null)targets.push(r2(r.total-r.tax));
-  if(r.total!=null)targets.push(r.total);
-
-  let quantitySum=Math.round(original.reduce((s,x)=>s+(Number(x.quantity)||0),0)*100)/100;
-
-  // Explicit PIECES from a repair pass.
-  if(r.pieces!=null&&r.pieces>0&&original.length>1){
-    const chosen=chooseBestPieceSubset(original,r.pieces,targets);
-    if(chosen&&chosen.length<original.length){
-      r.items=chosen;
-      warnings.push(`Removed ${original.length-chosen.length} OCR rows using printed pieces and financial totals`);
-      return;
-    }
-  }
-
-  // The first pass may have incorrectly used T.Pcs / Total Qty as COUNT.
-  // If any subset has summed quantity == printed number AND matches the subtotal,
-  // reinterpret the number as pieces and keep that financially valid subset.
-  if(r.count!=null&&r.count>0&&original.length>1){
-    const chosenByPieces=chooseBestPieceSubset(original,r.count,targets);
-    if(chosenByPieces&&(
-      original.length!==r.count ||
-      Math.abs(quantitySum-r.count)>.001
-    )){
-      r.items=chosenByPieces;
-      r._pieceCount=r.count;
-      r.count=null;
-      warnings.push('Printed count reinterpreted as total pieces/quantity using item quantities and financial totals');
-      return;
-    }
-  }
-
-  // Simple case: extracted quantities already prove this is a pieces count.
-  if(r.count!=null&&r.count!==original.length&&Math.abs(r.count-quantitySum)<.001){
-    r._pieceCount=r.count;
-    r.count=null;
-    warnings.push('Printed count interpreted as total pieces/quantity, not item-row count');
-    return;
-  }
-
-  // True item-row count with extra OCR rows.
-  if(r.count!=null&&r.count>0&&original.length>r.count){
-    const chosen=chooseBestItemSubset(original,r.count,targets);
-    if(chosen&&chosen.length===r.count){
-      const removed=original.length-chosen.length;
-      r.items=chosen;
-      warnings.push(`Removed ${removed} OCR row${removed===1?'':'s'} that did not match the printed item count and financial totals`);
-    }
-  }
-}
-
 function validate(parsed){
-  const r=parsed.out, warnings=[...r.warnings];
-  reconcileItemRows(r,warnings);
-
-  // Some VAT invoices legitimately have VAT Amount = 0.00 (zero-rated/exempt items),
-  // and vision models may still emit a generic 5% VAT rate.
-  // Trust the printed money: if subtotal == total and VAT amount == 0,
-  // treat the effective VAT rate as 0 instead of rejecting the entire receipt.
-  if(r.subtotal!=null&&r.tax!=null&&r.total!=null
-     && Math.abs(Number(r.tax))<=0.005
-     && Math.abs(Number(r.subtotal)-Number(r.total))<=0.06){
-    if(r.rate!=null&&Number(r.rate)>0){
-      warnings.push('Ignored conflicting VAT rate because printed VAT amount is 0.00 and subtotal equals total');
-    }
-    r.rate=0;
-  }
-  const itemSum=r2(r.items.reduce((s,x)=>s+(x.line_total??0),0));
+  const r=parsed.out,warnings=[...r.warnings];
   const quantitySum=Math.round(r.items.reduce((s,x)=>s+(Number(x.quantity)||0),0)*100)/100;
-  let pieceCount=r._pieceCount??r.pieces??null;
+  const itemSum=r2(r.items.reduce((s,x)=>s+(Number(x.line_total)||0),0));
+
   if(r.count!=null&&r.count!==r.items.length){
-    if(Math.abs(r.count-quantitySum)<.001){
-      pieceCount=r.count;r.count=null;
-      warnings.push('Printed count interpreted as total pieces/quantity, not item-row count');
-    } else {
-      warnings.push(`Printed item count is ${r.count}, but ${r.items.length} rows were extracted`);
-    }
+    if(Math.abs(r.count-quantitySum)<.01){r.pieces=r.pieces??r.count;r.count=null;warnings.push('Printed count interpreted as total pieces')}
+    else warnings.push(`Printed row count is ${r.count}; extracted ${r.items.length}`)
   }
-  if(r.subtotal!=null&&r.tax!=null&&r.total!=null&&Math.abs(r.subtotal+r.tax-r.total)>.06)warnings.push('Subtotal + VAT does not match Grand Total');
-  if(r.rate!=null&&r.rate>0&&r.rate<30&&r.subtotal!=null&&r.tax!=null&&Math.abs(r.subtotal*r.rate/100-r.tax)>.06)warnings.push('VAT amount does not match printed VAT rate');
-  if(r.items.length&&r.total!=null&&Math.abs(itemSum-r.total)>.18&&!(r.subtotal!=null&&Math.abs(itemSum-r.subtotal)<=.18))warnings.push('Item row sum does not match labeled totals');
+  if(r.pieces!=null&&Math.abs(r.pieces-quantitySum)>.01)warnings.push(`Printed pieces are ${r.pieces}; extracted quantity sum is ${quantitySum}`);
 
-  // Exact financial reconciliation only when total + printed VAT rate support it.
-  if(r.total!=null&&r.rate!=null&&r.rate>0&&r.rate<30){
-    const ds=r2(r.total/(1+r.rate/100)), dt=r2(r.total-ds);
-    const bad=r.subtotal==null||r.tax==null||Math.abs((r.subtotal+r.tax)-r.total)>.05||Math.abs(r.subtotal*r.rate/100-r.tax)>.05;
-    if(bad && (r.subtotal==null||Math.abs(r.subtotal-ds)<=.15) && (r.tax==null||Math.abs(r.tax-dt)<=.15)){
-      r.subtotal=ds;r.tax=dt;warnings.push('Financial fields reconciled from Grand Total and printed VAT rate');
-    }
-  }
+  const financeComplete=r.subtotal!=null&&r.tax!=null&&r.total!=null;
+  const financeArithmeticOk=!financeComplete||Math.abs((r.subtotal+r.tax)-r.total)<=.07;
+  if(financeComplete&&!financeArithmeticOk)warnings.push('Subtotal + VAT does not match total');
 
-  const fields=[r.store,r.date,r.subtotal,r.tax,r.total,r.count].filter(v=>v!==null&&v!=='').length;
-  let score=0;
-  if(r.store)score+=18;if(r.date)score+=14;if(r.items.length)score+=34;if(r.total!=null)score+=18;
-  if(r.subtotal!=null)score+=6;if(r.tax!=null)score+=5;
-  if(r.count!=null&&r.count===r.items.length)score+=5;
-  score=Math.min(100,score);
+  const matchSubtotal=r.items.length&&r.subtotal!=null&&Math.abs(itemSum-r.subtotal)<=.12;
+  const matchTotal=r.items.length&&r.total!=null&&Math.abs(itemSum-r.total)<=.12;
+  const itemFinancialOk=!r.items.length?false:(r.subtotal==null&&r.total==null?true:(matchSubtotal||matchTotal));
+  if(r.items.length&&!itemFinancialOk)warnings.push('Item row sum does not match labeled totals');
 
-  const itemCountOk=(r.count==null||r.count===r.items.length);
-  const financeOk=r.total!=null&&!warnings.some(x=>/does not match labeled|Subtotal \+ VAT|VAT amount does not match/i.test(x));
-  const pieceOk=pieceCount==null||Math.abs(pieceCount-quantitySum)<.001;
-  const accepted=r.items.length>0&&itemCountOk&&pieceOk&&financeOk;
+  const rowCountOk=r.count==null||r.count===r.items.length;
+  const piecesOk=r.pieces==null||Math.abs(r.pieces-quantitySum)<.01;
+  const itemsComplete=r.items.length>0&&rowCountOk&&piecesOk&&itemFinancialOk;
+  const scalarFinanceReliable=r.total!=null&&financeArithmeticOk;
+  const accepted=itemsComplete&&scalarFinanceReliable;
   const complete=accepted&&!!r.store&&!!r.date;
   if(accepted&&!r.store)warnings.push('Merchant name needs manual review');
   if(accepted&&!r.date)warnings.push('Invoice date needs manual review');
 
+  let score=0;
+  if(r.store)score+=18;if(r.date)score+=14;if(r.items.length)score+=24;if(itemsComplete)score+=18;if(r.total!=null)score+=12;
+  if(financeArithmeticOk&&financeComplete)score+=9;if(rowCountOk)score+=3;if(piecesOk)score+=2;
+  score=Math.min(100,score);
+
   return {
     receipt:{
-      merchant_name_en:r.store,date:r.date,printed_item_count:r.count,printed_piece_count:pieceCount,vat_rate_percent:r.rate,
-      currency:'AED',subtotal:r.subtotal,tax:r.tax,total:r.total,items:r.items,
-      confidence:{merchant:r.store?.length?0.82:0,date:r.date?0.85:0,items:r.items.length?0.82:0,totals:r.total!=null?0.9:0},
-      warnings:[...new Set(warnings)].slice(0,14),item_sum:itemSum
+      merchant_name_en:r.store,date:r.date,printed_item_count:r.count,printed_piece_count:r.pieces,
+      vat_rate_percent:r.rate,currency:'AED',subtotal:r.subtotal,tax:r.tax,total:r.total,items:r.items,
+      confidence:{merchant:r.store?0.9:0,date:r.date?0.92:0,items:itemsComplete?0.92:(r.items.length?0.62:0),totals:scalarFinanceReliable?0.95:0.45},
+      warnings:[...new Set(warnings)].slice(0,14),item_sum:itemSum,quantity_sum:quantitySum
     },
-    score,accepted,complete,fields
+    score,accepted,complete,items_complete:itemsComplete,needs_table_rescue:!itemsComplete,
+    scalar_finance_reliable:scalarFinanceReliable,financial_consensus:!!r.financial_consensus,
+    fields:[r.store,r.date,r.subtotal,r.tax,r.total,r.items.length].filter(v=>v!==null&&v!==undefined&&v!=='').length
   };
 }
-function validImage(v){return typeof v==='string'&&v.startsWith('data:image/')&&v.length<7_000_000}
-
-
-function checkedQuality(c){
-  if(!c)return -9999;
-  let s=Number(c.score||0);
-  if(c.accepted)s+=120;
-  if(c.complete)s+=18;
-  const r=c.receipt||{};
-  const items=Array.isArray(r.items)?r.items:[];
-  s+=Math.min(30,items.length*4);
-  if(r.merchant_name_en)s+=8;
-  if(r.date)s+=8;
-  if(r.total!=null)s+=8;
-  const warns=Array.isArray(r.warnings)?r.warnings:[];
-  s-=warns.filter(x=>/does not match|needs manual|Printed item count|Printed pieces/i.test(x)).length*12;
-  return s;
-}
-function isPlaceholderStore(v){
-  const s=txt(v).toLowerCase();
-  return /best customer-facing|customer-facing merchant\/trade\/store|store name|merchant name|actual store name/.test(s);
-}
-function shouldRepair(checked){
-  if(!checked||checked.accepted===false)return true;
-  const r=checked.receipt||{},items=Array.isArray(r.items)?r.items:[];
-  if(isPlaceholderStore(r.merchant_name_en))return true;
-  const warns=Array.isArray(r.warnings)?r.warnings:[];
-  if(warns.some(x=>/VAT amount does not match|item row sum does not match|Printed item count|Printed pieces/i.test(x)))return true;
-  const first=items[0],firstMoney=rowMoney(first);
-  if(items.length===1&&r.total!=null&&firstMoney!=null&&Number(r.total)>Number(firstMoney)*1.45)return true;
-  return false;
-}
-function fillMissingFromPrimary(best,primary){
-  if(!best||!primary)return best;
-  const b=best.receipt||{},p=primary.receipt||{};
-  if(!b.merchant_name_en&&!isPlaceholderStore(p.merchant_name_en))b.merchant_name_en=p.merchant_name_en;
-  if(!b.date)b.date=p.date;
-  best.receipt=b;
-  best.complete=best.accepted&&!!b.merchant_name_en&&!!b.date;
-  return best;
-}
-
-
-async function readReceiptSegments(env,images){
-  const started=Date.now();
-  const jobs=images.map(image=>env.AI.run(MODEL,{
-    prompt:SEGMENT_PROMPT,
-    image,
-    max_tokens:1150,
-    temperature:0,
-    stream:false
-  }));
-  const settled=await Promise.allSettled(jobs);
-  const raws=[];
-  for(const r of settled){
-    if(r.status!=='fulfilled')continue;
-    const t=responseText(r.value);if(t)raws.push(t)
+async function convertImagesToText(env,images){
+  const files=images.map(dataUriToBlob);
+  const result=await env.AI.toMarkdown(files,{
+    conversionOptions:{output:{format:'text'}}
+  });
+  const arr=Array.isArray(result)?result:(Array.isArray(result?.result)?result.result:(Array.isArray(result?.results)?result.results:[result]));
+  const parts=[];
+  for(const r of arr){
+    if(!r)continue;
+    if(r.format==='error')throw new Error(`Document OCR failed: ${r.error||'conversion error'}`);
+    const data=txt(r.data||r.text||r.content);
+    if(data)parts.push(data);
   }
-  if(!raws.length)throw new Error('Segment rescue returned no OCR text');
-  const checked=validate(mergeSegmentProtocols(raws));
-  checked.transcript_lines=raws.join('\n').split(/\n+/).filter(Boolean).length;
-  checked.transcript_preview=raws.join('\n').slice(0,1800);
-  checked.repair_used=false;
-  checked.alternate_layout=false;
-  checked.segment_rescue=true;
-  checked.segment_calls=raws.length;
-  checked.segment_ms=Date.now()-started;
-  return checked;
+  if(!parts.length)throw new Error('Document OCR returned no text');
+  return {parts,transcript:mergeTranscripts(parts)};
 }
-
-async function runMoondream(env,image,question,maxTokens=4600){
-  const result=await env.AI.run(OCR_MODEL,{
-    task:'query',
-    image,
-    question,
-    reasoning:false,
-    temperature:0,
-    top_p:.05,
-    max_tokens:maxTokens,
-    stream:false
-  });
-  const text=responseText(result);
-  if(!text)throw new Error('Moondream OCR returned no text');
-  return text
+async function structureTranscript(env,transcript){
+  const text=transcript.slice(0,24000);
+  try{
+    const result=await env.AI.run(STRUCT_MODEL,{
+      messages:[{role:'system',content:STRUCT_JSON_PROMPT},{role:'user',content:`OCR TRANSCRIPT FROM ONE RECEIPT:\n${text}`}],
+      temperature:0,max_tokens:2200,stream:false,
+      response_format:{type:'json_schema',json_schema:STRUCT_SCHEMA}
+    });
+    const obj=responseObject(result);
+    if(obj)return {kind:'json',data:obj,raw:JSON.stringify(obj)};
+  }catch(e){console.warn('structured-json-fallback',e)}
+  // Compatibility fallback if JSON mode is temporarily unavailable for the selected model.
+  const prompt=`${STRUCT_PROMPT}\n\nOCR TRANSCRIPT:\n${text}`;
+  const result=await env.AI.run(STRUCT_MODEL,{prompt,temperature:0,max_tokens:1700,stream:false});
+  const raw=responseText(result);if(!raw)throw new Error('Text structuring model returned no result');
+  return {kind:'protocol',data:raw,raw};
 }
-async function runLlamaFallback(env,image){
-  const result=await env.AI.run(FALLBACK_MODEL,{
-    prompt:PROMPT,
-    image,
-    max_tokens:1900,
-    temperature:0,
-    stream:false
-  });
-  const text=responseText(result);
-  if(!text)throw new Error('Fallback vision model returned no text');
-  return text
-}
-function chooseBestChecked(candidates){
-  let best=null,bestScore=-1e9;
-  for(const c of candidates.filter(Boolean)){
-    const s=checkedQuality(c);
-    if(s>bestScore){best=c;bestScore=s}
-  }
-  return best
-}
-async function runGemmaStructured(env,image,prompt,schema,maxTokens=2600){
-  const result=await env.AI.run(GEMMA_MODEL,{
-    messages:[{role:'system',content:GEMMA_SYSTEM},{role:'user',content:prompt}],
-    image,
-    response_format:{type:'json_schema',json_schema:schema},
-    temperature:0,
-    top_p:.05,
-    max_completion_tokens:maxTokens,
-    stream:false
-  });
-  const obj=responseObject(result);
-  if(!obj)throw new Error('Gemma structured OCR returned no valid JSON');
-  return obj
-}
-async function readGemmaReceipt(env,image){
-  const structured=await runGemmaStructured(env,image,GEMMA_RECEIPT_PROMPT,RECEIPT_SCHEMA,3000);
-  const checked=validate(structuredReceiptToParsed(structured));
-  const region=safeRegion(structured.item_region);
-  const warns=Array.isArray(checked?.receipt?.warnings)?checked.receipt.warnings:[];
-  const items=Array.isArray(checked?.receipt?.items)?checked.receipt.items:[];
-  const needsTableRescue=structured.items_complete!==true||items.length===0||warns.some(x=>/item row sum|Printed item count|Printed pieces/i.test(x));
-  checked.primary_engine='gemma-4-structured';checked.inference_calls=1;checked.models_used=[GEMMA_MODEL];
-  checked.item_region=region;checked.items_complete=structured.items_complete===true;checked.needs_table_rescue=!!(needsTableRescue&&region);
-  checked.structured_confidence=structured.confidence||null;checked.table_structure=structured.table_structure||'unknown';
-  return checked
-}
-async function readGemmaTable(env,image,baseReceipt){
-  const table=await runGemmaStructured(env,image,GEMMA_TABLE_PROMPT,TABLE_SCHEMA,2200);
-  const checked=validate(mergeTableStructured(baseReceipt,table));
-  checked.primary_engine='gemma-4-dynamic-table';checked.inference_calls=1;checked.models_used=[GEMMA_MODEL];checked.items_complete=table.items_complete===true;
-  return checked
-}
-
-async function readLegacyReceipt(env,image){
-  const firstResult=await env.AI.run(FALLBACK_MODEL,{
-    prompt:LEGACY_PROMPT,
-    image,
-    max_tokens:1000,
-    temperature:0,
-    stream:false
-  });
-  const firstRaw=responseText(firstResult);
-  if(!firstRaw)throw new Error('Legacy Llama reader returned no text');
-
-  const primary=validate(parseProtocol(firstRaw));
-  primary.transcript_lines=firstRaw.split(/\n+/).filter(Boolean).length;
-  primary.transcript_preview=firstRaw.slice(0,1400);
-  primary.repair_used=false;
-  primary.primary_engine='llama-stable';
-  primary.inference_calls=1;
-  primary.models_used=[FALLBACK_MODEL];
-
-  if(!shouldRepair(primary))return primary;
-
-  const secondResult=await env.AI.run(FALLBACK_MODEL,{
-    prompt:LEGACY_REPAIR_PROMPT,
-    image,
-    max_tokens:1200,
-    temperature:0,
-    stream:false
-  });
-  const secondRaw=responseText(secondResult);
-  if(!secondRaw)return primary;
-
-  const repaired=validate(parseProtocol(secondRaw));
-  repaired.transcript_lines=secondRaw.split(/\n+/).filter(Boolean).length;
-  repaired.transcript_preview=secondRaw.slice(0,1500);
-  repaired.repair_used=true;
-  repaired.primary_engine='llama-stable-repair';
-  repaired.inference_calls=2;
-  repaired.models_used=[FALLBACK_MODEL];
-
-  let best=checkedQuality(repaired)>checkedQuality(primary)?repaired:primary;
-  if(best===repaired)best=fillMissingFromPrimary(best,primary);
-  best.repair_used=true;
-  best.inference_calls=2;
-  best.models_used=[FALLBACK_MODEL];
-  return best
-}
-
-async function readUniversalReceipt(env,image){
-  // One focused Moondream pass only. This is deliberately a fallback,
-  // so a slow universal model can never block receipts that the stable reader handles.
-  const raw=await runMoondream(env,image,PROMPT,1800);
-  const checked=validate(parseProtocol(raw));
-  checked.transcript_lines=raw.split(/\n+/).filter(Boolean).length;
-  checked.transcript_preview=raw.slice(0,2000);
-  checked.primary_engine='moondream-universal';
-  checked.repair_used=false;
-  checked.inference_calls=1;
-  checked.models_used=[OCR_MODEL];
-  return checked
-}
-
-async function readReceipt(env,image,mode='gemma',baseReceipt=null){
-  if(mode==='legacy')return await readLegacyReceipt(env,image);
-  if(mode==='table')return await readGemmaTable(env,image,baseReceipt);
-  return await readGemmaReceipt(env,image)
+function validImages(v){
+  return Array.isArray(v)&&v.length>=1&&v.length<=4&&v.every(x=>typeof x==='string'&&x.startsWith('data:image/')&&x.length<7_000_000);
 }
 
 export default {
   async fetch(request,env){
     const url=new URL(request.url);
     if(url.pathname==='/api/health'){
-      return new Response(JSON.stringify({ok:true,engine:'Gemma 4 Universal Receipt Engine',primary:GEMMA_MODEL,fallback:FALLBACK_MODEL,structured_json:true,dynamic_table_rescue:true,version:VERSION,base:'4.5.3-safe-fallback'}),{headers:headers()});
+      return new Response(JSON.stringify({
+        ok:true,version:VERSION,
+        engine:'Cloudflare Multi-View Document OCR + Structured Verification',
+        ocr:'AI.toMarkdown → Gemma 4',
+        structurer:STRUCT_MODEL,
+        meta_license_required:false
+      }),{headers:headers()});
+    }
+    if(url.pathname==='/api/license'){
+      return new Response(`<!doctype html><html lang="ar" dir="rtl"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><body style="font-family:-apple-system,Arial;padding:32px;line-height:1.8"><h2>لا توجد رخصة Meta مطلوبة</h2><p>الإصدار ${VERSION} لم يعد يستخدم Llama. القارئ يعمل عبر Cloudflare Document OCR / Gemma 4.</p><a href="/">العودة للموقع</a></body></html>`,{headers:{'content-type':'text/html; charset=utf-8'}});
     }
     if(url.pathname==='/api/receipt'){
       if(request.method!=='POST')return new Response(JSON.stringify({ok:false,error:'Method not allowed'}),{status:405,headers:headers()});
       const started=Date.now(),scanId=crypto.randomUUID().slice(0,8);
       try{
-        const body=await request.json(),image=body?.image,
-          mode=body?.mode==='legacy'?'legacy':(body?.mode==='table'?'table':'gemma'),
-          baseReceipt=body?.baseReceipt||null,
-          images=Array.isArray(body?.images)?body.images:[];
-        if(mode==='segments'){
-          if(images.length!==2||!images.every(validImage))return new Response(JSON.stringify({ok:false,error:'Two receipt segment images are required'}),{status:400,headers:headers()});
-        }else if(!validImage(image)){
-          return new Response(JSON.stringify({ok:false,error:'One complete receipt image is required'}),{status:400,headers:headers()});
-        }
-        const result=mode==='segments'?await readReceiptSegments(env,images):await readReceipt(env,image,mode,baseReceipt);
+        const body=await request.json();
+        let images=body?.images;
+        if(!images&&body?.image)images=[body.image];
+        if(!validImages(images))return new Response(JSON.stringify({ok:false,error:'1 to 4 receipt image segments are required'}),{status:400,headers:headers()});
+
+        const ocr=await convertImagesToText(env,images);
+        const structured=await structureTranscript(env,ocr.transcript);
+        const parsed=parseProtocol(structured,ocr.transcript,ocr.parts);
+        const checked=validate(parsed);
+
         return new Response(JSON.stringify({
-          ok:true,...result,
-          meta:{engine:mode==='legacy'?'Cloudflare Workers AI • Stable Llama Fallback':(mode==='table'?'Cloudflare Workers AI • Gemma 4 Dynamic Table OCR':'Cloudflare Workers AI • Gemma 4 Universal Structured OCR'),model:mode==='legacy'?FALLBACK_MODEL:GEMMA_MODEL,fallback:FALLBACK_MODEL,version:VERSION,base:'4.5.3-safe-fallback',scan_id:scanId,elapsed_ms:Date.now()-started,images:1,inference_calls:result.inference_calls||1,repair_used:!!result.repair_used,models_used:result.models_used||[mode==='legacy'?FALLBACK_MODEL:GEMMA_MODEL],item_region:result.item_region||null,items_complete:result.items_complete??null,needs_table_rescue:result.needs_table_rescue||false,structured_json:mode!=='legacy'}
+          ok:true,...checked,
+          meta:{
+            version:VERSION,scan_id:scanId,elapsed_ms:Date.now()-started,
+            engine:'Cloudflare Multi-View Document OCR + Structured Verification',
+            ocr_engine:'AI.toMarkdown / Gemma 4',
+            structurer:STRUCT_MODEL,
+            segments:images.length,
+            ocr_lines:ocr.transcript.split(/\n+/).filter(Boolean).length,
+            inference_pipeline:2,
+            items_complete:checked.items_complete,needs_table_rescue:checked.needs_table_rescue,
+            scalar_finance_reliable:checked.scalar_finance_reliable,financial_consensus:checked.financial_consensus
+          }
         }),{headers:headers()});
       }catch(e){
         console.error('receipt-reader',e);
-        const msg=e?.message||'Receipt analysis failed';
-        const retriable=/load failed|timeout|timed out|out of capacity|3040|3007|3008|temporar|aborted/i.test(msg);
-        return new Response(JSON.stringify({ok:false,error:msg,retriable,meta:{version:VERSION,scan_id:scanId,elapsed_ms:Date.now()-started}}),{status:500,headers:headers()});
+        const message=e?.message||'Receipt analysis failed';
+        const status=/429|account limited|free allocation/i.test(message)?429:500;
+        return new Response(JSON.stringify({
+          ok:false,error:message,retriable:status>=500,
+          meta:{version:VERSION,scan_id:scanId,elapsed_ms:Date.now()-started}
+        }),{status,headers:headers()});
       }
-    }
-    if(url.pathname==='/api/license'){
-      const html=`<!doctype html><html lang="ar" dir="rtl"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Llama License</title><body style="font-family:-apple-system,Arial;padding:32px;line-height:1.8;max-width:720px;margin:auto"><h2>رخصة Meta Llama</h2><p>إذا سبق أن وافقت على رخصة Meta لنفس حساب Cloudflare فلا تحتاج الموافقة مرة أخرى.</p><p><a href="https://ai.cloudflare.com/" target="_blank">فتح Workers AI</a></p><p><a href="/">العودة للموقع</a></p></body></html>`;
-      return new Response(html,{headers:{'content-type':'text/html; charset=utf-8'}});
     }
     return env.ASSETS.fetch(request);
   }
