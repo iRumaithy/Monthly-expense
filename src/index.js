@@ -1,6 +1,6 @@
-const OCR_MODEL = '@cf/google/gemma-4-26b-a4b-it';
 const FALLBACK_MODEL = '@cf/meta/llama-3.2-11b-vision-instruct';
-const MODEL = OCR_MODEL;
+const STRUCTURED_MODEL = FALLBACK_MODEL;
+const MODEL = FALLBACK_MODEL;
 
 const LEGACY_PROMPT = `You are a literal OCR transcriber specialized in many different UAE receipt and tax-invoice layouts.
 
@@ -80,7 +80,7 @@ Rules:
 9. If only one money value is printed for a row, use it as line total.
 10. Read decimals exactly. If unclear, leave blank instead of guessing.
 11. No JSON, markdown, explanation or code fences.`;
-const VERSION = '4.6.2';
+const VERSION = '4.6.3';
 
 const PROMPT = `Read the COMPLETE receipt/tax invoice image literally. The receipt may be thermal paper, POS, pharmacy, laundry, restaurant, screenshot, digital job order, Arabic/English, narrow, wide, long, or short.
 
@@ -292,6 +292,131 @@ function chooseMerchant(preferred,candidates){
 function summaryName(s){
   return /^(?:vat|tax|subtotal|sub\s*total|vata?ble\s*sales|taxable\s*sales|net\s*w\/?out\s*tax|net\s*amount|gross|g\.?\s*amt|excl\.?\s*vat|grand\s*total|total|balance|bal\.?\s*amt|outstanding|amount\s*due|total\s*item|t\.?\s*pcs|cash|card|visa|online|change|trn|invoice|job\s*order|ضريبة|الإجمالي|الاجمالي|المجموع)/i.test(txt(s));
 }
+
+const RECEIPT_JSON_SCHEMA={
+  type:'object',
+  properties:{
+    merchant_name:{type:'string'},
+    date_raw:{type:'string'},
+    printed_item_count:{type:'integer'},
+    printed_piece_count:{type:'integer'},
+    vat_rate_percent:{type:'number'},
+    subtotal:{type:'number'},
+    tax:{type:'number'},
+    total:{type:'number'},
+    items:{
+      type:'array',
+      items:{
+        type:'object',
+        properties:{
+          name_en:{type:'string'},
+          name_ar:{type:'string'},
+          quantity:{type:'number'},
+          unit_price:{type:'number'},
+          line_total:{type:'number'}
+        },
+        required:['name_en','name_ar','quantity','unit_price','line_total']
+      }
+    }
+  },
+  required:['merchant_name','date_raw','printed_item_count','printed_piece_count','vat_rate_percent','subtotal','tax','total','items']
+};
+function responseJsonObject(result){
+  const candidates=[
+    result?.response,
+    result?.result,
+    result?.choices?.[0]?.message?.content,
+    result?.choices?.[0]?.text
+  ];
+  for(const c of candidates){
+    if(c&&typeof c==='object'&&!Array.isArray(c))return c;
+    if(typeof c==='string'){
+      const s=c.trim().replace(/^```(?:json)?/i,'').replace(/```$/,'').trim();
+      try{
+        const j=JSON.parse(s);
+        if(j&&typeof j==='object')return j
+      }catch{}
+    }
+  }
+  return null
+}
+function storeLooksLikeItem(store,items){
+  const s=merchantKey(store);
+  if(!s)return false;
+  const business=/\b(pharmacy|laundry|laundromat|dry clean|restaurant|cafe|coffee|bakery|supermarket|hypermarket|grocery|market|salon|barber|clinic|hospital|optical|boutique|store|shop|mart|garage|workshop|tailor|cafeteria|roastery|trading|services|medical|dental|electronics|furniture|fashion|jewellery|jewelry|florist|stationery|printing|car wash|rent a car)\b/i.test(s);
+  if(business)return false;
+  for(const it of items||[]){
+    const k=merchantKey(it?.name||it?.name_en||it?.name_ar||'');
+    if(!k)continue;
+    if(k===s || k.startsWith(s+' ') || s.startsWith(k+' '))return true;
+  }
+  if(/\b(kandoora|kandora|pyjama|pajama|undershirt|under shirt|vest|lungi|wizar|towel|washing|wash iron|wash|shirt|trouser|dress|abaya|shoe|tablet|capsule|syrup|cream|medicine)\b/i.test(s))return true;
+  return false
+}
+function checkedFromStructuredJson(obj){
+  obj=obj&&typeof obj==='object'?obj:{};
+  const items=(Array.isArray(obj.items)?obj.items:[]).map(it=>{
+    const en=txt(it?.name_en),ar=txt(it?.name_ar);
+    const name=en&&ar?`${en} — ${ar}`:(en||ar);
+    if(!name||summaryName(name))return null;
+    let quantity=num(it?.quantity);if(!Number.isFinite(quantity)||quantity<=0||quantity>999)quantity=1;
+    let unit=r2(it?.unit_price),line=r2(it?.line_total);
+    if(unit!=null&&unit<=0)unit=null;
+    if(line!=null&&line<=0)line=null;
+    if(line==null&&unit!=null)line=r2(unit*quantity);
+    return{name,name_en:en||null,name_ar:ar||null,quantity,unit_price:unit,line_total:line}
+  }).filter(Boolean);
+  let store=merchant(obj.merchant_name);
+  if(storeLooksLikeItem(store,items))store=null;
+  const out={
+    store,storeCandidates:[],date:validDate(obj.date_raw),
+    count:(num(obj.printed_item_count)>0?Math.round(num(obj.printed_item_count)):null),
+    pieces:(num(obj.printed_piece_count)>0?Math.round(num(obj.printed_piece_count)):null),
+    rate:(num(obj.vat_rate_percent)>=0?num(obj.vat_rate_percent):null),
+    subtotal:r2(obj.subtotal),tax:r2(obj.tax),total:r2(obj.total),items,warnings:[]
+  };
+  if(out.subtotal!=null&&out.subtotal<0)out.subtotal=null;
+  if(out.tax!=null&&out.tax<0)out.tax=null;
+  if(out.total!=null&&out.total<=0)out.total=null;
+  return validate({out,lines:[],raw:JSON.stringify(obj)})
+}
+function mergeCheckedCandidates(a,b){
+  if(!a&&!b)return null;if(!a)return b;if(!b)return a;
+  const ar=a.receipt||{},br=b.receipt||{},cands=[a,b];
+
+  const make=(scalar,itemsSrc)=>{
+    const sr=scalar.receipt||{},ir=itemsSrc.receipt||{};
+    const items=Array.isArray(ir.items)?ir.items.map(x=>({...x})):[];
+    let store=sr.merchant_name_en||null;
+    if(storeLooksLikeItem(store,items))store=null;
+    const out={
+      store,storeCandidates:[],date:sr.date||null,
+      count:ir.printed_item_count??sr.printed_item_count??null,
+      pieces:ir.printed_piece_count??sr.printed_piece_count??null,
+      rate:sr.vat_rate_percent??ir.vat_rate_percent??null,
+      subtotal:sr.subtotal??ir.subtotal??null,
+      tax:sr.tax??ir.tax??null,
+      total:sr.total??ir.total??null,
+      items,warnings:[]
+    };
+    return validate({out,lines:[],raw:''})
+  };
+  cands.push(make(a,b),make(b,a));
+
+  // Also preserve the stronger merchant/date independently from the stronger items/financial set.
+  for(const base of [make(a,b),make(b,a)]){
+    if(!base)continue;
+    const r=base.receipt||{};
+    if(!r.merchant_name_en){
+      const alt=[ar.merchant_name_en,br.merchant_name_en].find(x=>x&&!storeLooksLikeItem(x,r.items));
+      if(alt)r.merchant_name_en=alt
+    }
+    if(!r.date)r.date=ar.date||br.date||null;
+    base.complete=base.accepted&&!!r.merchant_name_en&&!!r.date;
+  }
+  return chooseBestChecked(cands)
+}
+
 function responseText(result){
   if(typeof result==='string')return result;
   const candidates=[
@@ -642,6 +767,11 @@ function validate(parsed){
     }
   }
 
+  if(r.store&&storeLooksLikeItem(r.store,r.items)){
+    warnings.push('Merchant candidate matched an item row and was discarded');
+    r.store=null;
+  }
+
   const fields=[r.store,r.date,r.subtotal,r.tax,r.total,r.count].filter(v=>v!==null&&v!=='').length;
   let score=0;
   if(r.store)score+=18;if(r.date)score+=14;if(r.items.length)score+=34;if(r.total!=null)score+=18;
@@ -737,105 +867,54 @@ async function readReceiptSegments(env,images){
   return checked;
 }
 
-async function runGemmaVision(env,image,question,maxTokens=1800){
-  const result=await env.AI.run(OCR_MODEL,{
+async function runStructuredLlama(env,image){
+  const prompt=`Extract the COMPLETE receipt/tax invoice into the provided JSON schema.
+
+Read every visible purchase/service row from the entire image.
+merchant_name must be the actual customer-facing business name only. If the business name is not visible, return an empty string. NEVER use an item/product/service name as merchant_name.
+date_raw must be the transaction/invoice/order date exactly as printed, not delivery date or print time.
+printed_item_count is the count of distinct purchase rows only when explicitly printed; otherwise 0.
+printed_piece_count is T.Pcs / total pieces / total quantity only when explicitly printed; otherwise 0.
+For each item preserve English and Arabic names when printed. If one language is absent, use an empty string for it.
+quantity, unit_price and line_total must belong to the same row.
+If the receipt has one AED/Amount money column, put that printed value in line_total and use 0 for unit_price if unit price is not separately printed.
+Do not include totals, VAT, payment methods, customer details, IDs, dates, headings, balances or terms as items.
+subtotal is the amount before VAT when explicitly labeled.
+tax is the VAT/tax money amount, not the percentage.
+total is the final payable/gross/net amount.
+If a numeric field is not visible, return 0 rather than guessing.`;
+
+  const result=await env.AI.run(STRUCTURED_MODEL,{
     messages:[
-      {role:'system',content:'You are a literal multilingual receipt OCR engine. Return only the requested protocol lines. Never invent missing text.'},
-      {role:'user',content:question}
+      {role:'system',content:'You are a literal multilingual receipt OCR extractor. Follow the JSON schema exactly and never invent missing text.'},
+      {role:'user',content:prompt}
     ],
     image,
-    temperature:0,
-    top_p:.05,
-    max_completion_tokens:maxTokens,
-    stream:false
-  });
-  const text=responseText(result);
-  if(!text)throw new Error('Gemma receipt OCR returned no text');
-  return text
-}
-async function runLlamaFallback(env,image){
-  const result=await env.AI.run(FALLBACK_MODEL,{
-    prompt:PROMPT,
-    image,
+    response_format:{type:'json_schema',json_schema:RECEIPT_JSON_SCHEMA},
     max_tokens:1900,
     temperature:0,
+    top_p:.05,
     stream:false
   });
-  const text=responseText(result);
-  if(!text)throw new Error('Fallback vision model returned no text');
-  return text
-}
-function chooseBestChecked(candidates){
-  let best=null,bestScore=-1e9;
-  for(const c of candidates.filter(Boolean)){
-    const s=checkedQuality(c);
-    if(s>bestScore){best=c;bestScore=s}
-  }
-  return best
-}
-async function readLegacyReceipt(env,image){
-  const firstResult=await env.AI.run(FALLBACK_MODEL,{
-    prompt:LEGACY_PROMPT,
-    image,
-    max_tokens:1000,
-    temperature:0,
-    stream:false
-  });
-  const firstRaw=responseText(firstResult);
-  if(!firstRaw)throw new Error('Legacy Llama reader returned no text');
-
-  const primary=validate(parseProtocol(firstRaw));
-  primary.transcript_lines=firstRaw.split(/\n+/).filter(Boolean).length;
-  primary.transcript_preview=firstRaw.slice(0,1400);
-  primary.repair_used=false;
-  primary.primary_engine='llama-stable';
-  primary.inference_calls=1;
-  primary.models_used=[FALLBACK_MODEL];
-
-  if(!shouldRepair(primary))return primary;
-
-  const secondResult=await env.AI.run(FALLBACK_MODEL,{
-    prompt:LEGACY_REPAIR_PROMPT,
-    image,
-    max_tokens:1200,
-    temperature:0,
-    stream:false
-  });
-  const secondRaw=responseText(secondResult);
-  if(!secondRaw)return primary;
-
-  const repaired=validate(parseProtocol(secondRaw));
-  repaired.transcript_lines=secondRaw.split(/\n+/).filter(Boolean).length;
-  repaired.transcript_preview=secondRaw.slice(0,1500);
-  repaired.repair_used=true;
-  repaired.primary_engine='llama-stable-repair';
-  repaired.inference_calls=2;
-  repaired.models_used=[FALLBACK_MODEL];
-
-  let best=checkedQuality(repaired)>checkedQuality(primary)?repaired:primary;
-  if(best===repaired)best=fillMissingFromPrimary(best,primary);
-  best.repair_used=true;
-  best.inference_calls=2;
-  best.models_used=[FALLBACK_MODEL];
-  return best
+  const obj=responseJsonObject(result);
+  if(!obj)throw new Error('Structured Llama returned no JSON object');
+  return obj
 }
 
 async function readUniversalReceipt(env,image){
-  // Direct Gemma 4 vision on ONE complete image. No toMarkdown pipeline,
-  // no object-detection pre-pass, and no multi-view batch.
-  const raw=await runGemmaVision(env,image,PROMPT,1800);
-  const checked=validate(parseProtocol(raw));
-  checked.transcript_lines=raw.split(/\n+/).filter(Boolean).length;
-  checked.transcript_preview=raw.slice(0,2200);
-  checked.primary_engine='gemma4-universal';
+  const obj=await runStructuredLlama(env,image);
+  const checked=checkedFromStructuredJson(obj);
+  checked.transcript_lines=Array.isArray(obj.items)?obj.items.length:0;
+  checked.transcript_preview=JSON.stringify(obj).slice(0,2400);
+  checked.primary_engine='llama-json-vision';
   checked.repair_used=false;
   checked.inference_calls=1;
-  checked.models_used=[OCR_MODEL];
+  checked.models_used=[STRUCTURED_MODEL];
   return checked
 }
 
 async function readReceipt(env,image,mode='legacy'){
-  if(mode==='universal')return await readUniversalReceipt(env,image);
+  if(mode==='structured')return await readUniversalReceipt(env,image);
   return await readLegacyReceipt(env,image)
 }
 
@@ -843,14 +922,14 @@ export default {
   async fetch(request,env){
     const url=new URL(request.url);
     if(url.pathname==='/api/health'){
-      return new Response(JSON.stringify({ok:true,engine:'Stable Llama Primary + Gemma 4 Direct Fallback',primary:FALLBACK_MODEL,fallback:OCR_MODEL,version:VERSION,base:'4.4.0'}),{headers:headers()});
+      return new Response(JSON.stringify({ok:true,engine:'Stable Llama Primary + Structured Llama Vision Rescue',primary:FALLBACK_MODEL,structured:STRUCTURED_MODEL,version:VERSION,base:'4.4.0'}),{headers:headers()});
     }
     if(url.pathname==='/api/receipt'){
       if(request.method!=='POST')return new Response(JSON.stringify({ok:false,error:'Method not allowed'}),{status:405,headers:headers()});
       const started=Date.now(),scanId=crypto.randomUUID().slice(0,8);
       try{
         const body=await request.json(),image=body?.image,
-          mode=body?.mode==='segments'?'segments':(body?.mode==='universal'?'universal':'legacy'),
+          mode=body?.mode==='segments'?'segments':(body?.mode==='structured'?'structured':'legacy'),
           images=Array.isArray(body?.images)?body.images:[];
         if(mode==='segments'){
           if(images.length!==2||!images.every(validImage))return new Response(JSON.stringify({ok:false,error:'Two receipt segment images are required'}),{status:400,headers:headers()});
@@ -860,7 +939,7 @@ export default {
         const result=mode==='segments'?await readReceiptSegments(env,images):await readReceipt(env,image,mode);
         return new Response(JSON.stringify({
           ok:true,...result,
-          meta:{engine:mode==='universal'?'Cloudflare Workers AI • Gemma 4 Direct Fallback':'Cloudflare Workers AI • Stable Llama Primary',model:mode==='universal'?OCR_MODEL:FALLBACK_MODEL,fallback:OCR_MODEL,version:VERSION,base:'4.4.0',scan_id:scanId,elapsed_ms:Date.now()-started,images:1,inference_calls:result.inference_calls||1,repair_used:!!result.repair_used,models_used:result.models_used||[mode==='universal'?OCR_MODEL:FALLBACK_MODEL]}
+          meta:{engine:mode==='structured'?'Cloudflare Workers AI • Structured Llama Vision Rescue':'Cloudflare Workers AI • Stable Llama Primary',model:FALLBACK_MODEL,structured:mode==='structured',version:VERSION,base:'4.4.0',scan_id:scanId,elapsed_ms:Date.now()-started,images:1,inference_calls:result.inference_calls||1,repair_used:!!result.repair_used,models_used:result.models_used||[FALLBACK_MODEL]}
         }),{headers:headers()});
       }catch(e){
         console.error('receipt-reader',e);
