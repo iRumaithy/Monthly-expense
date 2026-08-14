@@ -1,6 +1,104 @@
 const OCR_MODEL = '@cf/moondream/moondream3.1-9B-A2B';
 const FALLBACK_MODEL = '@cf/meta/llama-3.2-11b-vision-instruct';
 const MODEL = OCR_MODEL;
+const GEMMA_MODEL = '@cf/google/gemma-4-26b-a4b-it';
+
+const RECEIPT_SCHEMA = {
+  type:'object',
+  additionalProperties:false,
+  properties:{
+    merchant_name_en:{type:'string'},
+    merchant_candidates:{type:'array',items:{type:'string'}},
+    date_raw:{type:'string'},
+    currency:{type:'string'},
+    printed_item_count:{type:'string'},
+    printed_piece_count:{type:'string'},
+    vat_rate_percent:{type:'string'},
+    subtotal:{type:'string'},
+    tax:{type:'string'},
+    total:{type:'string'},
+    prices_include_tax:{type:'string',enum:['yes','no','unknown']},
+    table_structure:{type:'string',enum:['unit_and_total','single_amount','unknown']},
+    items_complete:{type:'boolean'},
+    items:{
+      type:'array',
+      items:{
+        type:'object',additionalProperties:false,
+        properties:{
+          name_en:{type:'string'},name_ar:{type:'string'},quantity:{type:'string'},
+          unit_price:{type:'string'},line_total:{type:'string'}
+        },
+        required:['name_en','name_ar','quantity','unit_price','line_total']
+      }
+    },
+    item_region:{
+      type:'object',additionalProperties:false,
+      properties:{detected:{type:'boolean'},left:{type:'number'},top:{type:'number'},right:{type:'number'},bottom:{type:'number'}},
+      required:['detected','left','top','right','bottom']
+    },
+    confidence:{
+      type:'object',additionalProperties:false,
+      properties:{merchant:{type:'number'},date:{type:'number'},items:{type:'number'},totals:{type:'number'}},
+      required:['merchant','date','items','totals']
+    }
+  },
+  required:['merchant_name_en','merchant_candidates','date_raw','currency','printed_item_count','printed_piece_count','vat_rate_percent','subtotal','tax','total','prices_include_tax','table_structure','items_complete','items','item_region','confidence']
+};
+
+const TABLE_SCHEMA = {
+  type:'object',additionalProperties:false,
+  properties:{
+    printed_item_count:{type:'string'},printed_piece_count:{type:'string'},
+    table_structure:{type:'string',enum:['unit_and_total','single_amount','unknown']},
+    items_complete:{type:'boolean'},
+    items:{type:'array',items:{type:'object',additionalProperties:false,properties:{
+      name_en:{type:'string'},name_ar:{type:'string'},quantity:{type:'string'},unit_price:{type:'string'},line_total:{type:'string'}
+    },required:['name_en','name_ar','quantity','unit_price','line_total']}},
+    confidence:{type:'number'}
+  },
+  required:['printed_item_count','printed_piece_count','table_structure','items_complete','items','confidence']
+};
+
+const GEMMA_SYSTEM = `You are a forensic receipt/document OCR engine for UAE expense records. Extract only text and numbers that are visibly present. Do not invent translations, merchant names, items, taxes, or dates. The document may be Arabic, English, bilingual, photographed, tilted, thermal, POS, digital, pharmacy, laundry, restaurant, supermarket, service invoice, or another layout.`;
+
+const GEMMA_RECEIPT_PROMPT = `Read the COMPLETE receipt from top to bottom and fill the JSON schema.
+
+Merchant:
+- merchant_name_en is the customer-facing outlet/trade/store that issued the receipt, not a parent, facilities-management, property-management, mall, building, or municipality name.
+- merchant_candidates contains other prominent business/legal names visible near the header.
+
+Date:
+- date_raw is the transaction/invoice/order date exactly as printed. Never swap day and month. Ignore delivery/due/print dates unless no transaction date exists.
+
+Items:
+- Extract EVERY distinct purchasable product/service row.
+- Preserve English and Arabic names independently when both are printed; never translate missing text.
+- Keep quantity and money from the SAME visual row.
+- If the table has Qty plus ONE AED/Amount column, that printed money is line_total; leave unit_price empty.
+- If both unit price and line total are printed, copy both.
+- T.Pcs / Total Pieces / Total Qty is printed_piece_count, not printed_item_count.
+- printed_item_count is only an explicit count of distinct rows such as Total item / # of Items.
+- Do not turn headings, totals, VAT, payment lines, customer/order numbers, dates, balances, or terms into items.
+
+Totals:
+- subtotal is the amount before VAT when explicitly labeled (Subtotal, Excl.VAT, VATable Sales, Taxable Sales, G.Amt, Net W/Out Tax, etc.).
+- tax is the monetary VAT/tax amount, not the rate.
+- total is the final payable/gross/net/grand total.
+- A receipt may print item row prices VAT-inclusive, so item row sum may equal total instead of subtotal.
+
+Layout:
+- item_region is the smallest normalized rectangle containing the item table/list. Coordinates are 0..1 relative to the complete image. Set detected=false only if no item table/list is visible.
+- items_complete=true only when you are confident every visible item row was captured.
+
+Use empty strings for unreadable scalar values instead of guessing.`;
+
+const GEMMA_TABLE_PROMPT = `This image is a HIGH-RESOLUTION crop of the item/service table from a receipt. Extract every complete purchasable row into the JSON schema.
+- Preserve English and Arabic text separately; never translate.
+- Quantity and money must come from the same row.
+- With one AED/Amount column, put that amount in line_total and leave unit_price empty.
+- T.Pcs / Total Pieces / Total Qty is printed_piece_count, not printed_item_count.
+- Exclude totals/VAT/payment/customer/order/date/terms rows.
+- items_complete=true only if all visible purchase rows were captured.`;
 
 const LEGACY_PROMPT = `You are a literal OCR transcriber specialized in many different UAE receipt and tax-invoice layouts.
 
@@ -80,7 +178,7 @@ Rules:
 9. If only one money value is printed for a row, use it as line total.
 10. Read decimals exactly. If unclear, leave blank instead of guessing.
 11. No JSON, markdown, explanation or code fences.`;
-const VERSION = '4.5.3';
+const VERSION = '4.6.0';
 
 const PROMPT = `Read the COMPLETE receipt/tax invoice image literally. The receipt may be thermal paper, POS, pharmacy, laundry, restaurant, screenshot, digital job order, Arabic/English, narrow, wide, long, or short.
 
@@ -308,6 +406,80 @@ function responseText(result){
   }
   return '';
 }
+function responseObject(result){
+  const candidates=[result?.response,result?.result,result?.answer,result?.choices?.[0]?.message?.parsed,result?.choices?.[0]?.message?.content,result?.choices?.[0]?.text];
+  for(const c of candidates){
+    if(c&&typeof c==='object'&&!Array.isArray(c))return c;
+    if(typeof c==='string'&&c.trim()){
+      let s=c.trim().replace(/^```(?:json)?\s*/i,'').replace(/```$/,'').trim();
+      try{return JSON.parse(s)}catch(e){}
+    }
+  }
+  return null
+}
+function safeRegion(v){
+  if(!v||v.detected!==true)return null;
+  const left=clamp(v.left),top=clamp(v.top),right=clamp(v.right),bottom=clamp(v.bottom);
+  if(right-left<.08||bottom-top<.05)return null;
+  return {detected:true,left,top,right,bottom}
+}
+function structuredReceiptToParsed(o){
+  o=o&&typeof o==='object'?o:{};
+  const out={
+    store:merchant(o.merchant_name_en),
+    storeCandidates:Array.isArray(o.merchant_candidates)?o.merchant_candidates.map(merchant).filter(Boolean):[],
+    date:validDate(o.date_raw),count:null,pieces:null,rate:null,subtotal:null,tax:null,total:null,items:[],warnings:[]
+  };
+  const count=num(o.printed_item_count),pieces=num(o.printed_piece_count),rate=num(o.vat_rate_percent);
+  out.count=count!=null&&count>0?Math.round(count):null;
+  out.pieces=pieces!=null&&pieces>0?Math.round(pieces):null;
+  out.rate=rate!=null&&rate>=0?rate:null;
+  out.subtotal=r2(o.subtotal);out.tax=r2(o.tax);out.total=r2(o.total);
+  const structure=txt(o.table_structure)||'unknown';
+  for(const row of Array.isArray(o.items)?o.items:[]){
+    const en=txt(row?.name_en),ar=txt(row?.name_ar),name=en&&ar?`${en} — ${ar}`:(en||ar);
+    if(!name||summaryName(name))continue;
+    let qty=num(row?.quantity);if(!Number.isFinite(qty)||qty<=0||qty>999)qty=1;
+    let unit=r2(row?.unit_price),line=r2(row?.line_total);
+    if(structure==='single_amount'&&line==null&&unit!=null){line=unit;unit=null}
+    if(qty>1&&line!=null&&unit!=null&&Math.abs(unit-line)<=.01&&structure==='single_amount')unit=null;
+    if(line==null&&unit!=null)line=r2(unit*qty);
+    if(unit==null&&line!=null&&qty)unit=r2(line/qty);
+    out.items.push({name,name_en:en||null,name_ar:ar||null,quantity:qty,unit_price:unit,line_total:line});
+  }
+  out.store=chooseMerchant(out.store,out.storeCandidates);
+  const parsed={out,lines:[],raw:JSON.stringify(o)};
+  return parsed
+}
+function receiptToOut(r){
+  const out={store:merchant(r?.merchant_name_en),storeCandidates:[],date:validDate(r?.date),count:null,pieces:null,rate:null,subtotal:r2(r?.subtotal),tax:r2(r?.tax),total:r2(r?.total),items:[],warnings:Array.isArray(r?.warnings)?[...r.warnings]:[]};
+  const c=num(r?.printed_item_count),p=num(r?.printed_piece_count),rate=num(r?.vat_rate_percent);
+  out.count=c!=null&&c>0?Math.round(c):null;out.pieces=p!=null&&p>0?Math.round(p):null;out.rate=rate!=null&&rate>=0?rate:null;
+  for(const row of Array.isArray(r?.items)?r.items:[]){
+    const name=txt(row?.name),en=txt(row?.name_en),ar=txt(row?.name_ar),qty=num(row?.quantity)||1,unit=r2(row?.unit_price),line=r2(row?.line_total);
+    if(name&&!summaryName(name))out.items.push({name,name_en:en||null,name_ar:ar||null,quantity:qty,unit_price:unit,line_total:line});
+  }
+  return out
+}
+function mergeTableStructured(baseReceipt,table){
+  const out=receiptToOut(baseReceipt||{}),structure=txt(table?.table_structure)||'unknown',items=[];
+  for(const row of Array.isArray(table?.items)?table.items:[]){
+    const en=txt(row?.name_en),ar=txt(row?.name_ar),name=en&&ar?`${en} — ${ar}`:(en||ar);
+    if(!name||summaryName(name))continue;
+    let qty=num(row?.quantity);if(!Number.isFinite(qty)||qty<=0||qty>999)qty=1;
+    let unit=r2(row?.unit_price),line=r2(row?.line_total);
+    if(structure==='single_amount'&&line==null&&unit!=null){line=unit;unit=null}
+    if(qty>1&&line!=null&&unit!=null&&Math.abs(unit-line)<=.01&&structure==='single_amount')unit=null;
+    if(line==null&&unit!=null)line=r2(unit*qty);
+    if(unit==null&&line!=null)unit=r2(line/qty);
+    items.push({name,name_en:en||null,name_ar:ar||null,quantity:qty,unit_price:unit,line_total:line});
+  }
+  if(items.length)out.items=items;
+  const c=num(table?.printed_item_count),p=num(table?.printed_piece_count);
+  if(c!=null&&c>0)out.count=Math.round(c);if(p!=null&&p>0)out.pieces=Math.round(p);
+  return {out,lines:[],raw:JSON.stringify(table||{})}
+}
+
 function cleanLine(s){
   return String(s||'').replace(/^[-*•\s]+/,'').replace(/^`+|`+$/g,'').trim();
 }
@@ -772,6 +944,39 @@ function chooseBestChecked(candidates){
   }
   return best
 }
+async function runGemmaStructured(env,image,prompt,schema,maxTokens=2600){
+  const result=await env.AI.run(GEMMA_MODEL,{
+    messages:[{role:'system',content:GEMMA_SYSTEM},{role:'user',content:prompt}],
+    image,
+    response_format:{type:'json_schema',json_schema:schema},
+    temperature:0,
+    top_p:.05,
+    max_completion_tokens:maxTokens,
+    stream:false
+  });
+  const obj=responseObject(result);
+  if(!obj)throw new Error('Gemma structured OCR returned no valid JSON');
+  return obj
+}
+async function readGemmaReceipt(env,image){
+  const structured=await runGemmaStructured(env,image,GEMMA_RECEIPT_PROMPT,RECEIPT_SCHEMA,3000);
+  const checked=validate(structuredReceiptToParsed(structured));
+  const region=safeRegion(structured.item_region);
+  const warns=Array.isArray(checked?.receipt?.warnings)?checked.receipt.warnings:[];
+  const items=Array.isArray(checked?.receipt?.items)?checked.receipt.items:[];
+  const needsTableRescue=structured.items_complete!==true||items.length===0||warns.some(x=>/item row sum|Printed item count|Printed pieces/i.test(x));
+  checked.primary_engine='gemma-4-structured';checked.inference_calls=1;checked.models_used=[GEMMA_MODEL];
+  checked.item_region=region;checked.items_complete=structured.items_complete===true;checked.needs_table_rescue=!!(needsTableRescue&&region);
+  checked.structured_confidence=structured.confidence||null;checked.table_structure=structured.table_structure||'unknown';
+  return checked
+}
+async function readGemmaTable(env,image,baseReceipt){
+  const table=await runGemmaStructured(env,image,GEMMA_TABLE_PROMPT,TABLE_SCHEMA,2200);
+  const checked=validate(mergeTableStructured(baseReceipt,table));
+  checked.primary_engine='gemma-4-dynamic-table';checked.inference_calls=1;checked.models_used=[GEMMA_MODEL];checked.items_complete=table.items_complete===true;
+  return checked
+}
+
 async function readLegacyReceipt(env,image){
   const firstResult=await env.AI.run(FALLBACK_MODEL,{
     prompt:LEGACY_PROMPT,
@@ -833,33 +1038,35 @@ async function readUniversalReceipt(env,image){
   return checked
 }
 
-async function readReceipt(env,image,mode='legacy'){
-  if(mode==='universal')return await readUniversalReceipt(env,image);
-  return await readLegacyReceipt(env,image)
+async function readReceipt(env,image,mode='gemma',baseReceipt=null){
+  if(mode==='legacy')return await readLegacyReceipt(env,image);
+  if(mode==='table')return await readGemmaTable(env,image,baseReceipt);
+  return await readGemmaReceipt(env,image)
 }
 
 export default {
   async fetch(request,env){
     const url=new URL(request.url);
     if(url.pathname==='/api/health'){
-      return new Response(JSON.stringify({ok:true,engine:'Stable Llama Primary + Moondream Universal Fallback',primary:FALLBACK_MODEL,fallback:OCR_MODEL,version:VERSION,base:'4.4.0'}),{headers:headers()});
+      return new Response(JSON.stringify({ok:true,engine:'Gemma 4 Universal Receipt Engine',primary:GEMMA_MODEL,fallback:FALLBACK_MODEL,structured_json:true,dynamic_table_rescue:true,version:VERSION,base:'4.5.3-safe-fallback'}),{headers:headers()});
     }
     if(url.pathname==='/api/receipt'){
       if(request.method!=='POST')return new Response(JSON.stringify({ok:false,error:'Method not allowed'}),{status:405,headers:headers()});
       const started=Date.now(),scanId=crypto.randomUUID().slice(0,8);
       try{
         const body=await request.json(),image=body?.image,
-          mode=body?.mode==='segments'?'segments':(body?.mode==='universal'?'universal':'legacy'),
+          mode=body?.mode==='legacy'?'legacy':(body?.mode==='table'?'table':'gemma'),
+          baseReceipt=body?.baseReceipt||null,
           images=Array.isArray(body?.images)?body.images:[];
         if(mode==='segments'){
           if(images.length!==2||!images.every(validImage))return new Response(JSON.stringify({ok:false,error:'Two receipt segment images are required'}),{status:400,headers:headers()});
         }else if(!validImage(image)){
           return new Response(JSON.stringify({ok:false,error:'One complete receipt image is required'}),{status:400,headers:headers()});
         }
-        const result=mode==='segments'?await readReceiptSegments(env,images):await readReceipt(env,image,mode);
+        const result=mode==='segments'?await readReceiptSegments(env,images):await readReceipt(env,image,mode,baseReceipt);
         return new Response(JSON.stringify({
           ok:true,...result,
-          meta:{engine:mode==='universal'?'Cloudflare Workers AI • Moondream Universal Fallback':'Cloudflare Workers AI • Stable Llama Primary',model:mode==='universal'?OCR_MODEL:FALLBACK_MODEL,fallback:OCR_MODEL,version:VERSION,base:'4.4.0',scan_id:scanId,elapsed_ms:Date.now()-started,images:1,inference_calls:result.inference_calls||1,repair_used:!!result.repair_used,models_used:result.models_used||[mode==='universal'?OCR_MODEL:FALLBACK_MODEL]}
+          meta:{engine:mode==='legacy'?'Cloudflare Workers AI • Stable Llama Fallback':(mode==='table'?'Cloudflare Workers AI • Gemma 4 Dynamic Table OCR':'Cloudflare Workers AI • Gemma 4 Universal Structured OCR'),model:mode==='legacy'?FALLBACK_MODEL:GEMMA_MODEL,fallback:FALLBACK_MODEL,version:VERSION,base:'4.5.3-safe-fallback',scan_id:scanId,elapsed_ms:Date.now()-started,images:1,inference_calls:result.inference_calls||1,repair_used:!!result.repair_used,models_used:result.models_used||[mode==='legacy'?FALLBACK_MODEL:GEMMA_MODEL],item_region:result.item_region||null,items_complete:result.items_complete??null,needs_table_rescue:result.needs_table_rescue||false,structured_json:mode!=='legacy'}
         }),{headers:headers()});
       }catch(e){
         console.error('receipt-reader',e);
