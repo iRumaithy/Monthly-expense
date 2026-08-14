@@ -80,7 +80,7 @@ Rules:
 9. If only one money value is printed for a row, use it as line total.
 10. Read decimals exactly. If unclear, leave blank instead of guessing.
 11. No JSON, markdown, explanation or code fences.`;
-const VERSION = '4.6.5';
+const VERSION = '4.6.6';
 
 const PROMPT = `Read the COMPLETE receipt/tax invoice image literally. The receipt may be thermal paper, POS, pharmacy, laundry, restaurant, screenshot, digital job order, Arabic/English, narrow, wide, long, or short.
 
@@ -991,6 +991,40 @@ function checkedQuality(c){
   s-=warns.filter(x=>/does not match|needs manual|Printed item count|Printed pieces/i.test(x)).length*12;
   return s;
 }
+
+function chooseBestChecked(candidates){
+  const list=(Array.isArray(candidates)?candidates:[])
+    .filter(c=>c&&typeof c==='object'&&c.receipt);
+  if(!list.length)return null;
+
+  // Never let an invalid rescue overwrite a valid extraction merely because
+  // it contains more text. Prefer accepted, then complete, then quality score.
+  list.sort((a,b)=>{
+    const aa=a.accepted?1:0,ba=b.accepted?1:0;
+    if(aa!==ba)return ba-aa;
+    const ac=a.complete?1:0,bc=b.complete?1:0;
+    if(ac!==bc)return bc-ac;
+    return checkedQuality(b)-checkedQuality(a)
+  });
+
+  const best=list[0];
+
+  // Safe fill only for merchant/date. Items and financial numbers always stay
+  // from the candidate that passed validation, avoiding cross-pass corruption.
+  const br=best.receipt||{};
+  for(const alt of list.slice(1)){
+    const ar=alt.receipt||{};
+    if(!br.merchant_name_en && ar.merchant_name_en && !storeLooksLikeItem(ar.merchant_name_en,br.items||[])){
+      br.merchant_name_en=ar.merchant_name_en
+    }
+    if(!br.date && ar.date)br.date=ar.date;
+    if(br.merchant_name_en&&br.date)break
+  }
+  best.receipt=br;
+  best.complete=!!best.accepted&&!!br.merchant_name_en&&!!br.date;
+  return best
+}
+
 function isPlaceholderStore(v){
   const s=txt(v).toLowerCase();
   return /best customer-facing|customer-facing merchant\/trade\/store|store name|merchant name|actual store name/.test(s);
@@ -1219,7 +1253,7 @@ export default {
   async fetch(request,env){
     const url=new URL(request.url);
     if(url.pathname==='/api/health'){
-      return new Response(JSON.stringify({ok:true,engine:'Stable 4.4 Llama Primary + Universal Plain-Text Rescue',primary:FALLBACK_MODEL,structured:STRUCTURED_MODEL,version:VERSION,base:'4.4.0'}),{headers:headers()});
+      return new Response(JSON.stringify({ok:true,engine:'Stable 4.4 Primary + Universal Table Parser',primary:FALLBACK_MODEL,structured:STRUCTURED_MODEL,version:VERSION,base:'4.4.0'}),{headers:headers()});
     }
     if(url.pathname==='/api/receipt'){
       if(request.method!=='POST')return new Response(JSON.stringify({ok:false,error:'Method not allowed'}),{status:405,headers:headers()});
