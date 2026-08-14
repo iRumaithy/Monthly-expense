@@ -80,7 +80,7 @@ Rules:
 9. If only one money value is printed for a row, use it as line total.
 10. Read decimals exactly. If unclear, leave blank instead of guessing.
 11. No JSON, markdown, explanation or code fences.`;
-const VERSION = '4.6.6';
+const VERSION = '5.0.0';
 
 const PROMPT = `Read the COMPLETE receipt/tax invoice image literally. The receipt may be thermal paper, POS, pharmacy, laundry, restaurant, screenshot, digital job order, Arabic/English, narrow, wide, long, or short.
 
@@ -1244,6 +1244,56 @@ async function readUniversalReceipt(env,image){
   return best
 }
 
+
+const TEXT_EVIDENCE_PROMPT = `You are a receipt structuring engine. OCR has ALREADY been performed locally by a real OCR engine. You receive the detected text lines in visual top-to-bottom order, sometimes with normalized coordinates and confidence.
+
+Your job is NOT to invent or visually read anything. Structure only the OCR evidence that is present.
+Return ONLY plain protocol lines:
+STORE|actual customer-facing merchant/outlet/trade name
+STORE_CANDIDATE|another major business/legal name if present
+DATE_RAW|invoice/transaction/order date exactly as present in OCR evidence
+COUNT|explicit distinct item-row count only
+PIECES|explicit T.Pcs / Total Pieces / Total Qty only
+VAT_RATE|percentage if explicit
+SUBTOTAL|pre-tax/VATable/Excl.VAT/G.Amt amount
+VAT|tax amount
+TOTAL|final payable/gross/net amount
+ITEM|English item text|Arabic item text|quantity|unit price|line total
+
+Rules:
+1. Never invent text that is absent from OCR evidence.
+2. STORE is the customer-facing outlet, not a parent facilities/management company when a pharmacy/laundry/shop/restaurant outlet is also present.
+3. Preserve printed date order; do not swap day/month.
+4. Read every distinct purchase/service row represented in evidence.
+5. T.Pcs / Total Pieces / Total Qty is PIECES, not COUNT.
+6. If a row has one money column, it is line_total; unit price may be blank.
+7. Preserve Arabic and English item text when both are present; never translate.
+8. Exclude headings, TRN, invoice/order/customer numbers, dates, payment methods, balances, terms, VAT and totals from ITEM.
+9. Common pre-tax labels: VATable Sales, Taxable Sales, Excl.VAT, G.Amt, Subtotal, Net W/Out Tax.
+10. Common final labels: Grand Total, Gross, Net Amount, Amount Due, Adv when it equals subtotal + VAT.
+11. If uncertain, leave blank. No JSON, markdown, commentary, examples or code fences.`;
+
+async function readReceiptTextEvidence(env,body){
+  const lines=Array.isArray(body?.lines)?body.lines:[];
+  const rawText=txt(body?.text);
+  if(!lines.length&&!rawText)throw new Error('OCR text evidence is required');
+  const normalized=lines.slice(0,260).map((l,i)=>{
+    if(typeof l==='string')return `${i+1}|${txt(l)}`;
+    const t=txt(l?.text);if(!t)return '';
+    const x0=Number(l?.x0),y0=Number(l?.y0),x1=Number(l?.x1),y1=Number(l?.y1),s=Number(l?.score);
+    const pos=[x0,y0,x1,y1].every(Number.isFinite)?` @${x0.toFixed(3)},${y0.toFixed(3)},${x1.toFixed(3)},${y1.toFixed(3)}`:'';
+    const conf=Number.isFinite(s)?` c=${Math.round(s*100)}`:'';
+    return `${i+1}|${t}${pos}${conf}`
+  }).filter(Boolean).join('\n');
+  const evidence=(normalized||rawText).slice(0,18000);
+  const result=await env.AI.run(FALLBACK_MODEL,{prompt:`${TEXT_EVIDENCE_PROMPT}\n\nOCR EVIDENCE:\n${evidence}`,max_tokens:1800,temperature:0,top_p:.05,stream:false});
+  const raw=responseText(result);if(!raw)throw new Error('Text structurer returned no output');
+  const checked=validate(parseProtocol(raw));
+  checked.primary_engine='paddle-text-structurer';checked.inference_calls=1;checked.models_used=[FALLBACK_MODEL];
+  checked.transcript_preview=raw.slice(0,2400);checked.transcript_lines=raw.split(/\n+/).filter(Boolean).length;
+  return checked
+}
+
 async function readReceipt(env,image,mode='legacy'){
   if(mode==='universal'||mode==='structured')return await readUniversalReceipt(env,image);
   return await readLegacyReceipt(env,image)
@@ -1253,7 +1303,7 @@ export default {
   async fetch(request,env){
     const url=new URL(request.url);
     if(url.pathname==='/api/health'){
-      return new Response(JSON.stringify({ok:true,engine:'Stable 4.4 Primary + Universal Table Parser',primary:FALLBACK_MODEL,structured:STRUCTURED_MODEL,version:VERSION,base:'4.4.0'}),{headers:headers()});
+      return new Response(JSON.stringify({ok:true,engine:'PaddleOCR v5 On-device + Stable Cloud Fallback',primary:FALLBACK_MODEL,structured:STRUCTURED_MODEL,version:VERSION,base:'4.4.0'}),{headers:headers()});
     }
     if(url.pathname==='/api/receipt'){
       if(request.method!=='POST')return new Response(JSON.stringify({ok:false,error:'Method not allowed'}),{status:405,headers:headers()});
@@ -1277,6 +1327,18 @@ export default {
         const msg=e?.message||'Receipt analysis failed';
         const retriable=/load failed|timeout|timed out|out of capacity|3040|3007|3008|temporar|aborted/i.test(msg);
         return new Response(JSON.stringify({ok:false,error:msg,retriable,meta:{version:VERSION,scan_id:scanId,elapsed_ms:Date.now()-started}}),{status:500,headers:headers()});
+      }
+    }
+    if(url.pathname==='/api/receipt-text'){
+      if(request.method!=='POST')return new Response(JSON.stringify({ok:false,error:'Method not allowed'}),{status:405,headers:headers()});
+      const started=Date.now(),scanId=crypto.randomUUID().slice(0,8);
+      try{
+        const body=await request.json();
+        const result=await readReceiptTextEvidence(env,body);
+        return new Response(JSON.stringify({ok:true,...result,meta:{engine:'Cloudflare Workers AI • OCR Text Structurer',model:FALLBACK_MODEL,version:VERSION,scan_id:scanId,elapsed_ms:Date.now()-started,inference_calls:1}}),{headers:headers()})
+      }catch(e){
+        const msg=e?.message||'Text structuring failed';
+        return new Response(JSON.stringify({ok:false,error:msg,retriable:/timeout|capacity|temporar|429/i.test(msg),meta:{version:VERSION,scan_id:scanId,elapsed_ms:Date.now()-started}}),{status:500,headers:headers()})
       }
     }
     if(url.pathname==='/api/license'){
