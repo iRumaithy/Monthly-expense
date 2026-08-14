@@ -170,7 +170,7 @@ button,input,textarea,select{font:inherit}button{cursor:pointer}.app{max-width:1
             <div class="ai-local-head"><div class="ai-local-title"><span>🧠</span><span data-i18n="localAIReader">القارئ الذكي المحلي</span></div><span class="ai-local-badge" id="aiLocalBadge" data-i18n="aiChecking">جارٍ التحقق…</span></div>
             <div class="ai-local-detail" id="aiLocalDetail" data-i18n="aiLocalNote">يعمل داخل الهاتف بدون API أو اشتراك. في أول تشغيل فقط يتم تنزيل النموذج وحفظه في ذاكرة المتصفح.</div>
             <div class="ai-local-meter" id="aiLocalMeter"><i id="aiLocalMeterBar"></i></div>
-            <div class="ai-local-tech"><span id="aiDeviceBadge">Cloudflare</span><span>Workers AI • Multi-View Gemma OCR + Structured Verification</span><span data-i18n="aiPrivate">معالجة سحابية آمنة</span></div>
+            <div class="ai-local-tech"><span id="aiDeviceBadge">Cloudflare</span><span>Workers AI • Stable Llama + Direct Gemma Fallback</span><span data-i18n="aiPrivate">معالجة سحابية آمنة</span></div>
           </div>
         </div>
         <div class="footer-note" data-i18n="ocrNote">لأفضل نتيجة: اجعل الفاتورة كاملة داخل الصورة وبإضاءة متساوية. تتم معالجة التباين والقص تلقائيًا، ويمكنك مراجعة كل البيانات قبل الحفظ.</div>
@@ -1005,7 +1005,7 @@ function cloudReceiptToParsed(payload){
     store:canonicalMerchant,date:r.date||'',category:inferCategory(`${canonicalMerchant} ${(r.items||[]).map(x=>x.name||'').join(' ')}`),
     subtotal:r.subtotal??null,tax:r.tax??null,total:r.total??null,itemRows:items,items:items.length,itemsExpected:Number(r.printed_item_count)||0,
     score:Number(payload?.score??0)||Math.min(100,vals*14),fields:vals,vatEvidence:Number(r.tax||0)>0,totalReliable:r.total!=null,
-    localAI:true,engine:'Cloudflare AI • Multi-View Gemma OCR + Structured Verification',warnings:Array.isArray(r.warnings)?r.warnings:[],readerMeta:payload?.meta||null,accepted:payload?.accepted!==false
+    localAI:true,engine:'Cloudflare AI • Stable Llama + Direct Gemma Fallback',warnings:Array.isArray(r.warnings)?r.warnings:[],readerMeta:payload?.meta||null,accepted:payload?.accepted!==false
   }
 }
 async function checkCloudReaderHealth(){
@@ -1333,95 +1333,106 @@ async function tryLocalHybridReceiptRescue(body,cloudParsed){
 }
 
 async function runCloudReceiptReader(){
-  const focus=currentCanvas||sourceCanvas;if(!focus)throw new Error('No receipt image');
+  const focus=sourceCanvas||currentCanvas;if(!focus)throw new Error('No receipt image');
   clearRecognitionFieldsForNewImage();
-  $('#ocrMeter').style.display='block';$('#ocrMeterBar').style.width='12%';
 
-  const fullImage=buildCloudUniversalImages(focus,false);
-  if(!fullImage.length)throw new Error('Could not prepare complete receipt views');
+  // STEP 1 — stable reader FIRST. This is the proven path for AL MAQAM and the pharmacy.
+  const legacyImage=buildCloudReceiptComposite(focus,false);
+  if(!legacyImage)throw new Error('Could not prepare receipt image');
 
-  $('#ocrStatus').textContent=lang==='ar'?'جارٍ فهم الفاتورة كاملة بدون قالب ثابت…':'Reading the complete receipt without a fixed template…';
-  setLocalAIStatus('loading',lang==='ar'?'Gemma 4 يقرأ الفاتورة كاملة ونسختين مكبرتين متداخلتين، ثم تُبنى البيانات بصيغة منظمة…':'Gemma 4 is reading the full receipt plus two overlapping high-resolution views into structured data…',22);
-
-  let gemmaBody=null,gemmaErr=null;
-  try{
-    gemmaBody=await postCloudReceipt(fullImage,30000,'gemma')
-  }catch(e){
-    gemmaErr=e;
-    if(cloudErrorIsRetriable(e?.message,e?.status,e?.body)){
-      try{
-        $('#ocrMeterBar').style.width='30%';
-        $('#ocrStatus').textContent=lang==='ar'?'إعادة محاولة أخف للصورة الكاملة…':'Retrying the full receipt with a lighter image…';
-        const compact=buildCloudUniversalImages(focus,true);
-        gemmaBody=await postCloudReceipt(compact,18000,'gemma');
-        gemmaBody.meta={...(gemmaBody.meta||{}),client_retry:true}
-      }catch(e2){gemmaErr=e2}
-    }
-  }
-
-  // Multi-view OCR already includes enlarged overlapping receipt regions in the same request.
-
-  // If the universal engine is reliable, finish here.
-  if(gemmaBody&&gemmaBody.accepted!==false){
-    const parsed=cloudReceiptToParsed(gemmaBody);
-    if(parsed.store||parsed.itemRows.length||parsed.total!=null){
-      applyParsedReceipt(parsed);showScanResult(parsed);saveDraftNow(true);$('#ocrMeterBar').style.width='100%';
-      const ms=Number(gemmaBody?.meta?.elapsed_ms||0),sid=gemmaBody?.meta?.scan_id?` • Scan ${gemmaBody.meta.scan_id}`:'',time=ms?` • ${(ms/1000).toFixed(1)}s`:'';
-      const dynamic=gemmaBody?.meta?.dynamic_table_retry===true;
-      $('#ocrStatus').textContent=t('scanDone')+(dynamic?(lang==='ar'?' • تم تدقيق جدول الأصناف':' • item table verified'):(lang==='ar'?' • Gemma 4':' • Gemma 4'))+time+sid;
-      setLocalAIStatus('ready',(lang==='ar'?'اكتملت القراءة المنظمة والتحقق الحسابي بنجاح.':'Structured extraction and arithmetic verification completed successfully.')+time,100);
-      return parsed
-    }
-  }
-
-  // Safety fallback: preserve the semi-stable 4.5.3 Llama path.
-  $('#ocrMeterBar').style.width='70%';
-  $('#ocrStatus').textContent=lang==='ar'?'القراءة العامة لم تكتمل؛ جارٍ تشغيل القارئ المستقر الاحتياطي…':'Universal read incomplete; running the stable fallback reader…';
-  setLocalAIStatus('loading',lang==='ar'?'تشغيل قارئ 4.5.3 المستقر كشبكة أمان.':'Running the stable 4.5.3 reader as a safety fallback.',74);
+  $('#ocrMeter').style.display='block';$('#ocrMeterBar').style.width='18%';
+  $('#ocrStatus').textContent=lang==='ar'?'جارٍ القراءة بالقارئ المستقر…':'Reading with the stable receipt reader…';
+  setLocalAIStatus('loading',lang==='ar'?'القارئ المستقر يعمل أولًا؛ لن يتم تشغيل Gemma إذا نجح.':'Stable reader runs first; Gemma will not run if it succeeds.',24);
 
   let legacyBody=null,legacyErr=null;
   try{
-    const legacyImage=buildCloudReceiptComposite(focus,false);
     legacyBody=await postCloudReceipt(legacyImage,23000,'legacy')
   }catch(e){
     legacyErr=e;
     if(cloudErrorIsRetriable(e?.message,e?.status,e?.body)){
       try{
+        $('#ocrMeterBar').style.width='34%';
+        $('#ocrStatus').textContent=lang==='ar'?'إعادة محاولة خفيفة بالقارئ المستقر…':'Quick stable-reader retry…';
         const compactLegacy=buildCloudReceiptComposite(focus,true);
-        legacyBody=await postCloudReceipt(compactLegacy,13000,'legacy');
+        legacyBody=await postCloudReceipt(compactLegacy,12000,'legacy');
         legacyBody.meta={...(legacyBody.meta||{}),client_retry:true}
       }catch(e2){legacyErr=e2}
     }
   }
 
-  let body=gemmaBody;
-  if(legacyBody&&cloudPayloadQuality(legacyBody)>cloudPayloadQuality(body))body=legacyBody;
-  if(!body)throw legacyErr||gemmaErr||new Error('Cloud receipt readers unavailable');
+  const lr=legacyBody?.receipt||{},li=Array.isArray(lr.items)?lr.items:[];
+  const legacySuspicious=!legacyBody
+    || legacyBody.accepted===false
+    || !lr.merchant_name_en
+    || lr.total==null
+    || li.length===0
+    || (Number(lr.printed_piece_count||0)>0 && Math.abs(li.reduce((s,x)=>s+(Number(x.quantity)||0),0)-Number(lr.printed_piece_count||0))>.001);
 
+  if(legacyBody&&!legacySuspicious){
+    const parsed=cloudReceiptToParsed(legacyBody);
+    parsed.itemsExpected=Number(legacyBody?.receipt?.printed_item_count)||parsed.itemsExpected;
+    applyParsedReceipt(parsed);showScanResult(parsed);saveDraftNow(true);$('#ocrMeterBar').style.width='100%';
+    const ms=Number(legacyBody?.meta?.elapsed_ms||0),sid=legacyBody?.meta?.scan_id?` • Scan ${legacyBody.meta.scan_id}`:'',time=ms?` • ${(ms/1000).toFixed(1)}s`:'';
+    $('#ocrStatus').textContent=t('scanDone')+(lang==='ar'?' • القارئ المستقر':' • stable reader')+time+sid;
+    setLocalAIStatus('ready',(lang==='ar'?'تمت القراءة بالقارئ المستقر؛ لم يتم تشغيل Gemma.':'Stable reader succeeded; Gemma was not started.')+time,100);
+    return parsed
+  }
+
+  // STEP 2 — difficult receipt only: ONE direct Gemma 4 vision inference on the complete image.
+  $('#ocrMeterBar').style.width='52%';
+  $('#ocrStatus').textContent=lang==='ar'?'التصميم يحتاج القارئ العام؛ جارٍ تشغيل Gemma على الصورة الكاملة…':'Different layout detected; running Gemma on the complete image…';
+  setLocalAIStatus('loading',lang==='ar'?'Gemma يعمل كقارئ احتياطي مباشر بصورة واحدة فقط.':'Gemma runs as a direct one-image fallback only.',58);
+
+  let universalBody=null,universalErr=null;
+  try{
+    const fullImage=buildCloudFullReceiptImage(focus,false);
+    universalBody=await postCloudReceipt(fullImage,17000,'universal')
+  }catch(e){
+    universalErr=e;
+    if(cloudErrorIsRetriable(e?.message,e?.status,e?.body)){
+      try{
+        $('#ocrMeterBar').style.width='70%';
+        $('#ocrStatus').textContent=lang==='ar'?'إعادة محاولة أخف لـ Gemma…':'Retrying Gemma with a lighter image…';
+        const compactFull=buildCloudFullReceiptImage(focus,true);
+        universalBody=await postCloudReceipt(compactFull,10000,'universal');
+        universalBody.meta={...(universalBody.meta||{}),client_retry:true}
+      }catch(e2){universalErr=e2}
+    }
+  }
+
+  // Never discard a usable stable result merely because the fallback timed out.
+  let body=universalBody;
+  if(!body || cloudPayloadQuality(legacyBody)>cloudPayloadQuality(body))body=legacyBody;
+  if(!body)throw universalErr||legacyErr||new Error('Cloud receipt readers unavailable');
+
+  $('#ocrMeterBar').style.width='90%';
   const parsed=cloudReceiptToParsed(body);
   parsed.itemsExpected=Number(body?.receipt?.printed_item_count)||parsed.itemsExpected;
-  if(body.accepted!==false){
-    applyParsedReceipt(parsed);showScanResult(parsed);saveDraftNow(true);$('#ocrMeterBar').style.width='100%';
-    const ms=Number(body?.meta?.elapsed_ms||0),sid=body?.meta?.scan_id?` • Scan ${body.meta.scan_id}`:'',time=ms?` • ${(ms/1000).toFixed(1)}s`:'';
-    $('#ocrStatus').textContent=t('scanDone')+(body===legacyBody?(lang==='ar'?' • القارئ المستقر الاحتياطي':' • stable fallback'):(lang==='ar'?' • Gemma 4':' • Gemma 4'))+time+sid;
-    setLocalAIStatus('ready',(lang==='ar'?'تم اختيار أفضل نتيجة اجتازت التحقق الحسابي.':'Best arithmetically verified extraction selected.')+time,100);
-    return parsed
+
+  if(body?.accepted===false){
+    // Keep trustworthy scalar fields when available, but never fabricate item rows.
+    const r=body?.receipt||{};
+    const scalarOk=!!(r.merchant_name_en||r.date||r.total!=null) && r.total!=null;
+    if(scalarOk){
+      parsed.itemRows=[];parsed.items=0;
+      parsed.warnings=[...(parsed.warnings||[]),lang==='ar'?'تم حفظ الحقول الموثوقة فقط؛ الأصناف تحتاج مراجعة.':'Only trustworthy scalar fields were kept; items need review.'];
+      applyParsedReceipt(parsed);showScanResult(parsed);saveDraftNow(true);$('#ocrMeterBar').style.width='100%';
+      $('#ocrStatus').textContent=lang==='ar'?'تمت تعبئة البيانات الموثوقة فقط؛ لم يتم اعتماد أصناف غير مؤكدة.':'Only verified fields were filled; uncertain items were not applied.';
+      setLocalAIStatus('fallback',lang==='ar'?'راجع الأصناف فقط.':'Review item rows only.');
+      return parsed
+    }
+    clearRecognitionFieldsForNewImage();showScanResult(parsed);$('#ocrMeterBar').style.width='100%';
+    throw universalErr||legacyErr||new Error('Receipt extraction did not pass verification')
   }
 
-  // Do not discard trustworthy scalar fields just because the item table remains difficult.
-  // Fill merchant/date/totals only when present, and leave unverified rows out.
-  const r=body.receipt||{},reliableScalars=body?.meta?.scalar_finance_reliable===true&&!!(r.merchant_name_en||r.date||r.total!=null);
-  if(reliableScalars){
-    parsed.itemRows=[];parsed.items=0;parsed.itemsExpected=Number(r.printed_item_count)||0;
-    parsed.warnings=[...(parsed.warnings||[]),lang==='ar'?'تم تعبئة الحقول الموثوقة فقط؛ جدول الأصناف يحتاج مراجعة.':'Only reliable scalar fields were filled; item rows need review.'];
-    applyParsedReceipt(parsed);showScanResult(parsed);saveDraftNow(true);$('#ocrMeterBar').style.width='100%';
-    $('#ocrStatus').textContent=lang==='ar'?'تمت تعبئة البيانات الموثوقة، لكن جدول الأصناف لم يجتز التحقق.':'Reliable fields were filled, but the item table did not pass verification.';
-    setLocalAIStatus('fallback',lang==='ar'?'اسم المحل/التاريخ/الإجماليات محفوظة؛ راجع الأصناف فقط.':'Merchant/date/totals kept; review items only.');
-    return parsed
-  }
-
-  clearRecognitionFieldsForNewImage();showScanResult(parsed);$('#ocrMeterBar').style.width='100%';
-  throw legacyErr||gemmaErr||new Error('Receipt extraction did not pass verification')
+  applyParsedReceipt(parsed);showScanResult(parsed);saveDraftNow(true);$('#ocrMeterBar').style.width='100%';
+  const ms=Number(body?.meta?.elapsed_ms||0),sid=body?.meta?.scan_id?` • Scan ${body.meta.scan_id}`:'',time=ms?` • ${(ms/1000).toFixed(1)}s`:'';
+  const fallbackUsed=body===universalBody;
+  $('#ocrStatus').textContent=t('scanDone')+(fallbackUsed?(lang==='ar'?' • Gemma 4 الاحتياطي':' • Gemma 4 fallback'):(lang==='ar'?' • القارئ المستقر':' • stable reader'))+time+sid;
+  setLocalAIStatus('ready',(fallbackUsed
+    ?(lang==='ar'?'اكتملت القراءة عبر Gemma بعد تعذر المسار المستقر.':'Gemma completed the read after the stable path was incomplete.')
+    :(lang==='ar'?'اكتملت القراءة بالقارئ المستقر.':'Stable receipt reading complete.'))+time,100);
+  return parsed
 }
 async function runSmartReceiptReader(){
   if(!currentCanvas||smartReaderBusy)return;
@@ -1721,6 +1732,6 @@ $('#restoreInput').onchange=async e=>{
 clearForm(false);applyLang();ensurePersistentStorage();restoreDraft();setLocalAIStatus('loading',lang==='ar'?'جارٍ التحقق من اتصال Cloudflare AI…':'Checking Cloudflare AI connection…',5);setTimeout(checkCloudReaderHealth,250);
 </script>
 
-<footer class="app-version-footer" id="appVersionFooter" data-version="4.6.1">الإصدار 4.6.1</footer>
+<footer class="app-version-footer" id="appVersionFooter" data-version="4.6.2">الإصدار 4.6.2</footer>
 </body>
 </html>
