@@ -40,6 +40,10 @@ ITEM RULES:
 7. Emit ONE ITEM line for every distinct purchasable row.
 8. Copy English and Arabic item names literally. Never translate or spell-correct.
 9. quantity, unit_price and line_total must belong to the SAME row.
+9A. Quantity must come ONLY from a separate Qty/Quantity/Pcs cell or column for that SAME row. NEVER infer quantity by dividing line_total by unit_price or by forcing totals to reconcile.
+9B. Numbers inside DESCRIPTION text — e.g. 10MG, 20MG, 500ML, 1L, 100G, size, model, strength or pack text — stay in the item name and are NOT quantity unless a separate Qty/Quantity/Pcs cell explicitly says so.
+9C. If no explicit quantity cell is visible, use quantity 1. If only one money value is visible, use it as line total and leave unit price blank.
+9D. Dark/digital receipts may use white text on black. Read literal spelling and preserve row/column alignment.
 10. COUNT is ONLY a printed count of distinct item rows. Do NOT use T.Pcs, Total Pieces, Total Qty or total quantity as COUNT.
 11. Never include VAT, totals, balance, dates, TRN, invoice/order/customer numbers or table headings as ITEM rows.
 
@@ -77,10 +81,13 @@ Rules:
 6. T.Pcs / Total Pieces / Total Qty is PIECES, not COUNT.
 7. Keep dates in the printed order. Never swap day and month.
 8. Copy item names literally; do not translate or spell-correct.
-9. If only one money value is printed for a row, use it as line total.
+8A. Quantity is valid ONLY from a separate Qty/Quantity/Pcs cell on the SAME row. Never derive it from money or totals.
+8B. Description tokens such as 10MG, 20MG, 500ML, 1L, 100G, sizes, model numbers and strength/pack text are part of the item name, not quantity. If no explicit quantity is visible, use 1.
+8C. On dark receipts, read white-on-black text literally and preserve row/column alignment.
+9. If only one money value is printed for a row, use it as line total and leave unit price blank.
 10. Read decimals exactly. If unclear, leave blank instead of guessing.
 11. No JSON, markdown, explanation or code fences.`;
-const VERSION = '5.3.0';
+const VERSION = '5.4.0';
 
 const PROMPT = `Read the COMPLETE receipt/tax invoice image literally. The receipt may be thermal paper, POS, pharmacy, laundry, restaurant, screenshot, digital job order, Arabic/English, narrow, wide, long, or short.
 
@@ -99,7 +106,9 @@ ITEM|English item text|Arabic item text|quantity|unit price|line total
 Rules:
 1. Inspect the entire image from top to bottom. Do not assume fixed locations.
 2. Read EVERY distinct purchase/service row. Never stop after the first row.
-3. Keep quantity, unit price and line total from the SAME row.
+3. Keep quantity, unit price and line total from the SAME row. Quantity comes ONLY from a separate Qty/Quantity/Pcs cell; NEVER calculate it from money.
+3A. Description numbers such as 10MG, 20MG, 500ML, 1L, 100G, sizes, model numbers and strength/pack text remain in the item name. They are NOT quantity unless a separate quantity cell says so.
+3B. If no explicit quantity cell is visible, use quantity 1. Dark receipts may be white text on black; preserve literal spelling and column alignment.
 4. If the receipt has ONE amount/AED column, that value is the LINE TOTAL. Leave unit price blank if it is not printed.
 5. T.Pcs / Total Pieces / Total Qty is PIECES, not COUNT.
 6. Do not include headings, invoice/order/customer numbers, payment methods, balances, dates, totals, VAT, or terms as ITEM rows.
@@ -132,6 +141,10 @@ Prioritize:
 - treating a single amount column as line total;
 - preserving exact date order;
 - reconciling item rows with printed financial totals.
+- reading quantity ONLY from a separate Qty/Quantity/Pcs cell; never derive it from amounts/totals.
+- keeping dosage/capacity/size/model text such as 10MG or 500ML inside the item name rather than stealing it as quantity.
+- using quantity 1 when no separate quantity cell is visible.
+- preserving literal white-on-black table text on dark digital receipts.
 
 Never guess. No JSON, markdown, commentary or examples.`;
 
@@ -151,7 +164,10 @@ ITEM|English item text|Arabic item text|quantity|unit price|line total
 Rules:
 1. Emit EVERY distinct item/service row that is visibly printed.
 2. Never output headings, totals, VAT, customer details, invoice numbers, dates, payment methods, balances or terms as ITEM rows.
-3. If there is only one money column such as AED/Amount, that value is line_total; leave unit price blank if not separately printed.
+3. Quantity comes ONLY from a separate Qty/Quantity/Pcs cell in the SAME row. Never infer it from price/total arithmetic.
+3A. Numbers embedded in the description such as 10MG, 20MG, 500ML, 1L, 100G, sizes/model/strength text are part of the item name, not quantity. If no explicit quantity cell is visible, use quantity 1.
+3B. Dark receipts may be white text on black; preserve literal row spelling and column alignment.
+3C. If there is only one money column such as AED/Amount, that value is line_total; leave unit price blank if not separately printed.
 4. T.Pcs / Total Pieces / Total Qty is PIECES, not COUNT.
 5. Preserve both English and Arabic names when both are printed; never invent a translation.
 6. Keep the printed date order. Never swap day and month.
@@ -182,6 +198,9 @@ RULES:
 2. STORE is the outlet the customer used. If a parent/management company and a pharmacy/laundry/shop/restaurant are both visible, choose the outlet.
 3. Preserve DATE_RAW exactly in printed order. Never swap day/month.
 4. Read EVERY DISTINCT purchase/service row from the whole receipt.
+4A. Quantity comes ONLY from a separate Qty/Quantity/Pcs cell on the same row. Never infer it from money or totals.
+4B. Description numbers such as 10MG, 20MG, 500ML, 1L, 100G, sizes/model/strength text remain part of the item name. If no explicit quantity cell is visible, use quantity 1.
+4C. Dark/digital receipts may be white text on black; preserve literal spelling and row/column alignment.
 5. T.Pcs / Total Qty / Total Pieces is PIECES, not COUNT.
 6. Common pre-tax labels include VATable Sales, Taxable Sales, Excl.VAT, Subtotal, G.Amt, Net W/Out Tax.
 7. Common tax labels include VAT Amount, VAT 5%, Tax.
@@ -213,7 +232,9 @@ Rules:
 2. Read EVERY complete purchase/service row visible in this segment.
 3. Do not invent rows that are cut off. If a row crosses the segment edge and is incomplete, omit it; the overlapping segment will capture it.
 4. Preserve item names literally; never translate or spell-correct.
-5. Quantity, unit price and line total must come from the SAME row.
+5. Quantity, unit price and line total must come from the SAME row. Quantity is valid ONLY from a separate Qty/Quantity/Pcs cell; never infer it from price or line total.
+5A. 10MG, 20MG, 500ML, 1L, 100G, sizes, model numbers and strength/pack text belong to the description, not the quantity field. If no explicit quantity cell is visible, use quantity 1.
+5B. If the segment is dark with white text, transcribe it literally and preserve row order/column alignment.
 6. T.Pcs / Total Qty / Total Pieces is PIECES, not COUNT.
 7. Exclude table headings, customer name, invoice/order numbers, payment method, balance, terms, VAT/totals and dates from ITEM.
 8. Common pre-tax labels: VATable Sales, Taxable Sales, Excl.VAT, G.Amt, Subtotal, Net W/Out Tax.
@@ -295,10 +316,15 @@ function merchantCandidateScore(name,index=0,preferred=false){
   if(s.length>=5&&s.length<=100)score+=5;
   return score;
 }
+function knownMerchantTypo(v){
+  const s=txt(v),k=merchantKey(s).replace(/[^a-z0-9]/g,'');
+  if(['alwadgaedlaundry','alwadqaedlaundry','alwagaedlaundry'].includes(k))return 'ALWAQAED LAUNDRY';
+  return s;
+}
 function chooseMerchant(preferred,candidates){
   const all=[];
   const push=(v,pref=false)=>{
-    const s=merchant(v);if(!s)return;
+    let s=merchant(v);if(!s)return;s=knownMerchantTypo(s);
     const key=merchantKey(s);
     if(all.some(x=>x.key===key)){if(pref)all.find(x=>x.key===key).preferred=true;return}
     all.push({name:s,key,preferred:pref,index:all.length});
@@ -737,8 +763,12 @@ function itemSuspicionScore(item){
   if(/\b(customer|bill|cashier|order|invoice|trn|mobile|phone|time|date|balance|discount|service\s*fee|gross|total|vat|tax|cash|visa|online|change|amounts?|point|booked|advance)\b/i.test(n))s+=70;
   if(/\b(thank|terms?|condition|street|building|mall|branch|pharmacy|laundry)\b/i.test(n))s+=25;
   if((item?.line_total==null)&&(item?.unit_price==null))s+=45;
-  if(Number(item?.quantity||1)<=0||Number(item?.quantity||1)>100)s+=30;
+  const q=Number(item?.quantity||1);
+  if(q<=0||q>100)s+=30;
+  else if(q>=8)s+=14; // verification signal: often dosage/size stolen as Qty
   if(n.length<2)s+=30;
+  if(/^[^A-Za-z\u0600-\u06FF]*[A-Za-z\u0600-\u06FF]{1,3}[^A-Za-z\u0600-\u06FF]*$/.test(n))s+=18;
+  if(/(^|\s)[\"':;]{1,2}|\b(?:weston|weep|sts)\b/i.test(n))s+=22;
   return s;
 }
 function rowMoneyOptions(item){
@@ -989,6 +1019,9 @@ function checkedQuality(c){
   if(r.total!=null)s+=8;
   const warns=Array.isArray(r.warnings)?r.warnings:[];
   s-=warns.filter(x=>/does not match|needs manual|Printed item count|Printed pieces/i.test(x)).length*12;
+  // When independent passes are financially equivalent, prefer cleaner literal
+  // item text and lower quantity-risk instead of arithmetic self-consistency alone.
+  s-=Math.min(28,items.reduce((a,it)=>a+itemSuspicionScore(it),0)*.22);
   return s;
 }
 
@@ -1037,6 +1070,11 @@ function shouldRepair(checked){
   if(warns.some(x=>/VAT amount does not match|item row sum does not match|Printed item count|Printed pieces/i.test(x)))return true;
   const first=items[0],firstMoney=rowMoney(first);
   if(items.length===1&&r.total!=null&&firstMoney!=null&&Number(r.total)>Number(firstMoney)*1.45)return true;
+  // High Qty is legitimate sometimes, but it is also a classic OCR error when a
+  // medicine strength/size (for example 10MG) is stolen from Description. Force
+  // an independent second pass without rejecting the receipt solely for this signal.
+  if(items.some(it=>Number(it?.quantity||1)>=8))return true;
+  if(items.some(it=>itemSuspicionScore(it)>=55))return true;
   return false;
 }
 function fillMissingFromPrimary(best,primary){
@@ -1137,7 +1175,9 @@ date_raw must be the transaction/invoice/order date exactly as printed, not deli
 printed_item_count is the count of distinct purchase rows only when explicitly printed; otherwise 0.
 printed_piece_count is T.Pcs / total pieces / total quantity only when explicitly printed; otherwise 0.
 For each item preserve English and Arabic names when printed. If one language is absent, use an empty string for it.
-quantity, unit_price and line_total must belong to the same row.
+quantity, unit_price and line_total must belong to the same row. Quantity must be copied ONLY from an explicit separate Qty/Quantity/Pcs cell/column. NEVER calculate quantity from line_total/unit_price or invent it to reconcile totals.
+Numbers embedded in an item description such as 10MG, 20MG, 500ML, 1L, 100G, sizes, model numbers or strength/pack text remain part of the item name and are NOT quantity unless a separate Qty/Quantity/Pcs cell says so.
+If no explicit quantity cell is visible, return quantity 1. For dark digital receipts with white text on black, preserve literal spelling and table alignment.
 If the receipt has one AED/Amount money column, put that printed value in line_total and use 0 for unit_price if unit price is not separately printed.
 Do not include totals, VAT, payment methods, customer details, IDs, dates, headings, balances or terms as items.
 subtotal is the amount before VAT when explicitly labeled.
@@ -1266,6 +1306,8 @@ Rules:
 3. Preserve printed date order; do not swap day/month.
 4. Read every distinct purchase/service row represented in evidence.
 5. T.Pcs / Total Pieces / Total Qty is PIECES, not COUNT.
+5A. Quantity comes ONLY from a separate Qty/Quantity/Pcs cell/column in the OCR evidence for the SAME row. Never infer it from money or totals.
+5B. Description text such as 10MG, 20MG, 500ML, 1L, 100G, sizes/model/strength text remains in the item name. If no explicit quantity cell exists, use quantity 1.
 6. If a row has one money column, it is line_total; unit price may be blank.
 7. Preserve Arabic and English item text when both are present; never translate.
 8. Exclude headings, TRN, invoice/order/customer numbers, dates, payment methods, balances, terms, VAT and totals from ITEM.
