@@ -1,13 +1,13 @@
 const FALLBACK_MODEL = '@cf/google/gemma-4-26b-a4b-it';
+const OCR_MODEL = '@cf/moondream/moondream3.1-9B-A2B';
 const STRUCTURED_MODEL = FALLBACK_MODEL;
 const MODEL = FALLBACK_MODEL;
 
 const STABLE_PROMPT = `You are a literal OCR transcriber specialized in many different UAE receipt and tax-invoice layouts.
 
-The composite contains three FULL-WIDTH horizontal panels from the SAME receipt:
-- TOP: merchant/header and invoice date.
-- MIDDLE: item/service table.
-- BOTTOM: totals/VAT/payment summary.
+You are looking at ONE COMPLETE receipt/invoice image. Its layout is unknown.
+Read the actual pixels from top to bottom. Do not assume fixed locations for merchant, date, items, VAT or totals.
+The merchant must be a business/outlet name visibly printed on THIS image, never a customer/company billed to, branch address, item name, or invented completion.
 
 Do NOT return JSON. Return ONLY plain text protocol lines:
 
@@ -91,8 +91,8 @@ Rules:
 9. If only one money value is printed for a row, use it as line total and leave unit price blank.
 10. Read decimals exactly. If unclear, leave blank instead of guessing.
 11. No JSON, markdown, explanation or code fences.`;
-const VERSION = '5.9.0';
-const SCHEMA_VERSION = 'receipt-v5.9.0';
+const VERSION = '6.0.0';
+const SCHEMA_VERSION = 'receipt-v6.0.0';
 
 const PROMPT = `Read the COMPLETE receipt/tax invoice image literally. The receipt may be thermal paper, POS, pharmacy, laundry, restaurant, screenshot, digital job order, Arabic/English, narrow, wide, long, or short.
 
@@ -297,6 +297,7 @@ function merchant(v){
   return /[A-Za-z]{3}/.test(s)?s:null;
 }
 
+function stringSimilarity(a,b){a=String(a||'');b=String(b||'');if(!a&&!b)return 1;if(!a||!b)return 0;const d=editDistanceSimple(a,b);return 1-d/Math.max(a.length,b.length,1)}
 function merchantKey(v){
   return txt(v).toLowerCase().replace(/[^a-z0-9]+/g,' ').replace(/\s+/g,' ').trim();
 }
@@ -375,41 +376,8 @@ function duplicateItemDescriptionRiskWorker(items){
 function workerMoneyNear(a,b,t=.035){a=Number(a);b=Number(b);return Number.isFinite(a)&&Number.isFinite(b)&&Math.abs(a-b)<=t}
 function workerRow(name,quantity,unit_price,line_total){return{name,name_en:name,name_ar:null,quantity,unit_price,line_total}}
 function applyReceiptRegressionGuardsWorker(r,warnings=[]){
+  // v6.0.0: never inject values based on a known date, total, or old receipt fingerprint.
   r.items=(r.items||[]).map(it=>({...it,name:canonicalKnownItemNameWorker(it.name||it.name_en||''),name_en:canonicalKnownItemNameWorker(it.name_en||it.name||'')}));
-  const clearStale=()=>{
-    for(let i=warnings.length-1;i>=0;i--)if(/Item row sum does not match|Printed item count|Printed pieces|Duplicate item descriptions/i.test(String(warnings[i])))warnings.splice(i,1)
-  };
-  const names=(r.items||[]).map(x=>txt(x.name||x.name_en||'')).join(' '),date=txt(r.date||''),store=txt(r.store||'');
-  const pharmToken=/(?:CLARINTINE|CLARITINE|SLARITINE|SLARIMNE|SLARIMNE|CLARIMNE|CLARINTNE|SLAR)/i.test(names);
-  const pharmacyFingerprint=workerMoneyNear(r.total,20.50,.04)&&(r.tax==null||workerMoneyNear(r.tax,0,.03))&&(
-    pharmToken||/PHARMACY/i.test(store)||(date==='2026-08-07'&&/(AL\s*AIN|MUNICIPALITY|BRANCH|MEDICAL|^$)/i.test(store))
-  );
-  if(pharmacyFingerprint){
-    r.subtotal=20.50;r.tax=0;r.total=20.50;r.items=[workerRow('CLARINTINE',1,20.50,20.50)];r.count=1;r.pieces=null;
-    if(!store||/MUNICIPALITY|BRANCH|FACILIT(?:Y|IES)\s+MANAGEMENT|MEDICAL\s+FACILIT/i.test(store))r.store='ALAIN PHARMACY';
-    clearStale();warnings.push('v5.9.0 verified CLARINTINE receipt repair applied')
-  }
-
-  if(workerMoneyNear(r.total,58,.05)&&workerMoneyNear(r.tax,2.76,.05)&&(
-    workerMoneyNear(r.subtotal,55.24,.06)||/ALWAQ|ALWAD|ALWAG|504106064|KANDORA|PYJAMA|LUNGI|TOWEL/i.test(`${store} ${names}`)
-  )){
-    r.subtotal=55.24;r.tax=2.76;r.total=58.00;r.items=[
-      workerRow('Men - KANDORA',1,10.48,10.48),workerRow('Men - PYJAMA',1,8.57,8.57),
-      workerRow('Men - UNDERSHIRT/VEST',2,5.71,11.42),workerRow('Men - LUNGI/WIZAR',2,6.67,13.34),
-      workerRow('Household - TOWEL',1,11.43,11.43)
-    ];
-    r.count=5;r.pieces=7;r.store='ALWAQAED LAUNDRY';clearStale();warnings.push('v5.9.0 verified ALWAQAED table applied')
-  }
-
-  if(workerMoneyNear(r.total,34.65,.05)&&workerMoneyNear(r.tax,1.65,.05)&&(
-    workerMoneyNear(r.subtotal,33,.08)||date==='2026-08-05'||/47657|KANDOORA|LUNGI|BANIYAN|TOWEL\s+BIG|JOB\s+ORDER/i.test(names)
-  )){
-    r.subtotal=33.00;r.tax=1.65;r.total=34.65;r.items=[
-      workerRow('Kandoora-Washing Pr',1,6.30,6.30),workerRow('Lungi-Washing Pr',1,4.20,4.20),
-      workerRow('Vest Baniyan - Washing Pr',1,3.15,3.15),workerRow('Towel Big-Washing Pr',2,10.50,21.00)
-    ];
-    r.count=4;r.pieces=null;clearStale();warnings.push('v5.9.0 verified dark job-order table applied')
-  }
   return r
 }
 
@@ -1178,54 +1146,31 @@ function fillMissingFromPrimary(best,primary){
 
 
 async function readStableReceipt(env,image){
-  const firstResult=await env.AI.run(FALLBACK_MODEL,{
-    prompt:STABLE_PROMPT,
-    image,
-    max_tokens:1000,
-    temperature:0,
-    stream:false
-  });
-  const firstRaw=responseText(firstResult);
-  if(!firstRaw)throw new Error('High-accuracy Gemma reader returned no text');
-  const primary=validate(parseProtocol(firstRaw));
-  primary.transcript_lines=firstRaw.split(/\n+/).filter(Boolean).length;
-  primary.transcript_preview=firstRaw.slice(0,1200);
-  primary.repair_used=false;
-  primary.alternate_layout=false;
-  primary.primary_engine='gemma4-primary';
-  primary.inference_calls=1;
-  primary.models_used=[FALLBACK_MODEL];
-
-  if(!shouldRepair(primary))return primary;
-
-  const secondResult=await env.AI.run(FALLBACK_MODEL,{
-    prompt:STABLE_REPAIR_PROMPT,
-    image,
-    max_tokens:1200,
-    temperature:0,
-    stream:false
-  });
-  const secondRaw=responseText(secondResult);
-  if(!secondRaw)return primary;
-
-  const repaired=validate(parseProtocol(secondRaw));
-  repaired.transcript_lines=secondRaw.split(/\n+/).filter(Boolean).length;
-  repaired.transcript_preview=secondRaw.slice(0,1200);
-  repaired.repair_used=true;
-  repaired.alternate_layout=false;
-  repaired.primary_engine='gemma4-repair';
-  repaired.inference_calls=2;
-  repaired.models_used=[FALLBACK_MODEL];
-
-  let best=checkedQuality(repaired)>checkedQuality(primary)?repaired:primary;
-  if(best===repaired)best=fillMissingFromPrimary(best,primary);
-  best.repair_used=true;
-  best.primary_score=primary.score;
-  best.repair_score=repaired.score;
-  best.alternate_layout=false;
-  best.inference_calls=2;
-  best.models_used=[FALLBACK_MODEL];
-  return best;
+  const candidates=[]; let calls=0;
+  try{
+    const gr=await env.AI.run(FALLBACK_MODEL,{prompt:STABLE_PROMPT,image,max_tokens:1550,temperature:0,top_p:.03,stream:false}); calls++;
+    const raw=responseText(gr);
+    if(raw){const c=validate(parseProtocol(raw));c.primary_engine='gemma-full-image';c.transcript_preview=raw.slice(0,2200);c.transcript_lines=raw.split(/\n+/).filter(Boolean).length;c.models_used=[FALLBACK_MODEL];c.inference_calls=calls;candidates.push(c)}
+  }catch(e){console.warn('gemma stable',e)}
+  try{
+    const mr=await env.AI.run(OCR_MODEL,{task:'query',image,question:STABLE_PROMPT,reasoning:true,temperature:0,max_tokens:2200,stream:false}); calls++;
+    const raw=responseText(mr);
+    if(raw){const c=validate(parseProtocol(raw));c.primary_engine='moondream-ocr-full-image';c.transcript_preview=raw.slice(0,2200);c.transcript_lines=raw.split(/\n+/).filter(Boolean).length;c.models_used=[OCR_MODEL];c.inference_calls=calls;candidates.push(c)}
+  }catch(e){console.warn('moondream stable',e)}
+  if(!candidates.length)throw new Error('Both full-image readers failed');
+  let best=chooseBestChecked(candidates)||candidates[0];
+  if(candidates.length>1){
+    const ra=candidates[0].receipt||{},rb=candidates[1].receipt||{};
+    const ma=merchantKey(ra.merchant_name_en||''),mb=merchantKey(rb.merchant_name_en||'');
+    const merchantAgree=!ma||!mb||ma.includes(mb)||mb.includes(ma)||stringSimilarity(ma,mb)>=.72;
+    const ia=ra.items||[],ib=rb.items||[];
+    const countAgree=ia.length===ib.length||Math.abs(ia.length-ib.length)<=1;
+    best.receipt.warnings=best.receipt.warnings||[];
+    if(!merchantAgree)best.receipt.warnings.push('Independent readers disagree on merchant; review merchant name');
+    if(!countAgree){best.receipt.warnings.push('Independent readers disagree on item row count; forcing rescue');best.accepted=false}
+  }
+  best.repair_used=candidates.length>1;best.inference_calls=calls;best.models_used=[...new Set(candidates.flatMap(x=>x.models_used||[]))];
+  return best
 }
 
 async function readReceiptSegments(env,images){
@@ -1466,7 +1411,7 @@ export default {
   async fetch(request,env){
     const url=new URL(request.url);
     if(url.pathname==='/api/health'){
-      return new Response(JSON.stringify({ok:true,engine:'Cloudflare fallback for Monthly Expenses v5.9.0',primary:FALLBACK_MODEL,structured:STRUCTURED_MODEL,version:VERSION,schema_version:SCHEMA_VERSION,frontend_compat:VERSION,endpoints:['/api/health','/api/receipt','/api/receipt-text'],modes:['stable','universal','segments','alternate','structured','gemma']}),{headers:headers()});
+      return new Response(JSON.stringify({ok:true,engine:'Cloudflare fallback for Monthly Expenses v6.0.0',primary:FALLBACK_MODEL,ocr:OCR_MODEL,structured:STRUCTURED_MODEL,version:VERSION,schema_version:SCHEMA_VERSION,frontend_compat:VERSION,endpoints:['/api/health','/api/receipt','/api/receipt-text'],modes:['stable','universal','segments','alternate','structured','gemma']}),{headers:headers()});
     }
     if(url.pathname==='/api/receipt'){
       if(request.method!=='POST')return new Response(JSON.stringify({ok:false,error:'Method not allowed'}),{status:405,headers:headers()});
@@ -1485,7 +1430,7 @@ export default {
         const result=mode==='segments'?await readReceiptSegments(env,images):await readReceipt(env,image,mode);
         return new Response(JSON.stringify({
           ok:true,...result,
-          meta:{engine:mode==='stable'?'Cloudflare Workers AI • Stable v5.9.0 Receipt Verifier':(mode==='segments'?'Cloudflare Workers AI • Segmented v5.9.0 Receipt Verifier':'Cloudflare Workers AI • Universal v5.9.0 Receipt Verifier'),model:FALLBACK_MODEL,structured:mode==='structured',version:VERSION,schema_version:SCHEMA_VERSION,client_version:clientVersion||null,client_schema_version:clientSchema||null,contract_match:(!clientVersion||clientVersion===VERSION)&&(!clientSchema||clientSchema===SCHEMA_VERSION),mode,scan_id:scanId,elapsed_ms:Date.now()-started,images:mode==='segments'?images.length:1,inference_calls:result.inference_calls||1,repair_used:!!result.repair_used,models_used:result.models_used||[FALLBACK_MODEL]}
+          meta:{engine:mode==='stable'?'Cloudflare Workers AI • Stable v6.0.0 Receipt Verifier':(mode==='segments'?'Cloudflare Workers AI • Segmented v6.0.0 Receipt Verifier':'Cloudflare Workers AI • Universal v6.0.0 Receipt Verifier'),model:FALLBACK_MODEL,structured:mode==='structured',version:VERSION,schema_version:SCHEMA_VERSION,client_version:clientVersion||null,client_schema_version:clientSchema||null,contract_match:(!clientVersion||clientVersion===VERSION)&&(!clientSchema||clientSchema===SCHEMA_VERSION),mode,scan_id:scanId,elapsed_ms:Date.now()-started,images:mode==='segments'?images.length:1,inference_calls:result.inference_calls||1,repair_used:!!result.repair_used,models_used:result.models_used||[FALLBACK_MODEL]}
         }),{headers:headers()});
       }catch(e){
         console.error('receipt-reader',e);
@@ -1501,7 +1446,7 @@ export default {
         const body=await request.json();
         const result=await readReceiptTextEvidence(env,body);
         const clientVersion=txt(body?.client_version||''),clientSchema=txt(body?.schema_version||'');
-        return new Response(JSON.stringify({ok:true,...result,meta:{engine:'Cloudflare Workers AI • v5.9.0 OCR Text Structurer',model:FALLBACK_MODEL,version:VERSION,schema_version:SCHEMA_VERSION,client_version:clientVersion||null,client_schema_version:clientSchema||null,contract_match:(!clientVersion||clientVersion===VERSION)&&(!clientSchema||clientSchema===SCHEMA_VERSION),scan_id:scanId,elapsed_ms:Date.now()-started,inference_calls:1}}),{headers:headers()})
+        return new Response(JSON.stringify({ok:true,...result,meta:{engine:'Cloudflare Workers AI • v6.0.0 OCR Text Structurer',model:FALLBACK_MODEL,version:VERSION,schema_version:SCHEMA_VERSION,client_version:clientVersion||null,client_schema_version:clientSchema||null,contract_match:(!clientVersion||clientVersion===VERSION)&&(!clientSchema||clientSchema===SCHEMA_VERSION),scan_id:scanId,elapsed_ms:Date.now()-started,inference_calls:1}}),{headers:headers()})
       }catch(e){
         const msg=e?.message||'Text structuring failed';
         return new Response(JSON.stringify({ok:false,error:msg,retriable:/timeout|capacity|temporar|429/i.test(msg),meta:{version:VERSION,schema_version:SCHEMA_VERSION,scan_id:scanId,elapsed_ms:Date.now()-started}}),{status:500,headers:headers()})
