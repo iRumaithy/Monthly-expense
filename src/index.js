@@ -38,14 +38,8 @@ DATE RULES:
 
 ITEM RULES:
 7. Emit ONE ITEM line for every distinct purchasable row.
-8. Copy English and Arabic item names literally. Never translate or spell-correct. For medicine/brand names, inspect each character independently and do not append MG/ML unless a numeric strength is visibly printed next to it.
+8. Copy English and Arabic item names literally. Never translate or spell-correct.
 9. quantity, unit_price and line_total must belong to the SAME row.
-9A. Quantity must come ONLY from a separate Qty/Quantity/Pcs cell or column for that SAME row. NEVER infer quantity by dividing line_total by unit_price or by forcing totals to reconcile.
-9B. Numbers inside DESCRIPTION text — e.g. 10MG, 20MG, 500ML, 1L, 100G, size, model, strength or pack text — stay in the item name and are NOT quantity unless a separate Qty/Quantity/Pcs cell explicitly says so.
-9C. If no explicit quantity cell is visible, use quantity 1. If only one money value is visible, use it as line total and leave unit price blank.
-9D. A description may wrap AFTER its numeric row: a short prefix ending in '-' can share Qty/Rate/Amount while the rest of the item name is printed directly underneath. Join those adjacent description lines into ONE item; never create a standalone fragment such as 'Men -'.
-9E. For medicines, copy brand/product and strength character-by-character. Preserve visible digits attached to MG/MCG/ML/IU/GM. Never autocorrect a drug name.
-9F. Dark/digital receipts may use white text on black. Read literal spelling, preserve row/column alignment, and do not omit rows.
 10. COUNT is ONLY a printed count of distinct item rows. Do NOT use T.Pcs, Total Pieces, Total Qty or total quantity as COUNT.
 11. Never include VAT, totals, balance, dates, TRN, invoice/order/customer numbers or table headings as ITEM rows.
 
@@ -83,15 +77,10 @@ Rules:
 6. T.Pcs / Total Pieces / Total Qty is PIECES, not COUNT.
 7. Keep dates in the printed order. Never swap day and month.
 8. Copy item names literally; do not translate or spell-correct.
-8A. Quantity is valid ONLY from a separate Qty/Quantity/Pcs cell on the SAME row. Never derive it from money or totals.
-8B. Description tokens such as 10MG, 20MG, 500ML, 1L, 100G, sizes, model numbers and strength/pack text are part of the item name, not quantity. If no explicit quantity is visible, use 1.
-8C. On dark receipts, read white-on-black text literally and preserve row/column alignment.
-8D. A wrapped description can occupy two visual lines while Qty/Rate/Amount appear on only one of them. Merge adjacent description-only lines into the numeric row they belong to.
-8E. Medicine names and strengths must be transcribed character-by-character, including visible MG/ML/MCG/IU/GM numbers; never spell-correct them.
-9. If only one money value is printed for a row, use it as line total and leave unit price blank.
+9. If only one money value is printed for a row, use it as line total.
 10. Read decimals exactly. If unclear, leave blank instead of guessing.
 11. No JSON, markdown, explanation or code fences.`;
-const VERSION = '5.7.0';
+const VERSION = '5.3.0';
 
 const PROMPT = `Read the COMPLETE receipt/tax invoice image literally. The receipt may be thermal paper, POS, pharmacy, laundry, restaurant, screenshot, digital job order, Arabic/English, narrow, wide, long, or short.
 
@@ -110,11 +99,7 @@ ITEM|English item text|Arabic item text|quantity|unit price|line total
 Rules:
 1. Inspect the entire image from top to bottom. Do not assume fixed locations.
 2. Read EVERY distinct purchase/service row. Never stop after the first row.
-3. Keep quantity, unit price and line total from the SAME row. Quantity comes ONLY from a separate Qty/Quantity/Pcs cell; NEVER calculate it from money.
-3A. Description numbers such as 10MG, 20MG, 500ML, 1L, 100G, sizes, model numbers and strength/pack text remain in the item name. They are NOT quantity unless a separate quantity cell says so.
-3B. If no explicit quantity cell is visible, use quantity 1. Dark receipts may be white text on black; preserve literal spelling and column alignment.
-3C. Wrapped descriptions belong to the nearest numeric row in the same table. If a short prefix ending '-' shares the numeric columns and the next line is description-only text, append that next line to the SAME item.
-3D. Medicine/product names and visible strengths (5MG, 10MG, 20MG, 500MG, ML, MCG, IU, GM) must be copied character-by-character; never normalize or spell-correct them.
+3. Keep quantity, unit price and line total from the SAME row.
 4. If the receipt has ONE amount/AED column, that value is the LINE TOTAL. Leave unit price blank if it is not printed.
 5. T.Pcs / Total Pieces / Total Qty is PIECES, not COUNT.
 6. Do not include headings, invoice/order/customer numbers, payment methods, balances, dates, totals, VAT, or terms as ITEM rows.
@@ -147,10 +132,6 @@ Prioritize:
 - treating a single amount column as line total;
 - preserving exact date order;
 - reconciling item rows with printed financial totals.
-- reading quantity ONLY from a separate Qty/Quantity/Pcs cell; never derive it from amounts/totals.
-- keeping dosage/capacity/size/model text such as 10MG or 500ML inside the item name rather than stealing it as quantity.
-- using quantity 1 when no separate quantity cell is visible.
-- preserving literal white-on-black table text on dark digital receipts.
 
 Never guess. No JSON, markdown, commentary or examples.`;
 
@@ -170,12 +151,7 @@ ITEM|English item text|Arabic item text|quantity|unit price|line total
 Rules:
 1. Emit EVERY distinct item/service row that is visibly printed.
 2. Never output headings, totals, VAT, customer details, invoice numbers, dates, payment methods, balances or terms as ITEM rows.
-3. Quantity comes ONLY from a separate Qty/Quantity/Pcs cell in the SAME row. Never infer it from price/total arithmetic.
-3A. Numbers embedded in the description such as 10MG, 20MG, 500ML, 1L, 100G, sizes/model/strength text are part of the item name, not quantity. If no explicit quantity cell is visible, use quantity 1.
-3B. Dark receipts may be white text on black; preserve literal row spelling and column alignment, and do not omit rows.
-3C. Wrapped descriptions are ONE item: a short prefix ending '-' with Qty/Rate/Amount may continue on the immediately following text-only line. Attach that continuation backward to the same item.
-3D. Medicine/product names and visible dosage/size tokens must be copied character-by-character, including the number before MG/ML/MCG/IU/GM. Never autocorrect the brand.
-3E. If there is only one money column such as AED/Amount, that value is line_total; leave unit price blank if not separately printed.
+3. If there is only one money column such as AED/Amount, that value is line_total; leave unit price blank if not separately printed.
 4. T.Pcs / Total Pieces / Total Qty is PIECES, not COUNT.
 5. Preserve both English and Arabic names when both are printed; never invent a translation.
 6. Keep the printed date order. Never swap day and month.
@@ -206,9 +182,6 @@ RULES:
 2. STORE is the outlet the customer used. If a parent/management company and a pharmacy/laundry/shop/restaurant are both visible, choose the outlet.
 3. Preserve DATE_RAW exactly in printed order. Never swap day/month.
 4. Read EVERY DISTINCT purchase/service row from the whole receipt.
-4A. Quantity comes ONLY from a separate Qty/Quantity/Pcs cell on the same row. Never infer it from money or totals.
-4B. Description numbers such as 10MG, 20MG, 500ML, 1L, 100G, sizes/model/strength text remain part of the item name. If no explicit quantity cell is visible, use quantity 1.
-4C. Dark/digital receipts may be white text on black; preserve literal spelling and row/column alignment.
 5. T.Pcs / Total Qty / Total Pieces is PIECES, not COUNT.
 6. Common pre-tax labels include VATable Sales, Taxable Sales, Excl.VAT, Subtotal, G.Amt, Net W/Out Tax.
 7. Common tax labels include VAT Amount, VAT 5%, Tax.
@@ -240,9 +213,7 @@ Rules:
 2. Read EVERY complete purchase/service row visible in this segment.
 3. Do not invent rows that are cut off. If a row crosses the segment edge and is incomplete, omit it; the overlapping segment will capture it.
 4. Preserve item names literally; never translate or spell-correct.
-5. Quantity, unit price and line total must come from the SAME row. Quantity is valid ONLY from a separate Qty/Quantity/Pcs cell; never infer it from price or line total.
-5A. 10MG, 20MG, 500ML, 1L, 100G, sizes, model numbers and strength/pack text belong to the description, not the quantity field. If no explicit quantity cell is visible, use quantity 1.
-5B. If the segment is dark with white text, transcribe it literally and preserve row order/column alignment.
+5. Quantity, unit price and line total must come from the SAME row.
 6. T.Pcs / Total Qty / Total Pieces is PIECES, not COUNT.
 7. Exclude table headings, customer name, invoice/order numbers, payment method, balance, terms, VAT/totals and dates from ITEM.
 8. Common pre-tax labels: VATable Sales, Taxable Sales, Excl.VAT, G.Amt, Subtotal, Net W/Out Tax.
@@ -324,15 +295,10 @@ function merchantCandidateScore(name,index=0,preferred=false){
   if(s.length>=5&&s.length<=100)score+=5;
   return score;
 }
-function knownMerchantTypo(v){
-  const s=txt(v),k=merchantKey(s).replace(/[^a-z0-9]/g,'');
-  if(['alwadgaedlaundry','alwadqaedlaundry','alwagaedlaundry'].includes(k))return 'ALWAQAED LAUNDRY';
-  return s;
-}
 function chooseMerchant(preferred,candidates){
   const all=[];
   const push=(v,pref=false)=>{
-    let s=merchant(v);if(!s)return;s=knownMerchantTypo(s);
+    const s=merchant(v);if(!s)return;
     const key=merchantKey(s);
     if(all.some(x=>x.key===key)){if(pref)all.find(x=>x.key===key).preferred=true;return}
     all.push({name:s,key,preferred:pref,index:all.length});
@@ -347,63 +313,6 @@ function chooseMerchant(preferred,candidates){
 
 function summaryName(s){
   return /^(?:vat|tax|subtotal|sub\s*total|vata?ble\s*sales|taxable\s*sales|net\s*w\/?out\s*tax|net\s*amount|gross|g\.?\s*amt|excl\.?\s*vat|grand\s*total|total|balance|bal\.?\s*amt|outstanding|amount\s*due|total\s*item|t\.?\s*pcs|cash|card|visa|online|change|trn|invoice|job\s*order|ضريبة|الإجمالي|الاجمالي|المجموع)/i.test(txt(s));
-}
-
-function editDistanceSimple(a,b){
-  a=merchantKey(a).replace(/\s+/g,'');b=merchantKey(b).replace(/\s+/g,'');
-  const m=a.length,n=b.length;let prev=Array.from({length:n+1},(_,i)=>i);
-  for(let i=1;i<=m;i++){const cur=[i];for(let j=1;j<=n;j++)cur[j]=Math.min(cur[j-1]+1,prev[j]+1,prev[j-1]+(a[i-1]===b[j-1]?0:1));prev=cur}return prev[n]
-}
-function canonicalKnownItemNameWorker(v){
-  const raw=txt(v);if(!raw)return raw;
-  const probe=raw.toUpperCase().replace(/[^A-Z0-9 ]+/g,' ').replace(/\b(?:MG|MCG|ML|IU|GM)\b/g,' ').replace(/\s+/g,' ').trim();
-  const aliases=['CLARINTINE','CLARITINE','SLARITINE','SLARIMNE','SLARIMNE MG','SLARIMNEMG','CLARIMNE','CLARINTNE'];
-  if(aliases.some(a=>a.replace(/\bMG\b/g,'').trim()===probe))return 'CLARINTINE';
-  const canon='CLARINTINE',dist=editDistanceSimple(probe,canon),sim=1-dist/Math.max(1,probe.length,canon.length);
-  if(probe.length>=7&&probe.length<=13&&/(?:LAR|ARI)/.test(probe)&&sim>=.58)return 'CLARINTINE';
-  return raw
-}
-function duplicateItemDescriptionRiskWorker(items){
-  const seen=new Map();
-  for(const it of items||[]){
-    const k=merchantKey(it?.name||it?.name_en||'').replace(/\b(?:men|women|household|washing|wash|pr)\b/g,' ').replace(/\s+/g,' ').trim();
-    if(!k||k.length<3)continue;const q=Number(it?.quantity)||1,u=Number(it?.unit_price)||0,l=Number(it?.line_total??u*q);
-    if(seen.has(k)){const p=seen.get(k);if(Math.abs(p.q-q)>.001||Math.abs(p.u-u)>.12||Math.abs(p.l-l)>.15)return true}else seen.set(k,{q,u,l})
-  }return false
-}
-function workerMoneyNear(a,b,t=.035){a=Number(a);b=Number(b);return Number.isFinite(a)&&Number.isFinite(b)&&Math.abs(a-b)<=t}
-function workerRow(name,quantity,unit_price,line_total){return{name,name_en:name,name_ar:null,quantity,unit_price,line_total}}
-function applyReceiptRegressionGuardsWorker(r,warnings=[]){
-  r.items=(r.items||[]).map(it=>({...it,name:canonicalKnownItemNameWorker(it.name||it.name_en||''),name_en:canonicalKnownItemNameWorker(it.name_en||it.name||'')}));
-  const clearStale=()=>{
-    for(let i=warnings.length-1;i>=0;i--)if(/Item row sum does not match|Printed item count|Printed pieces|Duplicate item descriptions/i.test(String(warnings[i])))warnings.splice(i,1)
-  };
-
-  if(workerMoneyNear(r.subtotal,20.50,.04)&&workerMoneyNear(r.tax,0,.02)&&workerMoneyNear(r.total,20.50,.04)&&r.items.length===1){
-    const p=txt(r.items[0]?.name||'').toUpperCase();
-    if(/LAR|ARI|RIM|RIN|SLAR/.test(p)||editDistanceSimple(p.replace(/\b(?:MG|MCG|ML|IU|GM)\b/g,' '),'CLARINTINE')<=5){
-      r.items=[workerRow('CLARINTINE',1,20.50,20.50)];r.count=1;r.pieces=null;clearStale();warnings.push('v5.7 verified CLARINTINE correction applied')
-    }
-  }
-
-  if(workerMoneyNear(r.subtotal,55.24,.05)&&workerMoneyNear(r.tax,2.76,.05)&&workerMoneyNear(r.total,58,.05)){
-    r.items=[
-      workerRow('Men - KANDORA',1,10.48,10.48),workerRow('Men - PYJAMA',1,8.57,8.57),
-      workerRow('Men - UNDERSHIRT/VEST',2,5.71,11.42),workerRow('Men - LUNGI/WIZAR',2,6.67,13.34),
-      workerRow('Household - TOWEL',1,11.43,11.43)
-    ];
-    r.count=5;r.pieces=7;if(!r.store||/ALWAD|ALWAG|ALWAQ|MR\s*M\s*B|504106064/i.test(r.store))r.store='ALWAQAED LAUNDRY';
-    clearStale();warnings.push('v5.7 verified ALWAQAED table applied')
-  }
-
-  if(workerMoneyNear(r.subtotal,33,.05)&&workerMoneyNear(r.tax,1.65,.05)&&workerMoneyNear(r.total,34.65,.05)){
-    r.items=[
-      workerRow('Kandoora-Washing Pr',1,6.30,6.30),workerRow('Lungi-Washing Pr',1,4.20,4.20),
-      workerRow('Vest Baniyan - Washing Pr',1,3.15,3.15),workerRow('Towel Big-Washing Pr',2,10.50,21.00)
-    ];
-    r.count=4;r.pieces=null;clearStale();warnings.push('v5.7 verified dark job-order table applied')
-  }
-  return r
 }
 
 const RECEIPT_JSON_SCHEMA={
@@ -475,7 +384,7 @@ function checkedFromStructuredJson(obj){
   obj=obj&&typeof obj==='object'?obj:{};
   const items=(Array.isArray(obj.items)?obj.items:[]).map(it=>{
     const en=txt(it?.name_en),ar=txt(it?.name_ar);
-    const name=canonicalKnownItemNameWorker(en&&ar?`${en} — ${ar}`:(en||ar));
+    const name=en&&ar?`${en} — ${ar}`:(en||ar);
     if(!name||summaryName(name))return null;
     let quantity=num(it?.quantity);if(!Number.isFinite(quantity)||quantity<=0||quantity>999)quantity=1;
     let unit=r2(it?.unit_price),line=r2(it?.line_total);
@@ -677,12 +586,8 @@ function extractPlainTableItems(lines){
        && !plainMoneyMatches(line).length
        && !/\b(?:tax\s*invoice|invoice|receipt|trn|customer|cashier|date|time|total|vat|tax|balance)\b/i.test(line)
        && line.length>=2 && line.length<=70){
-      const last=items[items.length-1];
-      if(last && /[-–—/:]\s*$/.test(txt(last.name||''))){
-        last.name=txt(`${last.name} ${line}`).replace(/\s+/g,' ').trim();
-        if(/[A-Za-z]/.test(line))last.name_en=last.name;
-        if(/[\u0600-\u06FF]/.test(line))last.name_ar=last.name_ar?`${last.name_ar} ${line}`:line;
-      }else if(/[\u0600-\u06FF]/.test(line) && items.length){
+      if(/[\u0600-\u06FF]/.test(line) && items.length){
+        const last=items[items.length-1];
         if(!last.name_ar){
           last.name_ar=line;
           last.name=`${last.name}${last.name?' — ':''}${line}`.trim()
@@ -716,7 +621,7 @@ function parseProtocol(rawText){
       const en=txt(p[1]), ar=txt(p[2]);
       let qty=num(p[3]), unit=r2(p[4]), total=r2(p[5]);
       if(!Number.isFinite(qty)||qty<=0||qty>999)qty=1;
-      const name=canonicalKnownItemNameWorker(en&&ar?`${en} — ${ar}`:(en||ar));
+      const name=en&&ar?`${en} — ${ar}`:(en||ar);
       if(!name||summaryName(name))continue;
       if(total==null&&unit!=null)total=r2(unit*qty);
       if(unit==null&&total!=null&&qty)unit=r2(total/qty);
@@ -826,21 +731,14 @@ function mergeSegmentProtocols(raws){
 }
 
 function itemSuspicionScore(item){
-  const rawName=txt(item?.name||''),n=rawName.toLowerCase();
+  const n=txt(item?.name||'').toLowerCase();
   let s=0;
   if(!n)s+=100;
   if(/\b(customer|bill|cashier|order|invoice|trn|mobile|phone|time|date|balance|discount|service\s*fee|gross|total|vat|tax|cash|visa|online|change|amounts?|point|booked|advance)\b/i.test(n))s+=70;
   if(/\b(thank|terms?|condition|street|building|mall|branch|pharmacy|laundry)\b/i.test(n))s+=25;
   if((item?.line_total==null)&&(item?.unit_price==null))s+=45;
-  const q=Number(item?.quantity||1);
-  if(q<=0||q>100)s+=30;
-  else if(q>=8)s+=14; // verification signal: often dosage/size stolen as Qty
+  if(Number(item?.quantity||1)<=0||Number(item?.quantity||1)>100)s+=30;
   if(n.length<2)s+=30;
-  if(/^[^A-Za-z\u0600-\u06FF]*[A-Za-z\u0600-\u06FF]{1,3}[^A-Za-z\u0600-\u06FF]*$/.test(n))s+=18;
-  if(/(^|\s)[\"':;]{1,2}|\b(?:weston|weep|sts)\b/i.test(n))s+=22;
-  if(/\b[A-Z]{2,}[a-z][A-Z]{2,}\b/.test(rawName))s+=26;
-  if(/\b(?:MG|MCG|ML|IU|GM)\b/i.test(rawName)&&!/\d/.test(rawName))s+=26;
-  if(/[-–—/:]\s*$/.test(rawName))s+=18;
   return s;
 }
 function rowMoneyOptions(item){
@@ -1008,7 +906,6 @@ function reconcileItemRows(r,warnings){
 function validate(parsed){
   const r=parsed.out, warnings=[...r.warnings];
   reconcileItemRows(r,warnings);
-  applyReceiptRegressionGuardsWorker(r,warnings);
 
   // Some VAT invoices legitimately have VAT Amount = 0.00 (zero-rated/exempt items),
   // and vision models may still emit a generic 5% VAT rate.
@@ -1035,15 +932,7 @@ function validate(parsed){
   }
   if(r.subtotal!=null&&r.tax!=null&&r.total!=null&&Math.abs(r.subtotal+r.tax-r.total)>.06)warnings.push('Subtotal + VAT does not match Grand Total');
   if(r.rate!=null&&r.rate>0&&r.rate<30&&r.subtotal!=null&&r.tax!=null&&Math.abs(r.subtotal*r.rate/100-r.tax)>.06)warnings.push('VAT amount does not match printed VAT rate');
-  if(r.items.length){
-    // Some UAE POS receipts print tax-inclusive row amounts while also showing a VATable Sales subtotal.
-    // Accept arithmetic against either labeled subtotal or final total, but never use arithmetic alone
-    // to waive suspicious names, duplicated rows or impossible quantities.
-    const targets=[r.subtotal,r.total].filter(v=>v!=null&&Number.isFinite(Number(v))).map(Number);
-    const tol=targets.length?Math.max(.08,Math.max(...targets.map(Math.abs))*.004):.08;
-    if(targets.length&&!targets.some(t=>Math.abs(itemSum-t)<=tol))warnings.push('Item row sum does not match labeled totals');
-  }
-  if(duplicateItemDescriptionRiskWorker(r.items))warnings.push('Duplicate item descriptions with conflicting quantity/price need verification');
+  if(r.items.length&&r.total!=null&&Math.abs(itemSum-r.total)>.18&&!(r.subtotal!=null&&Math.abs(itemSum-r.subtotal)<=.18))warnings.push('Item row sum does not match labeled totals');
 
   // Exact financial reconciliation only when total + printed VAT rate support it.
   if(r.total!=null&&r.rate!=null&&r.rate>0&&r.rate<30){
@@ -1067,7 +956,7 @@ function validate(parsed){
   score=Math.min(100,score);
 
   const itemCountOk=(r.count==null||r.count===r.items.length);
-  const financeOk=r.total!=null&&!warnings.some(x=>/does not match labeled|Subtotal \+ VAT|VAT amount does not match|Duplicate item descriptions/i.test(x));
+  const financeOk=r.total!=null&&!warnings.some(x=>/does not match labeled|Subtotal \+ VAT|VAT amount does not match/i.test(x));
   const pieceOk=pieceCount==null||Math.abs(pieceCount-quantitySum)<.001;
   const accepted=r.items.length>0&&itemCountOk&&pieceOk&&financeOk;
   const complete=accepted&&!!r.store&&!!r.date;
@@ -1100,9 +989,6 @@ function checkedQuality(c){
   if(r.total!=null)s+=8;
   const warns=Array.isArray(r.warnings)?r.warnings:[];
   s-=warns.filter(x=>/does not match|needs manual|Printed item count|Printed pieces/i.test(x)).length*12;
-  // When independent passes are financially equivalent, prefer cleaner literal
-  // item text and lower quantity-risk instead of arithmetic self-consistency alone.
-  s-=Math.min(28,items.reduce((a,it)=>a+itemSuspicionScore(it),0)*.22);
   return s;
 }
 
@@ -1151,12 +1037,6 @@ function shouldRepair(checked){
   if(warns.some(x=>/VAT amount does not match|item row sum does not match|Printed item count|Printed pieces/i.test(x)))return true;
   const first=items[0],firstMoney=rowMoney(first);
   if(items.length===1&&r.total!=null&&firstMoney!=null&&Number(r.total)>Number(firstMoney)*1.45)return true;
-  // High Qty is legitimate sometimes, but it is also a classic OCR error when a
-  // medicine strength/size (for example 10MG) is stolen from Description. Force
-  // an independent second pass without rejecting the receipt solely for this signal.
-  if(items.some(it=>Number(it?.quantity||1)>=8))return true;
-  if(items.some(it=>itemSuspicionScore(it)>=55))return true;
-  if(duplicateItemDescriptionRiskWorker(items))return true;
   return false;
 }
 function fillMissingFromPrimary(best,primary){
@@ -1257,9 +1137,7 @@ date_raw must be the transaction/invoice/order date exactly as printed, not deli
 printed_item_count is the count of distinct purchase rows only when explicitly printed; otherwise 0.
 printed_piece_count is T.Pcs / total pieces / total quantity only when explicitly printed; otherwise 0.
 For each item preserve English and Arabic names when printed. If one language is absent, use an empty string for it.
-quantity, unit_price and line_total must belong to the same row. Quantity must be copied ONLY from an explicit separate Qty/Quantity/Pcs cell/column. NEVER calculate quantity from line_total/unit_price or invent it to reconcile totals.
-Numbers embedded in an item description such as 10MG, 20MG, 500ML, 1L, 100G, sizes, model numbers or strength/pack text remain part of the item name and are NOT quantity unless a separate Qty/Quantity/Pcs cell says so.
-If no explicit quantity cell is visible, return quantity 1. For dark digital receipts with white text on black, preserve literal spelling and table alignment.
+quantity, unit_price and line_total must belong to the same row.
 If the receipt has one AED/Amount money column, put that printed value in line_total and use 0 for unit_price if unit price is not separately printed.
 Do not include totals, VAT, payment methods, customer details, IDs, dates, headings, balances or terms as items.
 subtotal is the amount before VAT when explicitly labeled.
@@ -1338,19 +1216,7 @@ async function readUniversalReceipt(env,image){
   }
 
   let best=candidates.filter(Boolean).sort((a,b)=>checkedQuality(b)-checkedQuality(a))[0]||null;
-  const nameRisk=(best?.receipt?.items||[]).some(it=>itemSuspicionScore(it)>=20)||duplicateItemDescriptionRiskWorker(best?.receipt?.items||[]);
-  if(!best?.items?.length||nameRisk){
-    try{
-      const vr=await env.AI.run(FALLBACK_MODEL,{prompt:DESCRIPTION_RESCUE_PROMPT,image,max_tokens:1350,temperature:0,top_p:.04,stream:false});calls++;
-      const raw=responseText(vr);
-      if(raw){
-        const checked=validate(parseProtocol(raw));checked.primary_engine='description-row-visual-verifier';checked.inference_calls=calls;checked.models_used=[FALLBACK_MODEL];checked.transcript_preview=raw.slice(0,2200);checked.transcript_lines=raw.split(/\n+/).filter(Boolean).length;candidates.push(checked);
-        if(best){const merged=mergeCheckedCandidates(best,checked);if(merged){merged.primary_engine='universal-description-merged';merged.inference_calls=calls;candidates.push(merged)}}
-        best=candidates.filter(Boolean).sort((a,b)=>checkedQuality(b)-checkedQuality(a))[0]||best;
-      }
-    }catch(e){console.warn('description-row-verifier',e)}
-  }
-  if(best?.accepted&&!(best?.receipt?.items||[]).some(it=>itemSuspicionScore(it)>=35)&&!duplicateItemDescriptionRiskWorker(best?.receipt?.items||[])){best.inference_calls=calls;return best}
+  if(best?.accepted){best.inference_calls=calls;return best}
 
   // OPTIONAL last attempt: JSON Mode. Cloudflare documents that JSON Mode can fail
   // to satisfy a schema, so this branch is never allowed to abort the reader.
@@ -1379,24 +1245,6 @@ async function readUniversalReceipt(env,image){
 }
 
 
-const DESCRIPTION_RESCUE_PROMPT = `You are doing a final literal visual verification of the PURCHASE TABLE on a UAE receipt image.
-Return ONLY these protocol lines and nothing else:
-ITEM|English item description exactly as printed|Arabic description exactly as printed|quantity|unit price|line total
-SUBTOTAL|amount before VAT if clearly visible
-VAT|tax amount if clearly visible
-TOTAL|final amount if clearly visible
-
-Rules:
-1. Inspect the actual image, not prior OCR guesses. Read every purchasable row in visual order.
-2. Preserve item spelling character-by-character. Do NOT spell-correct brands or medicines. Re-read ambiguous medicine letters at least twice and prefer the spelling supported by the actual pixels, not the previous OCR draft.
-3. If a medicine has a strength such as 5MG, 10MG, 20MG, 500MG, ML, MCG, IU or GM, keep the visible number and unit inside the description.
-4. Quantity comes ONLY from the Qty/Quantity/Pcs column of that SAME row. Never calculate it from prices.
-5. Wrapped descriptions are ONE row: if a short prefix such as "Men -" shares the numeric columns and the rest of the description is directly below, append that lower text to the same item.
-6. On white-on-black/dark receipts, do not omit rows. Preserve row order and align Qty/Rate/Amount by the table columns.
-7. Exclude headers, totals, VAT, dates, customer/order numbers, greetings and payment text from ITEM.
-8. If a character is genuinely unreadable, preserve the readable surrounding text and do not invent a replacement.`;
-
-
 const TEXT_EVIDENCE_PROMPT = `You are a receipt structuring engine. OCR has ALREADY been performed locally by a real OCR engine. You receive the detected text lines in visual top-to-bottom order, sometimes with normalized coordinates and confidence.
 
 Your job is NOT to invent or visually read anything. Structure only the OCR evidence that is present.
@@ -1418,10 +1266,6 @@ Rules:
 3. Preserve printed date order; do not swap day/month.
 4. Read every distinct purchase/service row represented in evidence.
 5. T.Pcs / Total Pieces / Total Qty is PIECES, not COUNT.
-5A. Quantity comes ONLY from a separate Qty/Quantity/Pcs cell/column in the OCR evidence for the SAME row. Never infer it from money or totals.
-5B. Description text such as 10MG, 20MG, 500ML, 1L, 100G, sizes/model/strength text remains in the item name. If no explicit quantity cell exists, use quantity 1.
-5C. If a numeric item row has an unfinished description ending with '-' and the immediately following OCR line is description-only text, attach that line BACK to the same item row.
-5D. Treat medicine/product tokens with mixed-case corruption or a unit like MG/ML without a visible strength number as uncertain evidence; do not invent a corrected drug name.
 6. If a row has one money column, it is line_total; unit price may be blank.
 7. Preserve Arabic and English item text when both are present; never translate.
 8. Exclude headings, TRN, invoice/order/customer numbers, dates, payment methods, balances, terms, VAT and totals from ITEM.
