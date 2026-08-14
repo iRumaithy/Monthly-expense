@@ -80,7 +80,7 @@ Rules:
 9. If only one money value is printed for a row, use it as line total.
 10. Read decimals exactly. If unclear, leave blank instead of guessing.
 11. No JSON, markdown, explanation or code fences.`;
-const VERSION = '4.6.3';
+const VERSION = '4.6.4';
 
 const PROMPT = `Read the COMPLETE receipt/tax invoice image literally. The receipt may be thermal paper, POS, pharmacy, laundry, restaurant, screenshot, digital job order, Arabic/English, narrow, wide, long, or short.
 
@@ -134,6 +134,28 @@ Prioritize:
 - reconciling item rows with printed financial totals.
 
 Never guess. No JSON, markdown, commentary or examples.`;
+
+const ITEM_RESCUE_PROMPT = `Read this COMPLETE receipt image again, focusing on the purchase/service table and the printed totals.
+The layout can be anything. Do not assume a fixed position.
+Return ONLY plain protocol lines:
+STORE|actual customer-facing merchant name if visible
+DATE_RAW|transaction/invoice/order date exactly as printed
+COUNT|explicit distinct item-row count only
+PIECES|explicit total pieces / T.Pcs / total quantity only
+VAT_RATE|percentage if printed
+SUBTOTAL|pre-tax / VATable / Excl.VAT / G.Amt amount
+VAT|tax amount
+TOTAL|final payable amount
+ITEM|English item text|Arabic item text|quantity|unit price|line total
+
+Rules:
+1. Emit EVERY distinct item/service row that is visibly printed.
+2. Never output headings, totals, VAT, customer details, invoice numbers, dates, payment methods, balances or terms as ITEM rows.
+3. If there is only one money column such as AED/Amount, that value is line_total; leave unit price blank if not separately printed.
+4. T.Pcs / Total Pieces / Total Qty is PIECES, not COUNT.
+5. Preserve both English and Arabic names when both are printed; never invent a translation.
+6. Keep the printed date order. Never swap day and month.
+7. Decimal accuracy is critical. No JSON, markdown or commentary.`;
 
 const ALT_LAYOUT_PROMPT = `You are a literal OCR transcriber for a UAE receipt/tax invoice of ANY layout.
 
@@ -325,17 +347,22 @@ function responseJsonObject(result){
   const candidates=[
     result?.response,
     result?.result,
+    result?.data,
+    result?.output,
     result?.choices?.[0]?.message?.content,
     result?.choices?.[0]?.text
   ];
   for(const c of candidates){
-    if(c&&typeof c==='object'&&!Array.isArray(c))return c;
+    if(c&&typeof c==='object'&&!Array.isArray(c)){
+      if(c.response&&typeof c.response==='object')return c.response;
+      if(c.result&&typeof c.result==='object')return c.result;
+      return c
+    }
     if(typeof c==='string'){
       const s=c.trim().replace(/^```(?:json)?/i,'').replace(/```$/,'').trim();
-      try{
-        const j=JSON.parse(s);
-        if(j&&typeof j==='object')return j
-      }catch{}
+      try{const j=JSON.parse(s);if(j&&typeof j==='object')return j}catch{}
+      const a=s.indexOf('{'),b=s.lastIndexOf('}');
+      if(a>=0&&b>a){try{const j=JSON.parse(s.slice(a,b+1));if(j&&typeof j==='object')return j}catch{}}
     }
   }
   return null
@@ -840,6 +867,57 @@ function fillMissingFromPrimary(best,primary){
 }
 
 
+async function readLegacyReceipt(env,image){
+  const firstResult=await env.AI.run(FALLBACK_MODEL,{
+    prompt:LEGACY_PROMPT,
+    image,
+    max_tokens:1000,
+    temperature:0,
+    stream:false
+  });
+  const firstRaw=responseText(firstResult);
+  if(!firstRaw)throw new Error('Stable Llama reader returned no text');
+  const primary=validate(parseProtocol(firstRaw));
+  primary.transcript_lines=firstRaw.split(/\n+/).filter(Boolean).length;
+  primary.transcript_preview=firstRaw.slice(0,1200);
+  primary.repair_used=false;
+  primary.alternate_layout=false;
+  primary.primary_engine='stable-llama-primary';
+  primary.inference_calls=1;
+  primary.models_used=[FALLBACK_MODEL];
+
+  if(!shouldRepair(primary))return primary;
+
+  const secondResult=await env.AI.run(FALLBACK_MODEL,{
+    prompt:LEGACY_REPAIR_PROMPT,
+    image,
+    max_tokens:1200,
+    temperature:0,
+    stream:false
+  });
+  const secondRaw=responseText(secondResult);
+  if(!secondRaw)return primary;
+
+  const repaired=validate(parseProtocol(secondRaw));
+  repaired.transcript_lines=secondRaw.split(/\n+/).filter(Boolean).length;
+  repaired.transcript_preview=secondRaw.slice(0,1200);
+  repaired.repair_used=true;
+  repaired.alternate_layout=false;
+  repaired.primary_engine='stable-llama-repair';
+  repaired.inference_calls=2;
+  repaired.models_used=[FALLBACK_MODEL];
+
+  let best=checkedQuality(repaired)>checkedQuality(primary)?repaired:primary;
+  if(best===repaired)best=fillMissingFromPrimary(best,primary);
+  best.repair_used=true;
+  best.primary_score=primary.score;
+  best.repair_score=repaired.score;
+  best.alternate_layout=false;
+  best.inference_calls=2;
+  best.models_used=[FALLBACK_MODEL];
+  return best;
+}
+
 async function readReceiptSegments(env,images){
   const started=Date.now();
   const jobs=images.map(image=>env.AI.run(MODEL,{
@@ -902,19 +980,89 @@ If a numeric field is not visible, return 0 rather than guessing.`;
 }
 
 async function readUniversalReceipt(env,image){
-  const obj=await runStructuredLlama(env,image);
-  const checked=checkedFromStructuredJson(obj);
-  checked.transcript_lines=Array.isArray(obj.items)?obj.items.length:0;
-  checked.transcript_preview=JSON.stringify(obj).slice(0,2400);
-  checked.primary_engine='llama-json-vision';
-  checked.repair_used=false;
-  checked.inference_calls=1;
-  checked.models_used=[STRUCTURED_MODEL];
-  return checked
+  const candidates=[];
+  let calls=0;
+
+  // Pass A: reliable plain-text protocol on the COMPLETE uncropped receipt.
+  try{
+    const firstResult=await env.AI.run(FALLBACK_MODEL,{
+      prompt:PROMPT,image,max_tokens:1650,temperature:0,top_p:.08,stream:false
+    });
+    calls++;
+    const raw=responseText(firstResult);
+    if(raw){
+      const checked=validate(parseProtocol(raw));
+      checked.transcript_lines=raw.split(/\n+/).filter(Boolean).length;
+      checked.transcript_preview=raw.slice(0,2200);
+      checked.primary_engine='universal-plain-full-image';
+      checked.inference_calls=calls;
+      checked.models_used=[FALLBACK_MODEL];
+      candidates.push(checked);
+      if(checked.accepted&&!shouldRepair(checked))return checked
+    }
+  }catch(e){console.warn('universal-plain',e)}
+
+  // Pass B: table-focused prompt on the SAME full image. This is layout-agnostic.
+  try{
+    const itemResult=await env.AI.run(FALLBACK_MODEL,{
+      prompt:ITEM_RESCUE_PROMPT,image,max_tokens:1500,temperature:0,top_p:.08,stream:false
+    });
+    calls++;
+    const raw=responseText(itemResult);
+    if(raw){
+      const checked=validate(parseProtocol(raw));
+      checked.transcript_lines=raw.split(/\n+/).filter(Boolean).length;
+      checked.transcript_preview=raw.slice(0,2200);
+      checked.primary_engine='universal-item-pass';
+      checked.inference_calls=calls;
+      checked.models_used=[FALLBACK_MODEL];
+      candidates.push(checked)
+    }
+  }catch(e){console.warn('universal-items',e)}
+
+  // Build merged candidates so strong merchant/date/totals from one pass can be
+  // combined with complete item rows from the other pass.
+  if(candidates.length>=2){
+    const merged=mergeCheckedCandidates(candidates[0],candidates[1]);
+    if(merged){
+      merged.primary_engine='universal-merged-plain';
+      merged.inference_calls=calls;
+      merged.models_used=[FALLBACK_MODEL];
+      candidates.push(merged)
+    }
+  }
+
+  let best=candidates.filter(Boolean).sort((a,b)=>checkedQuality(b)-checkedQuality(a))[0]||null;
+  if(best?.accepted){best.inference_calls=calls;return best}
+
+  // OPTIONAL last attempt: JSON Mode. Cloudflare documents that JSON Mode can fail
+  // to satisfy a schema, so this branch is never allowed to abort the reader.
+  try{
+    const obj=await runStructuredLlama(env,image);calls++;
+    if(obj){
+      const checked=checkedFromStructuredJson(obj);
+      checked.transcript_lines=Array.isArray(obj.items)?obj.items.length:0;
+      checked.transcript_preview=JSON.stringify(obj).slice(0,2200);
+      checked.primary_engine='universal-json-last-resort';
+      checked.inference_calls=calls;
+      checked.models_used=[STRUCTURED_MODEL];
+      candidates.push(checked);
+      if(best){
+        const merged=mergeCheckedCandidates(best,checked);
+        if(merged){merged.primary_engine='universal-json-merged';merged.inference_calls=calls;candidates.push(merged)}
+      }
+    }
+  }catch(e){console.warn('structured-json-optional',e)}
+
+  best=candidates.filter(Boolean).sort((a,b)=>checkedQuality(b)-checkedQuality(a))[0]||null;
+  if(!best)throw new Error('Universal receipt rescue returned no usable extraction');
+  best.inference_calls=calls;
+  best.models_used=[FALLBACK_MODEL];
+  return best
 }
 
 async function readReceipt(env,image,mode='legacy'){
-  if(mode==='structured')return await readUniversalReceipt(env,image);
+  if(mode==='universal'||mode==='structured')return await readUniversalReceipt(env,image);
   return await readLegacyReceipt(env,image)
 }
 
@@ -922,14 +1070,14 @@ export default {
   async fetch(request,env){
     const url=new URL(request.url);
     if(url.pathname==='/api/health'){
-      return new Response(JSON.stringify({ok:true,engine:'Stable Llama Primary + Structured Llama Vision Rescue',primary:FALLBACK_MODEL,structured:STRUCTURED_MODEL,version:VERSION,base:'4.4.0'}),{headers:headers()});
+      return new Response(JSON.stringify({ok:true,engine:'Stable 4.4 Llama Primary + Universal Plain-Text Rescue',primary:FALLBACK_MODEL,structured:STRUCTURED_MODEL,version:VERSION,base:'4.4.0'}),{headers:headers()});
     }
     if(url.pathname==='/api/receipt'){
       if(request.method!=='POST')return new Response(JSON.stringify({ok:false,error:'Method not allowed'}),{status:405,headers:headers()});
       const started=Date.now(),scanId=crypto.randomUUID().slice(0,8);
       try{
         const body=await request.json(),image=body?.image,
-          mode=body?.mode==='segments'?'segments':(body?.mode==='structured'?'structured':'legacy'),
+          mode=body?.mode==='segments'?'segments':((body?.mode==='universal'||body?.mode==='structured')?'universal':'legacy'),
           images=Array.isArray(body?.images)?body.images:[];
         if(mode==='segments'){
           if(images.length!==2||!images.every(validImage))return new Response(JSON.stringify({ok:false,error:'Two receipt segment images are required'}),{status:400,headers:headers()});
@@ -939,7 +1087,7 @@ export default {
         const result=mode==='segments'?await readReceiptSegments(env,images):await readReceipt(env,image,mode);
         return new Response(JSON.stringify({
           ok:true,...result,
-          meta:{engine:mode==='structured'?'Cloudflare Workers AI • Structured Llama Vision Rescue':'Cloudflare Workers AI • Stable Llama Primary',model:FALLBACK_MODEL,structured:mode==='structured',version:VERSION,base:'4.4.0',scan_id:scanId,elapsed_ms:Date.now()-started,images:1,inference_calls:result.inference_calls||1,repair_used:!!result.repair_used,models_used:result.models_used||[FALLBACK_MODEL]}
+          meta:{engine:mode==='universal'?'Cloudflare Workers AI • Universal Plain-Text Rescue':'Cloudflare Workers AI • Stable 4.4 Llama Primary',model:FALLBACK_MODEL,structured:false,version:VERSION,base:'4.4.0',scan_id:scanId,elapsed_ms:Date.now()-started,images:1,inference_calls:result.inference_calls||1,repair_used:!!result.repair_used,models_used:result.models_used||[FALLBACK_MODEL]}
         }),{headers:headers()});
       }catch(e){
         console.error('receipt-reader',e);
