@@ -170,7 +170,7 @@ button,input,textarea,select{font:inherit}button{cursor:pointer}.app{max-width:1
             <div class="ai-local-head"><div class="ai-local-title"><span>🧠</span><span data-i18n="localAIReader">القارئ الذكي المحلي</span></div><span class="ai-local-badge" id="aiLocalBadge" data-i18n="aiChecking">جارٍ التحقق…</span></div>
             <div class="ai-local-detail" id="aiLocalDetail" data-i18n="aiLocalNote">يعمل داخل الهاتف بدون API أو اشتراك. في أول تشغيل فقط يتم تنزيل النموذج وحفظه في ذاكرة المتصفح.</div>
             <div class="ai-local-meter" id="aiLocalMeter"><i id="aiLocalMeterBar"></i></div>
-            <div class="ai-local-tech"><span id="aiDeviceBadge">Cloudflare</span><span>Workers AI • Stable 4.4 Reader + Universal Table Parser</span><span data-i18n="aiPrivate">معالجة سحابية آمنة</span></div>
+            <div class="ai-local-tech"><span id="aiDeviceBadge">Cloudflare</span><span>PaddleOCR v5 • On-device Spatial OCR + Cloud Fallback</span><span data-i18n="aiPrivate">معالجة سحابية آمنة</span></div>
           </div>
         </div>
         <div class="footer-note" data-i18n="ocrNote">لأفضل نتيجة: اجعل الفاتورة كاملة داخل الصورة وبإضاءة متساوية. تتم معالجة التباين والقص تلقائيًا، ويمكنك مراجعة كل البيانات قبل الحفظ.</div>
@@ -249,14 +249,14 @@ const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 document.addEventListener('submit',e=>e.preventDefault(),true);const secureButtonTypes=()=>{$$('button').forEach(b=>{if(!b.hasAttribute('type'))b.type='button'})};secureButtonTypes();window.addEventListener('pageshow',secureButtonTypes);
 const CATEGORIES=['groceries','dining','shopping','transport','health','bills','entertainment','home','other'];
 const I18N={
- ar:{appTitle:'مصاريف الشهر',appSub:'إدارة ذكية للفواتير والمشتريات الشهرية',backup:'نسخة احتياطية',restore:'استعادة',dashboard:'الرئيسية',dashboardMonth:'الشهر المعروض',currentMonth:'الشهر الحالي',previousMonth:'الشهر السابق',nextMonth:'الشهر التالي',newInvoice:'تسجيل فاتورة جديدة',monthlyRecords:'السجلات الشهرية',monthSpend:'إجمالي الشهر',invoiceCount:'عدد الفواتير',savedLocally:'محفوظة على الجهاز',avgInvoice:'متوسط الفاتورة',monthAverage:'متوسط الشهر الحالي',budgetRemaining:'المتبقي من الميزانية',monthlyBudget:'الميزانية الشهرية',budgetAmount:'قيمة الميزانية',saveBudget:'حفظ الميزانية',budgetSaved:'تم حفظ ميزانية الشهر',spentOfBudget:'تم إنفاق',noBudget:'لم تحدد ميزانية بعد',categoryDistribution:'التوزيع حسب التصنيف',storesDistribution:'التوزيع حسب المحلات',topFive:'أعلى 5',dailySpend:'الإنفاق اليومي',recentInvoices:'أحدث الفواتير',viewAll:'عرض الكل',receiptScan:'تصوير / رفع الفاتورة',ocrAuto:'Cloudflare Llama Vision — Line OCR',takePhoto:'تصوير بالكاميرا',choosePhoto:'اختيار صورة من الألبوم',rotateLeft:'↶ تدوير',rotateRight:'↷ تدوير',enhanceAgain:'✨ تحسين',scanAgain:'إعادة القراءة الذكية',enhanced:'محسّنة للقراءة',ocrHint:'تُرسل صورة واحدة مرتبة بحيث يأخذ جدول الأصناف أكبر مساحة. يعيد Llama سطورًا نصية بسيطة، ثم يحللها الـWorker محليًا بدون JSON.',ocrNote:'القارئ المستقر يعمل أولًا كما في النسخ الناجحة ولا يتم تغييره. إذا كانت الفاتورة ذات تصميم مختلف، يقرأ مسار الإنقاذ الصورة المحسنة كاملة ثم يحلل جدول الأصناف نصيًا حتى لو لم يُرجع النموذج صيغة ITEM المنظمة، ويستخرج التاريخ المطبوع وعدد القطع والإجماليات مع تحقق حسابي قبل تعبئة الحقول.',invoiceData:'بيانات الفاتورة',storeName:'اسم المحل',invoiceDate:'تاريخ الفاتورة',category:'التصنيف',subtotal:'المبلغ قبل الضريبة',tax:'الضريبة',finalTotal:'الإجمالي النهائي',purchases:'المشتريات',addItem:'+ إضافة غرض',itemsSubtotal:'مجموع الأغراض',calculatedTax:'الضريبة',calculatedTotal:'الإجمالي',clear:'مسح',approve:'اعتماد وحفظ الفاتورة',printReport:'طباعة التقرير',item:'الغرض',price:'السعر',qty:'العدد',noData:'لا توجد فواتير محفوظة لهذا الشهر.',delete:'حذف',edit:'تعديل',saved:'تم حفظ الفاتورة بنجاح',updated:'تم تحديث الفاتورة',required:'يرجى إدخال اسم المحل وتاريخ الفاتورة والإجمالي النهائي.',scanning:'جارٍ قراءة الفاتورة…',preparing:'جارٍ تحسين الصورة وقص الحواف…',scanDone:'تم تحليل الفاتورة. راجع البيانات ثم اعتمدها.',scanFail:'تعذر استخراج البيانات بدقة. يمكنك تعديلها أو إدخالها يدويًا.',ocrNeedsNet:'يتطلب القارئ الذكي اتصالًا بالإنترنت للوصول إلى Cloudflare Worker. القارئ المحلي الاحتياطي يعمل عند تعذر الاتصال.',localAIReader:'القارئ الذكي السحابي',aiChecking:'جارٍ التحقق من Cloudflare…',aiLoading:'جارٍ الاتصال بـ Cloudflare AI…',aiReady:'متصل وجاهز',aiFallback:'قارئ محلي احتياطي',aiError:'تعذر الاتصال بالقارئ السحابي',aiLocalNote:'القارئ الأساسي عبر Cloudflare Worker: طلب Llama واحد، وجدول الأصناف يأخذ أكبر مساحة، ثم تحليل محلي سريع.',aiPrivate:'المعالجة عبر Worker آمن',aiAnalyzing:'جارٍ قراءة مناطق الفاتورة المكبرة عبر Cloudflare AI…',aiMerged:'اكتملت القراءة السريعة والتحقق من الفاتورة',currency:'د.إ',invoice:'فاتورة',itemsCount:'أغراض',confirmDelete:'هل تريد حذف هذه الفاتورة؟',backupDone:'تم تنزيل النسخة الاحتياطية',restoreDone:'تمت استعادة النسخة الاحتياطية',restoreFail:'ملف النسخة الاحتياطية غير صالح',quality:'جودة الاستخراج',vatDetected:'تم اكتشاف ضريبة القيمة المضافة 5%',fieldsDetected:'حقول مكتشفة',jan:'يناير',feb:'فبراير',mar:'مارس',apr:'أبريل',may:'مايو',jun:'يونيو',jul:'يوليو',aug:'أغسطس',sep:'سبتمبر',oct:'أكتوبر',nov:'نوفمبر',dec:'ديسمبر',groceries:'بقالة ومواد غذائية',dining:'مطاعم ومقاهي',shopping:'تسوق',transport:'مواصلات ووقود',health:'صحة وصيدلية',bills:'فواتير وخدمات',entertainment:'ترفيه',home:'منزل',other:'أخرى',
+ ar:{appTitle:'مصاريف الشهر',appSub:'إدارة ذكية للفواتير والمشتريات الشهرية',backup:'نسخة احتياطية',restore:'استعادة',dashboard:'الرئيسية',dashboardMonth:'الشهر المعروض',currentMonth:'الشهر الحالي',previousMonth:'الشهر السابق',nextMonth:'الشهر التالي',newInvoice:'تسجيل فاتورة جديدة',monthlyRecords:'السجلات الشهرية',monthSpend:'إجمالي الشهر',invoiceCount:'عدد الفواتير',savedLocally:'محفوظة على الجهاز',avgInvoice:'متوسط الفاتورة',monthAverage:'متوسط الشهر الحالي',budgetRemaining:'المتبقي من الميزانية',monthlyBudget:'الميزانية الشهرية',budgetAmount:'قيمة الميزانية',saveBudget:'حفظ الميزانية',budgetSaved:'تم حفظ ميزانية الشهر',spentOfBudget:'تم إنفاق',noBudget:'لم تحدد ميزانية بعد',categoryDistribution:'التوزيع حسب التصنيف',storesDistribution:'التوزيع حسب المحلات',topFive:'أعلى 5',dailySpend:'الإنفاق اليومي',recentInvoices:'أحدث الفواتير',viewAll:'عرض الكل',receiptScan:'تصوير / رفع الفاتورة',ocrAuto:'PaddleOCR PP-OCRv5 — قراءة محلية مكانية',takePhoto:'تصوير بالكاميرا',choosePhoto:'اختيار صورة من الألبوم',rotateLeft:'↶ تدوير',rotateRight:'↷ تدوير',enhanceAgain:'✨ تحسين',scanAgain:'إعادة القراءة الذكية',enhanced:'محسّنة للقراءة',ocrHint:'يقرأ PaddleOCR النص وموقع كل سطر داخل الصورة على الهاتف، ثم يعيد بناء اسم المحل والتاريخ وجدول الأصناف والإجماليات دون الاعتماد على قالب تاجر معين.',ocrNote:'الإصدار 5 يستخدم OCR حقيقيًا على الجهاز مع إحداثيات النص أولًا. إذا احتاج تفسيرًا إضافيًا تُرسل النصوص فقط إلى Cloudflare، وتبقى قراءة الصور السحابية القديمة كاحتياط أخير حتى لا تتعطل الفواتير التي نجحت سابقًا.',invoiceData:'بيانات الفاتورة',storeName:'اسم المحل',invoiceDate:'تاريخ الفاتورة',category:'التصنيف',subtotal:'المبلغ قبل الضريبة',tax:'الضريبة',finalTotal:'الإجمالي النهائي',purchases:'المشتريات',addItem:'+ إضافة غرض',itemsSubtotal:'مجموع الأغراض',calculatedTax:'الضريبة',calculatedTotal:'الإجمالي',clear:'مسح',approve:'اعتماد وحفظ الفاتورة',printReport:'طباعة التقرير',item:'الغرض',price:'السعر',qty:'العدد',noData:'لا توجد فواتير محفوظة لهذا الشهر.',delete:'حذف',edit:'تعديل',saved:'تم حفظ الفاتورة بنجاح',updated:'تم تحديث الفاتورة',required:'يرجى إدخال اسم المحل وتاريخ الفاتورة والإجمالي النهائي.',scanning:'جارٍ قراءة الفاتورة…',preparing:'جارٍ تحسين الصورة وقص الحواف…',scanDone:'تم تحليل الفاتورة. راجع البيانات ثم اعتمدها.',scanFail:'تعذر استخراج البيانات بدقة. يمكنك تعديلها أو إدخالها يدويًا.',ocrNeedsNet:'يحتاج الاتصال في أول مرة لتنزيل نموذج OCR وحفظه على الجهاز. بعد ذلك يعمل القارئ الأساسي محليًا، ويُستخدم Cloudflare فقط للحالات الصعبة أو كاحتياط.',localAIReader:'قارئ PaddleOCR المحلي',aiChecking:'جارٍ التحقق من محرك OCR…',aiLoading:'جارٍ تهيئة PaddleOCR…',aiReady:'جاهز على الجهاز',aiFallback:'مسار سحابي احتياطي',aiError:'تعذر تشغيل محرك OCR',aiLocalNote:'PaddleOCR هو القارئ الأساسي: يقرأ النص وإحداثياته محليًا، ثم يتحقق من الجداول والأرقام حسابيًا. Cloudflare احتياط فقط.',aiPrivate:'OCR محلي + Cloudflare احتياطي',aiAnalyzing:'جارٍ تحليل النص ومواقع الأسطر على الجهاز…',aiMerged:'اكتملت القراءة السريعة والتحقق من الفاتورة',currency:'د.إ',invoice:'فاتورة',itemsCount:'أغراض',confirmDelete:'هل تريد حذف هذه الفاتورة؟',backupDone:'تم تنزيل النسخة الاحتياطية',restoreDone:'تمت استعادة النسخة الاحتياطية',restoreFail:'ملف النسخة الاحتياطية غير صالح',quality:'جودة الاستخراج',vatDetected:'تم اكتشاف ضريبة القيمة المضافة 5%',fieldsDetected:'حقول مكتشفة',jan:'يناير',feb:'فبراير',mar:'مارس',apr:'أبريل',may:'مايو',jun:'يونيو',jul:'يوليو',aug:'أغسطس',sep:'سبتمبر',oct:'أكتوبر',nov:'نوفمبر',dec:'ديسمبر',groceries:'بقالة ومواد غذائية',dining:'مطاعم ومقاهي',shopping:'تسوق',transport:'مواصلات ووقود',health:'صحة وصيدلية',bills:'فواتير وخدمات',entertainment:'ترفيه',home:'منزل',other:'أخرى',
 receiptEvidence:'صورة الفاتورة كدليل',evidenceAttached:'صورة دليل مرفقة',noEvidence:'لا توجد صورة دليل',
 addEvidence:'إضافة صورة دليل',viewEvidence:'عرض صورة الدليل',replaceEvidence:'استبدال الصورة',deleteEvidence:'حذف صورة الدليل',
 evidenceSaved:'تم حفظ صورة الفاتورة كدليل',evidenceDeleted:'تم حذف صورة الدليل',confirmDeleteEvidence:'هل تريد حذف صورة الدليل المرفقة؟',
 manualEvidencePrompt:'تم اعتماد الفاتورة بدون صورة. هل تريد إضافة صورة الفاتورة كدليل الآن؟',
 takeEvidencePhoto:'تصوير صورة الدليل',chooseEvidencePhoto:'اختيار صورة الدليل من الألبوم',later:'لاحقًا',
 evidenceStorageFail:'تعذر حفظ صورة الدليل على الجهاز',evidenceNotFound:'صورة الدليل غير موجودة على هذا الجهاز'},
- en:{appTitle:'Monthly Expenses',appSub:'Smart monthly receipt & spending manager',backup:'Backup',restore:'Restore',dashboard:'Dashboard',dashboardMonth:'Displayed Month',currentMonth:'Current Month',previousMonth:'Previous Month',nextMonth:'Next Month',newInvoice:'New Receipt',monthlyRecords:'Monthly Records',monthSpend:'Month Total',invoiceCount:'Receipts',savedLocally:'Saved on this device',avgInvoice:'Average Receipt',monthAverage:'Current month average',budgetRemaining:'Budget Remaining',monthlyBudget:'Monthly Budget',budgetAmount:'Budget Amount',saveBudget:'Save Budget',budgetSaved:'Monthly budget saved',spentOfBudget:'Spent',noBudget:'No budget set yet',categoryDistribution:'Spend by Category',storesDistribution:'Spend by Store',topFive:'Top 5',dailySpend:'Daily Spending',recentInvoices:'Recent Receipts',viewAll:'View All',receiptScan:'Scan / Upload Receipt',ocrAuto:'Cloudflare Llama Vision — Line OCR',takePhoto:'Take Photo',choosePhoto:'Choose from Photos',rotateLeft:'↶ Rotate',rotateRight:'↷ Rotate',enhanceAgain:'✨ Enhance',scanAgain:'Smart Re-scan',enhanced:'Enhanced for OCR',ocrHint:'One receipt composite gives the item table the largest area. Llama returns simple text lines and the Worker parses them locally without JSON.',ocrNote:'Universal receipt reader selects the customer-facing trade name, distinguishes item rows from total pieces, preserves printed date order, and automatically retries transient failures.',invoiceData:'Receipt Details',storeName:'Store Name',invoiceDate:'Receipt Date',category:'Category',subtotal:'Subtotal Before Tax',tax:'Tax',finalTotal:'Final Total',purchases:'Items',addItem:'+ Add Item',itemsSubtotal:'Items Subtotal',calculatedTax:'Tax',calculatedTotal:'Total',clear:'Clear',approve:'Approve & Save Receipt',printReport:'Print Report',item:'Item',price:'Price',qty:'Qty',noData:'No saved receipts for this month.',delete:'Delete',edit:'Edit',saved:'Receipt saved successfully',updated:'Receipt updated',required:'Please enter store name, receipt date and final total.',scanning:'Reading receipt…',preparing:'Enhancing image and cropping edges…',scanDone:'Receipt analyzed. Review the fields before saving.',scanFail:'Could not extract the data accurately. You can edit or enter it manually.',ocrNeedsNet:'Cloud AI requires an internet connection. If it is unavailable, fields stay blank instead of running a slow fallback.',localAIReader:'Cloud Smart Receipt Reader',aiChecking:'Checking Cloudflare…',aiLoading:'Connecting to Cloudflare AI…',aiReady:'Connected & Ready',aiFallback:'Local fallback reader',aiError:'Cloud reader unavailable',aiLocalNote:'One Llama request with an enlarged item table, followed by local parsing in the secure Worker.',aiPrivate:'Secure Worker processing',aiAnalyzing:'Reading enlarged receipt regions with Cloudflare AI…',aiMerged:'Cloud AI receipt analysis complete',currency:'AED',invoice:'Receipt',itemsCount:'Items',confirmDelete:'Delete this receipt?',backupDone:'Backup downloaded',restoreDone:'Backup restored',restoreFail:'Invalid backup file',quality:'Extraction quality',vatDetected:'5% VAT detected',fieldsDetected:'fields detected',jan:'January',feb:'February',mar:'March',apr:'April',may:'May',jun:'June',jul:'July',aug:'August',sep:'September',oct:'October',nov:'November',dec:'December',groceries:'Groceries',dining:'Dining & Coffee',shopping:'Shopping',transport:'Transport & Fuel',health:'Health & Pharmacy',bills:'Bills & Services',entertainment:'Entertainment',home:'Home',other:'Other',
+ en:{appTitle:'Monthly Expenses',appSub:'Smart monthly receipt & spending manager',backup:'Backup',restore:'Restore',dashboard:'Dashboard',dashboardMonth:'Displayed Month',currentMonth:'Current Month',previousMonth:'Previous Month',nextMonth:'Next Month',newInvoice:'New Receipt',monthlyRecords:'Monthly Records',monthSpend:'Month Total',invoiceCount:'Receipts',savedLocally:'Saved on this device',avgInvoice:'Average Receipt',monthAverage:'Current month average',budgetRemaining:'Budget Remaining',monthlyBudget:'Monthly Budget',budgetAmount:'Budget Amount',saveBudget:'Save Budget',budgetSaved:'Monthly budget saved',spentOfBudget:'Spent',noBudget:'No budget set yet',categoryDistribution:'Spend by Category',storesDistribution:'Spend by Store',topFive:'Top 5',dailySpend:'Daily Spending',recentInvoices:'Recent Receipts',viewAll:'View All',receiptScan:'Scan / Upload Receipt',ocrAuto:'PaddleOCR PP-OCRv5 — قراءة محلية مكانية',takePhoto:'Take Photo',choosePhoto:'Choose from Photos',rotateLeft:'↶ Rotate',rotateRight:'↷ Rotate',enhanceAgain:'✨ Enhance',scanAgain:'Smart Re-scan',enhanced:'Enhanced for OCR',ocrHint:'One receipt composite gives the item table the largest area. Llama returns simple text lines and the Worker parses them locally without JSON.',ocrNote:'Universal receipt reader selects the customer-facing trade name, distinguishes item rows from total pieces, preserves printed date order, and automatically retries transient failures.',invoiceData:'Receipt Details',storeName:'Store Name',invoiceDate:'Receipt Date',category:'Category',subtotal:'Subtotal Before Tax',tax:'Tax',finalTotal:'Final Total',purchases:'Items',addItem:'+ Add Item',itemsSubtotal:'Items Subtotal',calculatedTax:'Tax',calculatedTotal:'Total',clear:'Clear',approve:'Approve & Save Receipt',printReport:'Print Report',item:'Item',price:'Price',qty:'Qty',noData:'No saved receipts for this month.',delete:'Delete',edit:'Edit',saved:'Receipt saved successfully',updated:'Receipt updated',required:'Please enter store name, receipt date and final total.',scanning:'Reading receipt…',preparing:'Enhancing image and cropping edges…',scanDone:'Receipt analyzed. Review the fields before saving.',scanFail:'Could not extract the data accurately. You can edit or enter it manually.',ocrNeedsNet:'Cloud AI requires an internet connection. If it is unavailable, fields stay blank instead of running a slow fallback.',localAIReader:'Cloud Smart Receipt Reader',aiChecking:'Checking Cloudflare…',aiLoading:'Connecting to Cloudflare AI…',aiReady:'Connected & Ready',aiFallback:'Local fallback reader',aiError:'Cloud reader unavailable',aiLocalNote:'One Llama request with an enlarged item table, followed by local parsing in the secure Worker.',aiPrivate:'Secure Worker processing',aiAnalyzing:'Reading enlarged receipt regions with Cloudflare AI…',aiMerged:'Cloud AI receipt analysis complete',currency:'AED',invoice:'Receipt',itemsCount:'Items',confirmDelete:'Delete this receipt?',backupDone:'Backup downloaded',restoreDone:'Backup restored',restoreFail:'Invalid backup file',quality:'Extraction quality',vatDetected:'5% VAT detected',fieldsDetected:'fields detected',jan:'January',feb:'February',mar:'March',apr:'April',may:'May',jun:'June',jul:'July',aug:'August',sep:'September',oct:'October',nov:'November',dec:'December',groceries:'Groceries',dining:'Dining & Coffee',shopping:'Shopping',transport:'Transport & Fuel',health:'Health & Pharmacy',bills:'Bills & Services',entertainment:'Entertainment',home:'Home',other:'Other',
 receiptEvidence:'Receipt Evidence Image',evidenceAttached:'Evidence image attached',noEvidence:'No evidence image',
 addEvidence:'Add Evidence Image',viewEvidence:'View Evidence Image',replaceEvidence:'Replace Image',deleteEvidence:'Delete Evidence Image',
 evidenceSaved:'Receipt evidence image saved',evidenceDeleted:'Evidence image deleted',confirmDeleteEvidence:'Delete the attached evidence image?',
@@ -802,119 +802,176 @@ function aiItemClean(x){if(!x||typeof x!=='object')return null;const name=normal
 function localAIItemScore(items,base){if(!items.length)return-999;const sum=items.reduce((a,x)=>a+Number(x.readTotal??x.price*x.qty),0),targets=[base?.total,base?.subtotal].filter(v=>Number.isFinite(v)&&v>0);let score=items.length*8;if(base?.itemsExpected)score-=Math.abs(items.length-base.itemsExpected)*12;if(targets.length){const d=Math.min(...targets.map(t=>Math.abs(sum-t)/Math.max(1,t)));score+=d<.02?30:d<.08?12:-Math.min(30,d*100)}return score}
 function mergeLocalAIReceipt(aiRaw,base){const ai=extractJSONObject(aiRaw?.text||'');if(!ai)return base;const aiItems=(Array.isArray(ai.items)?ai.items:[]).map(aiItemClean).filter(Boolean),baseItems=base?.itemRows||[];let itemRows=baseItems;if(localAIItemScore(aiItems,base)>localAIItemScore(baseItems,base)+3)itemRows=aiItems;else if(aiItems.length&&baseItems.length===aiItems.length){itemRows=baseItems.map((b,i)=>{const a=aiItems[i];if(Math.abs(Number(b.price||0)-Number(a.price||0))<=.12||Math.abs(Number(b.readTotal??b.price*b.qty)-Number(a.readTotal??a.price*a.qty))<=.15)return{...b,name:a.name||b.name};return b})}const store=validEnglishStore(ai.store)?String(ai.store).trim():base?.store,date=/^\d{4}-\d{2}-\d{2}$/.test(String(ai.date||''))?ai.date:base?.date;let subtotal=aiNum(ai.subtotal),tax=aiNum(ai.tax),total=aiNum(ai.total);const consistent=subtotal!=null&&tax!=null&&total!=null&&Math.abs(subtotal+tax-total)<=.15;if(!consistent||(base?.total!=null&&total!=null&&Math.abs(total-base.total)>Math.max(.20,base.total*.04))){subtotal=base?.subtotal;tax=base?.tax;total=base?.total}const category=inferCategory(`${store||''}\n${itemRows.map(x=>x.name).join('\n')}`),aiConf=Math.max(0,Math.min(100,Number(ai.confidence||0))),score=Math.round(Math.max(base?.score||0,Math.min(100,(base?.score||50)*.45+aiConf*.55)));return{...base,store,date,itemRows,items:itemRows.length,subtotal,tax,total,category,score,localAI:true,aiConfidence:aiConf}}
 
-// === v3.2.0 Safari-safe receipt OCR: PaddleOCR + deterministic multi-pass fallback ===
-let paddleOCRInstance=null,paddleOCRLoadPromise=null;
+// === v5.0.0 Universal On-Device Receipt OCR: PaddleOCR + spatial reconstruction ===
+let paddleOCRInstance=null,paddleOCRLoadPromise=null,paddleModelTarPromise=null,lastPaddleEvidence=null;
 const PADDLE_OCR_MODULE='https://cdn.jsdelivr.net/npm/@paddleocr/paddleocr-js@0.4.2/+esm';
-const PADDLE_ORT_WASM='https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/';
+const PADDLE_ORT_WASM='https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/';
+const PADDLE_AR_ASSET='https://local.receipt-ocr.invalid/arabic_PP-OCRv5_mobile_rec.tar';
+const PADDLE_AR_ONNX='https://huggingface.co/itextresearch/itext-arabic_PP-OCRv5_mobile_rec_infer/resolve/main/inference.onnx?download=true';
+const PADDLE_AR_YML='https://huggingface.co/itextresearch/itext-arabic_PP-OCRv5_mobile_rec_infer/resolve/main/inference.yml?download=true';
+const OCR_CACHE='monthly-expense-paddleocr-v5';
 
+function tarOctal(n,len){const s=Math.max(0,Number(n)||0).toString(8);return s.padStart(len-1,'0')+'\0'}
+function tarWriteAscii(buf,off,len,text){const b=new TextEncoder().encode(String(text));buf.set(b.subarray(0,len),off)}
+function buildUstar(files){
+  const enc=new TextEncoder(),parts=[];
+  for(const f of files){
+    const data=f.data instanceof Uint8Array?f.data:new Uint8Array(f.data),h=new Uint8Array(512);h.fill(0);
+    tarWriteAscii(h,0,100,f.name);tarWriteAscii(h,100,8,'0000644\0');tarWriteAscii(h,108,8,'0000000\0');tarWriteAscii(h,116,8,'0000000\0');
+    tarWriteAscii(h,124,12,tarOctal(data.byteLength,12));tarWriteAscii(h,136,12,tarOctal(Math.floor(Date.now()/1000),12));
+    for(let i=148;i<156;i++)h[i]=32;h[156]='0'.charCodeAt(0);tarWriteAscii(h,257,6,'ustar\0');tarWriteAscii(h,263,2,'00');
+    let sum=0;for(const v of h)sum+=v;tarWriteAscii(h,148,8,sum.toString(8).padStart(6,'0')+'\0 ');
+    parts.push(h,data);const pad=(512-(data.byteLength%512))%512;if(pad)parts.push(new Uint8Array(pad))
+  }
+  parts.push(new Uint8Array(1024));const total=parts.reduce((s,p)=>s+p.byteLength,0),out=new Uint8Array(total);let off=0;for(const p of parts){out.set(p,off);off+=p.byteLength}return out
+}
+async function cachedOcrFetch(input,init){
+  const req=input instanceof Request?input:new Request(input,init),url=req.url;
+  if(url===PADDLE_AR_ASSET){
+    if(paddleModelTarPromise)return paddleModelTarPromise;
+    paddleModelTarPromise=(async()=>{
+      const cache=await caches.open(OCR_CACHE),key=new Request(PADDLE_AR_ASSET);
+      const hit=await cache.match(key);if(hit)return hit.clone();
+      const [onnxRes,ymlRes]=await Promise.all([cachedOcrFetch(PADDLE_AR_ONNX),cachedOcrFetch(PADDLE_AR_YML)]);
+      if(!onnxRes.ok||!ymlRes.ok)throw new Error('Arabic OCR model download failed');
+      const onnx=new Uint8Array(await onnxRes.arrayBuffer()),yml=new Uint8Array(await ymlRes.arrayBuffer());
+      const tar=buildUstar([{name:'inference.onnx',data:onnx},{name:'inference.yml',data:yml}]);
+      const res=new Response(tar,{status:200,headers:{'content-type':'application/x-tar','content-length':String(tar.byteLength)}});await cache.put(key,res.clone());return res
+    })().finally(()=>{paddleModelTarPromise=null});
+    return paddleModelTarPromise
+  }
+  if(req.method!=='GET')return fetch(req);
+  try{const cache=await caches.open(OCR_CACHE),hit=await cache.match(req);if(hit)return hit;const res=await fetch(req);if(res.ok)cache.put(req,res.clone()).catch(()=>{});return res}catch(e){return fetch(req)}
+}
 function paddleBox(item){
-  const p=item?.poly||item?.box||item?.bbox||[];
-  let pts=[];
-  if(Array.isArray(p)&&Array.isArray(p[0])) pts=p;
-  else if(Array.isArray(p)&&p.length>=8){for(let i=0;i+1<p.length;i+=2)pts.push([Number(p[i]),Number(p[i+1])])}
-  else if(p&&typeof p==='object'&&p.x0!=null)pts=[[p.x0,p.y0],[p.x1,p.y0],[p.x1,p.y1],[p.x0,p.y1]];
-  pts=pts.filter(q=>Array.isArray(q)&&Number.isFinite(+q[0])&&Number.isFinite(+q[1]));
-  if(!pts.length)return{x0:0,y0:0,x1:0,y1:0};
+  const p=item?.poly||item?.box||item?.bbox||[];let pts=[];
+  if(Array.isArray(p)&&Array.isArray(p[0]))pts=p;else if(Array.isArray(p)&&p.length>=8){for(let i=0;i+1<p.length;i+=2)pts.push([+p[i],+p[i+1]])}
+  pts=pts.filter(q=>Array.isArray(q)&&Number.isFinite(+q[0])&&Number.isFinite(+q[1]));if(!pts.length)return{x0:0,y0:0,x1:0,y1:0};
   return{x0:Math.min(...pts.map(q=>+q[0])),y0:Math.min(...pts.map(q=>+q[1])),x1:Math.max(...pts.map(q=>+q[0])),y1:Math.max(...pts.map(q=>+q[1]))}
 }
-function paddleToTessLike(result){
-  const items=(result?.items||[]).filter(it=>String(it?.text||'').trim());
-  const sorted=[...items].sort((a,b)=>{const A=paddleBox(a),B=paddleBox(b);const ay=(A.y0+A.y1)/2,by=(B.y0+B.y1)/2;return Math.abs(ay-by)>8?ay-by:A.x0-B.x0});
-  const lines=[],allWords=[];
-  for(const it of sorted){
-    const text=normalizeOcrText(it.text||'');if(!text)continue;
-    const bb=paddleBox(it),tokens=text.split(/\s+/).filter(Boolean),span=Math.max(1,bb.x1-bb.x0),step=span/Math.max(1,tokens.length),conf=Math.max(0,Math.min(100,Number(it.score??it.confidence??0)*100));
-    const words=tokens.map((tok,i)=>({text:tok,confidence:conf,bbox:{x0:bb.x0+i*step,y0:bb.y0,x1:bb.x0+(i+1)*step,y1:bb.y1}}));
-    lines.push({words,bbox:bb,text});
-    allWords.push(...words);
-  }
-  const avg=items.length?items.reduce((s,it)=>s+Math.max(0,Math.min(1,Number(it.score??it.confidence??0))),0)/items.length:0;
-  return{text:lines.map(x=>x.text).join('\n'),confidence:avg*100,blocks:[{paragraphs:[{lines}]}],_paddleItems:sorted};
+function paddleLines(result){
+  const W=Math.max(1,Number(result?.image?.width)||1),H=Math.max(1,Number(result?.image?.height)||1);
+  return(result?.items||[]).map(it=>{const b=paddleBox(it),text=normalizeOcrText(it?.text||''),score=Math.max(0,Math.min(1,Number(it?.score??it?.confidence??0)));return{text,score,x0:b.x0/W,y0:b.y0/H,x1:b.x1/W,y1:b.y1/H,cx:(b.x0+b.x1)/(2*W),cy:(b.y0+b.y1)/(2*H),h:(b.y1-b.y0)/H}}).filter(x=>x.text)
 }
-function cropCanvasRatio(canvas,x0,y0,x1,y1){
-  const sx=Math.max(0,Math.round(canvas.width*x0)),sy=Math.max(0,Math.round(canvas.height*y0)),sw=Math.max(1,Math.round(canvas.width*(x1-x0))),sh=Math.max(1,Math.round(canvas.height*(y1-y0))),c=document.createElement('canvas');
-  c.width=Math.min(sw,1800);c.height=Math.max(1,Math.round(sh*c.width/sw));c.getContext('2d').drawImage(canvas,sx,sy,sw,sh,0,0,c.width,c.height);return c
+function median(a){if(!a.length)return 0;const s=[...a].sort((x,y)=>x-y);return s[Math.floor(s.length/2)]}
+function spatialRows(lines){
+  const src=[...(lines||[])].sort((a,b)=>a.cy-b.cy||a.x0-b.x0),mh=median(src.map(x=>Math.max(.006,x.h)))||.018,tol=Math.max(.008,mh*.62),rows=[];
+  for(const l of src){let best=null,bd=9;for(const r of rows.slice(-10)){const d=Math.abs(l.cy-r.cy);if(d<bd&&d<=tol){best=r;bd=d}}if(!best){best={cy:l.cy,cells:[]};rows.push(best)}best.cells.push(l);best.cy=best.cells.reduce((s,x)=>s+x.cy,0)/best.cells.length}
+  return rows.sort((a,b)=>a.cy-b.cy).map(r=>{r.cells.sort((a,b)=>a.x0-b.x0);const text=r.cells.map(x=>x.text).join(' ').replace(/\s+/g,' ').trim();return{...r,text,x0:Math.min(...r.cells.map(x=>x.x0)),x1:Math.max(...r.cells.map(x=>x.x1)),score:r.cells.reduce((s,x)=>s+x.score,0)/r.cells.length}}).filter(r=>r.text)
+}
+function universalDate(rows){
+  const months={jan:1,january:1,feb:2,february:2,mar:3,march:3,apr:4,april:4,may:5,jun:6,june:6,jul:7,july:7,aug:8,august:8,sep:9,september:9,oct:10,october:10,nov:11,november:11,dec:12,december:12},hits=[];
+  for(const r of rows){const s=normalizeDigits(r.text),bad=/(expected|delivery|delv\.?\s*date|due\s*date|expiry|expire|valid\s*until)/i.test(s);let m;
+    for(const re of [/(\d{1,2})[-\/.](\d{1,2})[-\/.](20\d{2})/g,/(20\d{2})[-\/.](\d{1,2})[-\/.](\d{1,2})/g])while((m=re.exec(s))){let y,mo,d;if(m[1].length===4){y=+m[1];mo=+m[2];d=+m[3]}else{d=+m[1];mo=+m[2];y=+m[3]}if(mo>0&&mo<13&&d>0&&d<32)hits.push({value:`${y}-${String(mo).padStart(2,'0')}-${String(d).padStart(2,'0')}`,score:(bad?-80:0)+(/(?:invoice|order|transaction|receipt)?\s*date/i.test(s)?35:0)+(r.cy<.55?10:0)})}
+    const tm=s.match(/\b(\d{1,2})\s+(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+(20\d{2})\b/i);if(tm){const mo=months[tm[2].toLowerCase()];hits.push({value:`${tm[3]}-${String(mo).padStart(2,'0')}-${String(+tm[1]).padStart(2,'0')}`,score:(bad?-80:0)+(/date/i.test(s)?30:0)+15})}
+  }
+  return hits.sort((a,b)=>b.score-a.score)[0]?.value||''
+}
+function rightmostMoney(text){const m=decimalMoneyTokens(text);return m.length?m[m.length-1].value:null}
+function spatialTotals(rows){
+  const out={subtotal:null,tax:null,total:null,vatRate:null,pieces:0,itemCount:0};let totalBest=-999;
+  for(const r of rows){const s=r.text,v=rightmostMoney(s),pct=s.match(/(?:VAT|Tax|ضريبة)[^\d]{0,8}(\d{1,2}(?:\.\d+)?)\s*%/i);if(pct)out.vatRate=Number(pct[1]);
+    let m=s.match(/(?:T\.?\s*Pcs|Total\s*Pieces|Total\s*Qty|Total\s*Quantity)\D{0,12}(\d{1,4})/i);if(m)out.pieces=Number(m[1])||0;
+    m=s.match(/(?:Total\s*item|No\.?\s*of\s*items|#\s*of\s*items)\D{0,12}(\d{1,4})/i);if(m)out.itemCount=Number(m[1])||0;
+    if(v==null)continue;
+    if(/(?:Excl\.?\s*VAT|VATable\s*Sales|Taxable\s*Sales|Sub\s*Total|Subtotal|G\.?\s*Amt|Net\s*W\/?Out\s*Tax|المبلغ\s*قبل)/i.test(s))out.subtotal=v;
+    if(/(?:VAT\s*Amount|VAT\s*5%|\bTax\b|الضريبة)/i.test(s)&&!/(?:Taxable|Tax\s*Invoice)/i.test(s))out.tax=v;
+    let ts=-999;if(/Grand\s*Total|المجموع\s*الكل|الإجمالي\s*النهائي/i.test(s))ts=100;else if(/\bGross\b|\bNet\s*Amount\b|Amount\s*Due/i.test(s))ts=90;else if(/^\s*Adv\b/i.test(s))ts=78;else if(/^\s*Total\b/i.test(s)&&!/Total\s*(?:item|Qty|Pieces|Pcs)/i.test(s))ts=70;
+    if(ts>totalBest){totalBest=ts;out.total=v}
+  }
+  if(out.total==null&&out.subtotal!=null&&out.tax!=null)out.total=Number((out.subtotal+out.tax).toFixed(2));
+  if(out.subtotal==null&&out.total!=null&&out.tax!=null)out.subtotal=Number((out.total-out.tax).toFixed(2));
+  return out
+}
+function merchantCandidateBad(s){return /(?:^\s*(?:hi|hello|dear|welcome)\b|thanks?\s+(?:for|you)|tax\s*invoice|invoice|receipt|trn|order\s*(?:no|number)?|customer|cashier|date|time|mobile|phone|tel|near|street|road|mall|terms|conditions|amount|total|vat|tax|qty|quantity)/i.test(s)}
+function spatialMerchant(rows){
+  let best='',bestScore=-999;const headerIndex=rows.findIndex(r=>rowHeader(r.text)),cutoff=headerIndex>=0?rows[headerIndex].cy:.42;
+  for(const r of rows){if(r.cy>=cutoff)continue;let s=r.text.replace(/[*_#`~]+/g,' ').replace(/\s+/g,' ').trim();if(s.length<3||merchantCandidateBad(s))continue;
+    const letters=(s.match(/[A-Za-z\u0600-\u06FF]/g)||[]).length;if(letters<3)continue;const caps=(s.match(/[A-Z]/g)||[]).length,latin=(s.match(/[A-Za-z]/g)||[]).length;
+    let score=letters+(r.score||0)*25+(r.cy<.20?18:0)+(latin&&caps/Math.max(1,latin)>.55?18:0);
+    if(/laundr|pharmacy|restaurant|cafe|coffee|market|supermarket|salon|clinic|hospital|trading|services|bakery|grocery|electronics|automatic|صيدلية|مغسلة|مطعم|مقهى|سوق/i.test(s))score+=65;
+    if(/facilities\s*management|holding|properties|municipality/i.test(s))score-=18;
+    if(score>bestScore){bestScore=score;best=s}
+  }
+  const english=(best.match(/[A-Za-z][A-Za-z0-9&.'’\- ]{2,}/g)||[]).join(' ').replace(/\s+/g,' ').trim();return canonicalMerchantName(english||best)
+}
+function rowHeader(s){return /(?:\bitem\b|description|product|service|الصنف|الوصف|البيان)/i.test(s)&&/(?:qty|quantity|كمية|الكمية|amount|aed|rate|price|السعر|المبلغ)/i.test(s)}
+function rowStop(s){return /^(?:T\.?\s*Pcs|Total\s*Pieces|Total\s*Qty|Total\s*items?|Subtotal|Sub\s*Total|G\.?\s*Amt|Tax|VAT|Adv|Bal\.?\s*Amt|Gross|Grand\s*Total|Net\s*Amount|Booked\s*By|Advance\s*balance|Terms?|المجموع|الإجمالي|الضريبة)/i.test(s.trim())}
+function parseSpatialItemText(text,pending=''){
+  let s=normalizeOcrText(text);if(!s||rowHeader(s)||rowStop(s))return null;const monies=decimalMoneyTokens(s);if(!monies.length)return null;
+  const first=monies[0],before=s.slice(0,first.index).trim();const ints=[];for(const m of before.matchAll(/\b(\d{1,3})\b/g)){const n=Number(m[1]);if(n>=1&&n<=999)ints.push({n,index:m.index,len:m[1].length})}if(!ints.length)return null;
+  const q=ints[ints.length-1];let name=before.slice(0,q.index).trim().replace(/^\s*\d{1,3}\s*[).:#-]?\s*/,'').trim();if(pending)name=(pending+' '+name).replace(/\s+/g,' ').trim();if(name.length<2||merchantCandidateBad(name)||/^(?:item|description|service)$/i.test(name))return null;
+  const qty=q.n,last=monies[monies.length-1].value,unit=monies.length>=2?monies[monies.length-2].value:Number((last/qty).toFixed(2));
+  return{name,qty,price:unit,readTotal:last,confidence:1}
+}
+function spatialItems(rows){
+  let header=rows.findIndex(r=>rowHeader(r.text)),items=[],pending='',started=header>=0;
+  for(let i=header>=0?header+1:0;i<rows.length;i++){
+    const r=rows[i],s=r.text;if(rowStop(s)){if(items.length)break;continue}if(!started&&r.cy<.20)continue;
+    const item=parseSpatialItemText(s,pending);if(item){items.push(item);pending='';started=true;continue}
+    if(started&&!rowStop(s)&&!rowHeader(s)&&!decimalMoneyTokens(s).length&&s.length<80&&!/(?:invoice|receipt|customer|date|time|total|vat|tax|balance|terms)/i.test(s)){
+      if(/[\u0600-\u06FF]/.test(s)&&items.length){const last=items[items.length-1];if(!/[\u0600-\u06FF]/.test(last.name))last.name=`${last.name} | ${s}`}
+      else pending=(pending?pending+' ':'')+s;if(pending.length>90)pending=''
+    }
+  }
+  if(!items.length){
+    // Headerless digital receipts: accept a consecutive table-like run only.
+    let run=[];for(const r of rows){if(r.cy<.18||r.cy>.86||rowStop(r.text)){if(run.length>=2)items.push(...run);run=[];continue}const it=parseSpatialItemText(r.text);if(it)run.push(it);else if(run.length){if(run.length>=2)items.push(...run);run=[]}}if(run.length>=2)items.push(...run)
+  }
+  const seen=new Set();return items.filter(x=>{const k=`${x.name.toLowerCase().replace(/\s+/g,' ')}|${x.qty}|${Number(x.readTotal).toFixed(2)}`;if(seen.has(k))return false;seen.add(k);return true})
+}
+function spatialReceiptParse(result){
+  const lines=paddleLines(result),rows=spatialRows(lines),tot=spatialTotals(rows),itemRows=spatialItems(rows),store=spatialMerchant(rows),date=universalDate(rows),itemSum=Number(itemRows.reduce((s,x)=>s+Number(x.readTotal||x.price*x.qty||0),0).toFixed(2));
+  let subtotal=tot.subtotal,tax=tot.tax,total=tot.total;if(subtotal==null&&itemRows.length&&total!=null&&tax!=null&&Math.abs(itemSum+tax-total)<=.15)subtotal=itemSum;
+  const finance=Number.isFinite(subtotal)&&Number.isFinite(tax)&&Number.isFinite(total)&&Math.abs(subtotal+tax-total)<=.15;
+  const itemMatch=itemRows.length&&([subtotal,total].filter(Number.isFinite).some(t=>Math.abs(itemSum-t)<=Math.max(.15,Math.abs(t)*.015)));
+  const expected=tot.itemCount||0,pieces=tot.pieces||itemRows.reduce((s,x)=>s+x.qty,0),countOk=!expected||expected===itemRows.length;
+  let score=20+(store?15:0)+(date?10:0)+(total!=null?15:0)+Math.min(25,itemRows.length*5)+(finance?10:0)+(itemMatch?10:0)+(countOk?5:-12);score=Math.max(0,Math.min(100,score));
+  return{store,date,category:inferCategory(`${store}\n${itemRows.map(x=>x.name).join('\n')}`),subtotal,tax,total,itemRows,items:itemRows.length,itemsExpected:expected,pieces,score,fields:[store,date,subtotal,tax,total].filter(v=>v!==null&&v!==undefined&&v!=='').length,vatEvidence:tax!=null,totalReliable:finance||itemMatch,accepted:!!(total!=null&&itemRows.length&&(finance||itemMatch)&&countOk),localAI:true,engine:'PaddleOCR PP-OCRv5 Arabic/English • Spatial OCR',_paddleLines:lines,_paddleRows:rows,_itemSum:itemSum}
+}
+function paddleEvidencePayload(parsed,result){return{lines:(parsed?._paddleLines||paddleLines(result)).slice(0,260).map(x=>({text:x.text,x0:x.x0,y0:x.y0,x1:x.x1,y1:x.y1,score:x.score})),text:(parsed?._paddleRows||spatialRows(paddleLines(result))).map(r=>r.text).join('\n').slice(0,16000)}}
+function mergePaddleWithTextStructurer(local,remote){
+  if(!remote)return local;const r=remote;
+  const out={...local};if(!out.store&&r.store)out.store=r.store;if(!out.date&&r.date)out.date=r.date;
+  if((!out.itemRows?.length||!out.totalReliable)&&r.itemRows?.length){out.itemRows=r.itemRows;out.items=r.itemRows.length}
+  if(out.subtotal==null&&r.subtotal!=null)out.subtotal=r.subtotal;if(out.tax==null&&r.tax!=null)out.tax=r.tax;if(out.total==null&&r.total!=null)out.total=r.total;
+  const sum=(out.itemRows||[]).reduce((s,x)=>s+Number((x.readTotal ?? (x.price*x.qty)) || 0),0),finance=out.subtotal!=null&&out.tax!=null&&out.total!=null&&Math.abs(out.subtotal+out.tax-out.total)<=.15,itemMatch=out.total!=null&&out.itemRows?.length&&([out.subtotal,out.total].filter(Number.isFinite).some(t=>Math.abs(sum-t)<=Math.max(.15,t*.015)));
+  out.accepted=!!(out.total!=null&&out.itemRows?.length&&(finance||itemMatch));out.totalReliable=finance||itemMatch;out.score=Math.max(out.score||0,r.score||0,out.accepted?94:0);out.engine='PaddleOCR Spatial OCR + Text Structurer';out.category=inferCategory(`${out.store||''}\n${(out.itemRows||[]).map(x=>x.name).join('\n')}`);return out
 }
 async function getPaddleOCR(){
-  if(paddleOCRInstance)return paddleOCRInstance;
-  if(paddleOCRLoadPromise)return paddleOCRLoadPromise;
-  setLocalAIStatus('loading',lang==='ar'?'جارٍ تهيئة PaddleOCR بالطريقة المتوافقة مع Safari…':'Preparing PaddleOCR with Safari-safe settings…',6);
+  if(paddleOCRInstance)return paddleOCRInstance;if(paddleOCRLoadPromise)return paddleOCRLoadPromise;
+  setLocalAIStatus('loading',modelCacheMarked()?(lang==='ar'?'تهيئة محرك OCR المحفوظ على هذا الجهاز…':'Preparing cached on-device OCR…'):(lang==='ar'?'تنزيل محرك PaddleOCR العربي/الإنجليزي لأول مرة…':'Downloading Arabic/English PaddleOCR for the first time…'),5);
   paddleOCRLoadPromise=(async()=>{
-    let mod,lastErr;
-    for(const url of [PADDLE_OCR_MODULE,'https://esm.sh/@paddleocr/paddleocr-js@0.4.2?bundle']){
-      try{mod=await import(url);if(mod?.PaddleOCR)break}catch(e){lastErr=e;console.warn('PaddleOCR module source failed',url,e)}
-    }
+    let mod,lastErr;for(const url of [PADDLE_OCR_MODULE,'https://esm.sh/@paddleocr/paddleocr-js@0.4.2?bundle']){try{mod=await import(url);if(mod?.PaddleOCR)break}catch(e){lastErr=e}}
     if(!mod?.PaddleOCR)throw lastErr||new Error('PaddleOCR module unavailable');
-    // Start with the official minimal configuration. In a single-file GitHub Pages app this is
-    // more robust than pointing ORT at a possibly mismatched CDN build.
-    const attempts=[
-      {lang:'ar',ocrVersion:'PP-OCRv5',worker:false,ortOptions:{backend:'auto'}},
-      {lang:'ar',ocrVersion:'PP-OCRv5',worker:false,textDetectionBatchSize:1,textRecognitionBatchSize:2,ortOptions:{backend:'wasm',numThreads:1,simd:true}}
-    ];
-    let ocr=null;
-    for(const cfg of attempts){try{ocr=await mod.PaddleOCR.create(cfg);break}catch(e){lastErr=e;console.warn('PaddleOCR init attempt failed',e)}}
-    if(!ocr)throw lastErr||new Error('PaddleOCR initialization failed');
-    paddleOCRInstance=ocr;
-    setLocalAIStatus('ready',lang==='ar'?'PaddleOCR جاهز. إذا تعذر على Safari فسيستخدم القارئ المحلي متعدد المراحل تلقائيًا.':'PaddleOCR ready. Safari-safe multi-pass local OCR remains available automatically.',100);
-    return ocr
-  })().catch(e=>{paddleOCRLoadPromise=null;throw e});
-  return paddleOCRLoadPromise
+    const ocr=await mod.PaddleOCR.create({
+      textDetectionModelName:'PP-OCRv5_mobile_det',
+      textRecognitionModelName:'arabic_PP-OCRv5_mobile_rec',
+      textRecognitionModelAsset:{url:PADDLE_AR_ASSET},
+      worker:false,fetch:cachedOcrFetch,textDetectionBatchSize:1,textRecognitionBatchSize:4,
+      ortOptions:{backend:'wasm',wasmPaths:PADDLE_ORT_WASM,numThreads:1,simd:true}
+    });
+    paddleOCRInstance=ocr;try{localStorage.setItem(MODEL_CACHE_KEY,JSON.stringify({ready:true,ts:Date.now(),model:'PaddleOCR PP-OCRv5 Arabic-English'}))}catch(e){}
+    setLocalAIStatus('ready',lang==='ar'?'PaddleOCR العربي/الإنجليزي جاهز ويعمل داخل الهاتف.':'Arabic/English PaddleOCR is ready on this device.',100);return ocr
+  })().catch(e=>{paddleOCRLoadPromise=null;throw e});return paddleOCRLoadPromise
 }
-function englishMerchantFromPaddle(items,imageHeight){
-  const top=(items||[]).map(it=>({text:normalizeOcrText(it.text||''),box:paddleBox(it),score:Number(it.score??0)}))
-    .filter(x=>x.text&&x.box.y0<=imageHeight*.40);
-  const bad=/(tax\s*invoice|invoice|job\s*order|receipt|trn|tel|phone|mobile|date|time|cashier|counter|near|branch|road|street|mall|www\.|@)/i;
-  let best='',bestScore=-999;
-  for(const x of top){
-    let latin=(x.text.match(/[A-Za-z][A-Za-z0-9&.'’\- ]{3,}/g)||[]).join(' ').replace(/\s+/g,' ').trim();
-    latin=latin.replace(/\b(?:TRN|TEL|PHONE|MOBILE|DATE|TIME)\b.*$/i,'').trim();
-    if(latin.length<4||bad.test(latin))continue;
-    const letters=(latin.match(/[A-Za-z]/g)||[]).length,upper=(latin.match(/[A-Z]/g)||[]).length;
-    let s=letters+(upper/Math.max(1,letters)>.6?18:0)+x.score*18;
-    if(/laundr|restaurant|cafe|coffee|market|pharmacy|salon|trading|services|automatic|bakery|grocery|electronics|llc/i.test(latin))s+=45;
-    if(/\d{4,}/.test(latin))s-=30;
-    if(s>bestScore){bestScore=s;best=latin}
+async function postPaddleTextEvidence(payload,timeoutMs=12000){
+  const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),timeoutMs);try{const res=await fetch('/api/receipt-text',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload),signal:ctl.signal,cache:'no-store'});const body=await res.json().catch(()=>({}));if(!res.ok||body?.ok===false)throw new Error(body?.error||`HTTP ${res.status}`);return cloudReceiptToParsed(body)}finally{clearTimeout(timer)}
+}
+async function runPaddleUniversalReader(options={}){
+  const ocr=await getPaddleOCR();$('#ocrMeter').style.display='block';$('#ocrMeterBar').style.width='12%';$('#ocrStatus').textContent=lang==='ar'?'جارٍ قراءة النص ومواقعه داخل الفاتورة…':'Reading receipt text and geometry…';
+  const [result]=await ocr.predict(currentCanvas,{textDetLimitSideLen:1800,textDetLimitType:'max',textDetMaxSideLimit:3000,textDetThresh:.22,textDetBoxThresh:.40,textDetUnclipRatio:1.7,textRecScoreThresh:.18});
+  if(!result)throw new Error('PaddleOCR returned no result');$('#ocrMeterBar').style.width='72%';let parsed=spatialReceiptParse(result);lastPaddleEvidence=paddleEvidencePayload(parsed,result);
+  // Use the AI only as a lightweight text structurer when deterministic reconstruction is incomplete.
+  if(!parsed.accepted||!parsed.store||!parsed.date){
+    try{$('#ocrStatus').textContent=lang==='ar'?'الـ OCR اكتمل؛ تنظيم الحقول الصعبة من النص فقط…':'OCR complete; structuring difficult fields from text only…';const remote=await postPaddleTextEvidence(lastPaddleEvidence,12000);parsed=mergePaddleWithTextStructurer(parsed,remote)}catch(e){console.warn('Text structurer fallback',e)}
   }
-  return best
-}
-function paddleReceiptParse(fullResult,topResult,itemResult,canvas){
-  const full=paddleToTessLike(fullResult),top=paddleToTessLike(topResult),items=paddleToTessLike(itemResult);
-  // Feed the existing deterministic receipt parser with Paddle's positional OCR.
-  const parsed=parseReceiptSmart(full,false,null,{storeEng:top,itemMix:items,itemEng:items});
-  const store=englishMerchantFromPaddle(topResult?.items||[],topResult?.image?.height||Math.round(canvas.height*.38));
-  if(store)parsed.store=store;
-  parsed.category=inferCategory(`${parsed.store||''}\n${parsed.itemRows?.map(x=>x.name).join('\n')||''}`);
-  parsed.localAI=true;parsed.engine='PaddleOCR PP-OCRv5';
-  // Do not overwrite the receipt with suspicious item rows. Require actual printed names + finite prices.
-  parsed.itemRows=(parsed.itemRows||[]).filter(it=>it&&String(it.name||'').trim().length>=2&&Number.isFinite(Number(it.price))&&Number(it.price)>=0);
-  parsed.items=parsed.itemRows.length;
+  parsed=sanitizeParsedReceipt(applyLearnedNames(parsed));
+  if(options.apply!==false&&parsed.accepted){applyParsedReceipt(parsed);showScanResult(parsed);saveDraftNow(true);$('#ocrMeterBar').style.width='100%';$('#ocrStatus').textContent=lang==='ar'?'تمت القراءة محليًا والتحقق حسابيًا.':'On-device OCR complete and arithmetically verified.';setLocalAIStatus('ready',lang==='ar'?'PaddleOCR نجح؛ لم نحتج لإرسال صورة الفاتورة إلى السحابة.':'PaddleOCR succeeded; the receipt image did not need cloud OCR.',100)}
   return parsed
 }
-async function runPaddleReceiptOCR(options={}){
-  const ocr=await getPaddleOCR();
-  $('#ocrStatus').textContent=lang==='ar'?'جارٍ كشف أسطر الفاتورة ومواقعها…':'Detecting receipt lines and positions…';
-  $('#ocrMeter').style.display='block';$('#ocrMeterBar').style.width='18%';
-  // Full receipt + merchant region + table region. Arabic model also recognizes English.
-  const top=cropCanvasRatio(currentCanvas,0,0,1,.40),table=cropCanvasRatio(currentCanvas,0,.25,1,.82);
-  const results=await ocr.predict([currentCanvas,top,table],{
-    textDetLimitSideLen:1600,
-    textDetLimitType:'max',
-    textDetMaxSideLimit:2400,
-    textDetThresh:.25,
-    textDetBoxThresh:.45,
-    textDetUnclipRatio:1.6,
-    textRecScoreThresh:.25
-  });
-  $('#ocrMeterBar').style.width='82%';
-  if(!Array.isArray(results)||!results[0])throw new Error('PaddleOCR returned no result');
-  let parsed=sanitizeParsedReceipt(paddleReceiptParse(results[0],results[1]||results[0],results[2]||results[0],currentCanvas));parsed=applyLearnedNames(parsed);
-  if(options.apply!==false){
-    applyParsedReceipt(parsed);showScanResult(parsed);saveDraftNow(true);
-    $('#ocrMeterBar').style.width='100%';$('#ocrStatus').textContent=t('scanDone');
-    setLocalAIStatus('ready',lang==='ar'?'اكتملت القراءة بـ PaddleOCR مع التحقق من مواقع الأسطر والأرقام.':'PaddleOCR finished with line-position and totals checks.',100)
-  }
-  return parsed
-}
+// Compatibility hook used by the old hybrid rescue path.
+async function runPaddleReceiptOCR(options={}){return runPaddleUniversalReader(options)}
 
 const CLOUD_RECEIPT_ENDPOINT='/api/receipt';
 function canvasToCloudDataUrl(source,maxDim=2200,quality=.92){
@@ -1012,7 +1069,7 @@ function cloudReceiptToParsed(payload){
     store:canonicalMerchant,date:r.date||'',category:inferCategory(`${canonicalMerchant} ${(r.items||[]).map(x=>x.name||'').join(' ')}`),
     subtotal:r.subtotal??null,tax:r.tax??null,total:r.total??null,itemRows:items,items:items.length,itemsExpected:Number(r.printed_item_count)||0,
     score:Number(payload?.score??0)||Math.min(100,vals*14),fields:vals,vatEvidence:Number(r.tax||0)>0,totalReliable:r.total!=null,
-    localAI:true,engine:'Cloudflare AI • Stable 4.4 Reader + Universal Table Parser',warnings:Array.isArray(r.warnings)?r.warnings:[],readerMeta:payload?.meta||null,accepted:payload?.accepted!==false
+    localAI:true,engine:'PaddleOCR v5 • On-device Spatial OCR + Cloud Fallback',warnings:Array.isArray(r.warnings)?r.warnings:[],readerMeta:payload?.meta||null,accepted:payload?.accepted!==false
   }
 }
 async function checkCloudReaderHealth(){
@@ -1446,33 +1503,23 @@ async function runCloudReceiptReader(){
 }
 async function runSmartReceiptReader(){
   if(!currentCanvas||smartReaderBusy)return;
-  smartReaderBusy=true;
-  ['cameraBtn','galleryBtn','scanAgainBtn','enhanceBtn'].forEach(id=>{const el=$('#'+id);if(el)el.disabled=true});
+  smartReaderBusy=true;['cameraBtn','galleryBtn','scanAgainBtn','enhanceBtn'].forEach(id=>{const el=$('#'+id);if(el)el.disabled=true});
+  let localErr=null;
   try{
-    await ensurePersistentStorage();
+    await ensurePersistentStorage();clearRecognitionFieldsForNewImage();
+    // v5 primary path: a real OCR engine reads text + geometry locally. Cloud image OCR is fallback only.
+    try{
+      const local=await runPaddleUniversalReader({apply:false});
+      if(local?.accepted){applyParsedReceipt(local);showScanResult(local);saveDraftNow(true);$('#ocrMeterBar').style.width='100%';$('#ocrStatus').textContent=lang==='ar'?'تمت القراءة بـ PaddleOCR على الجهاز والتحقق من الأصناف والإجماليات.':'Read on-device with PaddleOCR and verified items/totals.';setLocalAIStatus('ready',lang==='ar'?'محرك OCR الحقيقي نجح؛ الصورة بقيت على جهازك.':'The real OCR engine succeeded; the image stayed on your device.',100);return local}
+      localErr=new Error('On-device OCR needs cloud fallback');console.warn('PaddleOCR partial result',local)
+    }catch(e){localErr=e;console.warn('PaddleOCR unavailable/partial',e)}
+    $('#ocrMeterBar').style.width='78%';$('#ocrStatus').textContent=lang==='ar'?'تعذر اعتماد القراءة المحلية؛ تشغيل المسار السحابي المستقر كاحتياط…':'Local OCR could not be verified; using the stable cloud fallback…';
     const parsed=await runCloudReceiptReader();if(parsed)return parsed;
   }catch(e){
-    console.warn('Cloud receipt reader failed',e);
-    clearRecognitionFieldsForNewImage();
-    const detail=String(e?.message||'').slice(0,220);
-    const quota=/429|account limited|10,?000 neurons|free allocation/i.test(detail);
-    const license=/agree|license|acceptable use|meta/i.test(detail);
-    if(license){
-      $('#ocrStatus').innerHTML=lang==='ar'
-        ?`يحتاج قارئ Llama Vision إلى تفعيل مرة واحدة. <a href="/api/license" style="color:#17324d;font-weight:900;text-decoration:underline">اضغط هنا للموافقة وتفعيل القارئ</a>`
-        :`Llama Vision needs one-time activation. <a href="/api/license" style="color:#17324d;font-weight:900;text-decoration:underline">Tap here to accept the license and activate it</a>`;
-      setLocalAIStatus('error',lang==='ar'?'يلزم تفعيل رخصة Meta مرة واحدة':'One-time Meta license activation required');
-    }else{
-      $('#ocrStatus').textContent=quota
-        ?(lang==='ar'?'تم استهلاك حصة Workers AI المجانية لهذا اليوم. ستعود تلقائيًا بعد إعادة ضبط الحصة اليومية.':'The free Workers AI allocation for today has been used. It will work again after the daily reset.')
-        :(lang==='ar'?`تعذر القارئ السحابي: ${detail||'خطأ غير معروف'}`:`Cloud reader failed: ${detail||'Unknown error'}`);
-      setLocalAIStatus('error',quota
-        ?(lang==='ar'?'الحصة المجانية اليومية مستهلكة':'Daily free AI allocation used')
-        :(lang==='ar'?'فشلت القراءة السحابية — يظهر سبب الخطأ أعلاه.':'Cloud reading failed — the reason is shown above.'));
-    }
-  }finally{
-    smartReaderBusy=false;['cameraBtn','galleryBtn','scanAgainBtn','enhanceBtn'].forEach(id=>{const el=$('#'+id);if(el)el.disabled=false});setTimeout(()=>{$('#ocrMeter').style.display='none'},1200)
-  }
+    console.warn('All receipt readers failed',e);clearRecognitionFieldsForNewImage();const detail=String(e?.message||localErr?.message||'').slice(0,220),quota=/429|account limited|10,?000 neurons|free allocation/i.test(detail),license=/agree|license|acceptable use|meta/i.test(detail);
+    if(license){$('#ocrStatus').innerHTML=lang==='ar'?`يحتاج المسار السحابي الاحتياطي إلى تفعيل مرة واحدة. <a href="/api/license" style="color:#17324d;font-weight:900;text-decoration:underline">اضغط هنا للتفعيل</a>`:`Cloud fallback needs one-time activation. <a href="/api/license">Activate here</a>`;setLocalAIStatus('error',lang==='ar'?'يلزم تفعيل رخصة المسار الاحتياطي':'Cloud fallback activation required')}
+    else{$('#ocrStatus').textContent=quota?(lang==='ar'?'الحصة السحابية الاحتياطية مستهلكة اليوم. جرّب القراءة المحلية مجددًا بعد تحسين الصورة.':'Cloud fallback quota is used today. Retry local OCR after enhancing the image.'):(lang==='ar'?`تعذرت القراءة: ${detail||'خطأ غير معروف'}`:`Receipt reading failed: ${detail||'Unknown error'}`);setLocalAIStatus('error',lang==='ar'?'تعذر المحرك المحلي والمسار السحابي الاحتياطي.':'Both local OCR and cloud fallback failed.')}
+  }finally{smartReaderBusy=false;['cameraBtn','galleryBtn','scanAgainBtn','enhanceBtn'].forEach(id=>{const el=$('#'+id);if(el)el.disabled=false});setTimeout(()=>{$('#ocrMeter').style.display='none'},1200)}
 }
 
 function normalizeDigits(s){return String(s??'').replace(/[٠-٩]/g,d=>'٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replace(/[۰-۹]/g,d=>'۰۱۲۳۴۵۶۷۸۹'.indexOf(d)).replace(/[٫]/g,'.').replace(/[٬]/g,',')}
@@ -1742,6 +1789,7 @@ $('#restoreInput').onchange=async e=>{
 clearForm(false);applyLang();ensurePersistentStorage();restoreDraft();setLocalAIStatus('loading',lang==='ar'?'جارٍ التحقق من اتصال Cloudflare AI…':'Checking Cloudflare AI connection…',5);setTimeout(checkCloudReaderHealth,250);
 </script>
 
-<footer class="app-version-footer" id="appVersionFooter" data-version="4.6.6">الإصدار 4.6.6</footer>
+<footer class="app-version-footer" id="appVersionFooter" data-version="5.0.0">الإصدار 5.0.0</footer>
+<script>if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js').catch(()=>{}));}</script>
 </body>
 </html>
