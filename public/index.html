@@ -170,7 +170,7 @@ button,input,textarea,select{font:inherit}button{cursor:pointer}.app{max-width:1
             <div class="ai-local-head"><div class="ai-local-title"><span>🧠</span><span data-i18n="localAIReader">القارئ الذكي المحلي</span></div><span class="ai-local-badge" id="aiLocalBadge" data-i18n="aiChecking">جارٍ التحقق…</span></div>
             <div class="ai-local-detail" id="aiLocalDetail" data-i18n="aiLocalNote">يعمل داخل الهاتف بدون API أو اشتراك. في أول تشغيل فقط يتم تنزيل النموذج وحفظه في ذاكرة المتصفح.</div>
             <div class="ai-local-meter" id="aiLocalMeter"><i id="aiLocalMeterBar"></i></div>
-            <div class="ai-local-tech"><span id="aiDeviceBadge">Cloudflare</span><span>Workers AI • Gemma 4 Universal Receipt Engine</span><span data-i18n="aiPrivate">معالجة سحابية آمنة</span></div>
+            <div class="ai-local-tech"><span id="aiDeviceBadge">Cloudflare</span><span>Workers AI • Multi-View Gemma OCR + Structured Verification</span><span data-i18n="aiPrivate">معالجة سحابية آمنة</span></div>
           </div>
         </div>
         <div class="footer-note" data-i18n="ocrNote">لأفضل نتيجة: اجعل الفاتورة كاملة داخل الصورة وبإضاءة متساوية. تتم معالجة التباين والقص تلقائيًا، ويمكنك مراجعة كل البيانات قبل الحفظ.</div>
@@ -1003,9 +1003,9 @@ function cloudReceiptToParsed(payload){
   const vals=[r.merchant_name_en,r.date,r.total,r.subtotal,r.tax,items.length].filter(v=>v!==null&&v!==undefined&&v!==''&&v!==0).length;
   return{
     store:canonicalMerchant,date:r.date||'',category:inferCategory(`${canonicalMerchant} ${(r.items||[]).map(x=>x.name||'').join(' ')}`),
-    subtotal:r.subtotal??null,tax:r.tax??null,total:r.total??null,itemRows:items,items:items.length,itemsExpected:items.length,
+    subtotal:r.subtotal??null,tax:r.tax??null,total:r.total??null,itemRows:items,items:items.length,itemsExpected:Number(r.printed_item_count)||0,
     score:Number(payload?.score??0)||Math.min(100,vals*14),fields:vals,vatEvidence:Number(r.tax||0)>0,totalReliable:r.total!=null,
-    localAI:true,engine:'Cloudflare AI • Gemma 4 Universal Receipt Engine',warnings:Array.isArray(r.warnings)?r.warnings:[],readerMeta:payload?.meta||null,accepted:payload?.accepted!==false
+    localAI:true,engine:'Cloudflare AI • Multi-View Gemma OCR + Structured Verification',warnings:Array.isArray(r.warnings)?r.warnings:[],readerMeta:payload?.meta||null,accepted:payload?.accepted!==false
   }
 }
 async function checkCloudReaderHealth(){
@@ -1037,6 +1037,19 @@ function buildCloudFullReceiptImage(source,compact=false){
   let q=compact?.74:.86,url=c.toDataURL('image/jpeg',q),maxLen=compact?2_200_000:3_500_000;
   while(url.length>maxLen&&q>.62){q-=.05;url=c.toDataURL('image/jpeg',q)}
   return url
+}
+function buildCloudUniversalImages(source,compact=false){
+  if(!source)return [];
+  const full=buildCloudFullReceiptImage(source,compact);
+  const W=compact?920:1280,H=compact?1180:1600;
+  const make=(a,b)=>{
+    const c=cloudFitRegion(source,.015,a,.985,b,W,H);
+    let q=compact?.72:.88,url=c.toDataURL('image/jpeg',q),maxLen=compact?2_300_000:3_800_000;
+    while(url.length>maxLen&&q>.62){q-=.05;url=c.toDataURL('image/jpeg',q)}
+    return url
+  };
+  // Generic coverage only: full receipt + two overlapping high-resolution halves.
+  return [full,make(0,.66),make(.34,1)].filter(Boolean)
 }
 function buildDynamicTableImage(source,region){
   if(!source||!region)return null;
@@ -1145,7 +1158,8 @@ async function postCloudReceipt(image,timeoutMs,mode='gemma',extra={}){
   try{
     let res;
     try{
-      res=await fetch(CLOUD_RECEIPT_ENDPOINT,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({image,mode,...extra}),signal:ctl.signal,cache:'no-store'});
+      const payload=Array.isArray(image)?{images:image,mode,...extra}:{image,mode,...extra};
+      res=await fetch(CLOUD_RECEIPT_ENDPOINT,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload),signal:ctl.signal,cache:'no-store'});
     }catch(e){
       const err=new Error(e?.name==='AbortError'?'Cloud request timeout':(e?.message||'Network request failed'));
       err.status=0;err.body=null;throw err;
@@ -1323,44 +1337,29 @@ async function runCloudReceiptReader(){
   clearRecognitionFieldsForNewImage();
   $('#ocrMeter').style.display='block';$('#ocrMeterBar').style.width='12%';
 
-  const fullImage=buildCloudFullReceiptImage(focus,false);
-  if(!fullImage)throw new Error('Could not prepare complete receipt image');
+  const fullImage=buildCloudUniversalImages(focus,false);
+  if(!fullImage.length)throw new Error('Could not prepare complete receipt views');
 
   $('#ocrStatus').textContent=lang==='ar'?'جارٍ فهم الفاتورة كاملة بدون قالب ثابت…':'Reading the complete receipt without a fixed template…';
-  setLocalAIStatus('loading',lang==='ar'?'Gemma 4 يقرأ المستند كاملًا ويستخرج JSON منظم…':'Gemma 4 is reading the full document into structured JSON…',22);
+  setLocalAIStatus('loading',lang==='ar'?'Gemma 4 يقرأ الفاتورة كاملة ونسختين مكبرتين متداخلتين، ثم تُبنى البيانات بصيغة منظمة…':'Gemma 4 is reading the full receipt plus two overlapping high-resolution views into structured data…',22);
 
   let gemmaBody=null,gemmaErr=null;
   try{
-    gemmaBody=await postCloudReceipt(fullImage,22000,'gemma')
+    gemmaBody=await postCloudReceipt(fullImage,30000,'gemma')
   }catch(e){
     gemmaErr=e;
     if(cloudErrorIsRetriable(e?.message,e?.status,e?.body)){
       try{
         $('#ocrMeterBar').style.width='30%';
         $('#ocrStatus').textContent=lang==='ar'?'إعادة محاولة أخف للصورة الكاملة…':'Retrying the full receipt with a lighter image…';
-        const compact=buildCloudFullReceiptImage(focus,true);
-        gemmaBody=await postCloudReceipt(compact,13000,'gemma');
+        const compact=buildCloudUniversalImages(focus,true);
+        gemmaBody=await postCloudReceipt(compact,18000,'gemma');
         gemmaBody.meta={...(gemmaBody.meta||{}),client_retry:true}
       }catch(e2){gemmaErr=e2}
     }
   }
 
-  // Dynamic second pass: crop ONLY the item region detected by Gemma itself.
-  // No merchant/template-specific coordinates are used.
-  if(gemmaBody&&gemmaNeedsTableRescue(gemmaBody)&&gemmaBody?.meta?.item_region){
-    const crop=buildDynamicTableImage(focus,gemmaBody.meta.item_region);
-    if(crop){
-      $('#ocrMeterBar').style.width='52%';
-      $('#ocrStatus').textContent=lang==='ar'?'تم تحديد جدول الأصناف؛ جارٍ إعادة قراءته بدقة أعلى…':'Item table located; re-reading that detected region at higher resolution…';
-      setLocalAIStatus('loading',lang==='ar'?'قراءة ديناميكية لجدول الأصناف فقط — بدون قالب ثابت.':'Dynamic high-resolution item-table pass — no fixed template.',58);
-      try{
-        const tableBody=await postCloudReceipt(crop,15000,'table',{baseReceipt:gemmaBody.receipt});
-        if(cloudPayloadQuality(tableBody)>cloudPayloadQuality(gemmaBody)){
-          tableBody.meta={...(tableBody.meta||{}),dynamic_table_retry:true};gemmaBody=tableBody
-        }
-      }catch(e){console.warn('Gemma dynamic table pass failed',e)}
-    }
-  }
+  // Multi-view OCR already includes enlarged overlapping receipt regions in the same request.
 
   // If the universal engine is reliable, finish here.
   if(gemmaBody&&gemmaBody.accepted!==false){
@@ -1411,7 +1410,7 @@ async function runCloudReceiptReader(){
 
   // Do not discard trustworthy scalar fields just because the item table remains difficult.
   // Fill merchant/date/totals only when present, and leave unverified rows out.
-  const r=body.receipt||{},reliableScalars=!!(r.merchant_name_en||r.date||r.total!=null);
+  const r=body.receipt||{},reliableScalars=body?.meta?.scalar_finance_reliable===true&&!!(r.merchant_name_en||r.date||r.total!=null);
   if(reliableScalars){
     parsed.itemRows=[];parsed.items=0;parsed.itemsExpected=Number(r.printed_item_count)||0;
     parsed.warnings=[...(parsed.warnings||[]),lang==='ar'?'تم تعبئة الحقول الموثوقة فقط؛ جدول الأصناف يحتاج مراجعة.':'Only reliable scalar fields were filled; item rows need review.'];
@@ -1722,6 +1721,6 @@ $('#restoreInput').onchange=async e=>{
 clearForm(false);applyLang();ensurePersistentStorage();restoreDraft();setLocalAIStatus('loading',lang==='ar'?'جارٍ التحقق من اتصال Cloudflare AI…':'Checking Cloudflare AI connection…',5);setTimeout(checkCloudReaderHealth,250);
 </script>
 
-<footer class="app-version-footer" id="appVersionFooter" data-version="4.6.0">الإصدار 4.6.0</footer>
+<footer class="app-version-footer" id="appVersionFooter" data-version="4.6.1">الإصدار 4.6.1</footer>
 </body>
 </html>
