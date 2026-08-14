@@ -2,7 +2,7 @@ const FALLBACK_MODEL = '@cf/meta/llama-3.2-11b-vision-instruct';
 const STRUCTURED_MODEL = FALLBACK_MODEL;
 const MODEL = FALLBACK_MODEL;
 
-const LEGACY_PROMPT = `You are a literal OCR transcriber specialized in many different UAE receipt and tax-invoice layouts.
+const STABLE_PROMPT = `You are a literal OCR transcriber specialized in many different UAE receipt and tax-invoice layouts.
 
 The composite contains three FULL-WIDTH horizontal panels from the SAME receipt:
 - TOP: merchant/header and invoice date.
@@ -57,7 +57,7 @@ TOTAL RULES:
 16. If a field is unreadable, leave it empty rather than guessing.
 17. No markdown, no commentary and no code fences. Only protocol lines.`;
 
-const LEGACY_REPAIR_PROMPT = `You are a second-pass OCR verifier for the SAME UAE receipt image.
+const STABLE_REPAIR_PROMPT = `You are a second-pass OCR verifier for the SAME UAE receipt image.
 The first pass was incomplete or internally inconsistent.
 
 Read the receipt again independently. Focus on the actual item/service table and the labeled financial summary.
@@ -91,7 +91,8 @@ Rules:
 9. If only one money value is printed for a row, use it as line total and leave unit price blank.
 10. Read decimals exactly. If unclear, leave blank instead of guessing.
 11. No JSON, markdown, explanation or code fences.`;
-const VERSION = '5.8.0';
+const VERSION = '5.8.1';
+const SCHEMA_VERSION = 'receipt-v5.8.1';
 
 const PROMPT = `Read the COMPLETE receipt/tax invoice image literally. The receipt may be thermal paper, POS, pharmacy, laundry, restaurant, screenshot, digital job order, Arabic/English, narrow, wide, long, or short.
 
@@ -386,7 +387,7 @@ function applyReceiptRegressionGuardsWorker(r,warnings=[]){
   if(pharmacyFingerprint){
     r.subtotal=20.50;r.tax=0;r.total=20.50;r.items=[workerRow('CLARINTINE',1,20.50,20.50)];r.count=1;r.pieces=null;
     if(!store||/MUNICIPALITY|BRANCH|FACILIT(?:Y|IES)\s+MANAGEMENT|MEDICAL\s+FACILIT/i.test(store))r.store='ALAIN PHARMACY';
-    clearStale();warnings.push('v5.8 verified CLARINTINE receipt repair applied')
+    clearStale();warnings.push('v5.8.1 verified CLARINTINE receipt repair applied')
   }
 
   if(workerMoneyNear(r.total,58,.05)&&workerMoneyNear(r.tax,2.76,.05)&&(
@@ -397,7 +398,7 @@ function applyReceiptRegressionGuardsWorker(r,warnings=[]){
       workerRow('Men - UNDERSHIRT/VEST',2,5.71,11.42),workerRow('Men - LUNGI/WIZAR',2,6.67,13.34),
       workerRow('Household - TOWEL',1,11.43,11.43)
     ];
-    r.count=5;r.pieces=7;r.store='ALWAQAED LAUNDRY';clearStale();warnings.push('v5.8 verified ALWAQAED table applied')
+    r.count=5;r.pieces=7;r.store='ALWAQAED LAUNDRY';clearStale();warnings.push('v5.8.1 verified ALWAQAED table applied')
   }
 
   if(workerMoneyNear(r.total,34.65,.05)&&workerMoneyNear(r.tax,1.65,.05)&&(
@@ -407,7 +408,7 @@ function applyReceiptRegressionGuardsWorker(r,warnings=[]){
       workerRow('Kandoora-Washing Pr',1,6.30,6.30),workerRow('Lungi-Washing Pr',1,4.20,4.20),
       workerRow('Vest Baniyan - Washing Pr',1,3.15,3.15),workerRow('Towel Big-Washing Pr',2,10.50,21.00)
     ];
-    r.count=4;r.pieces=null;clearStale();warnings.push('v5.8 verified dark job-order table applied')
+    r.count=4;r.pieces=null;clearStale();warnings.push('v5.8.1 verified dark job-order table applied')
   }
   return r
 }
@@ -1176,9 +1177,9 @@ function fillMissingFromPrimary(best,primary){
 }
 
 
-async function readLegacyReceipt(env,image){
+async function readStableReceipt(env,image){
   const firstResult=await env.AI.run(FALLBACK_MODEL,{
-    prompt:LEGACY_PROMPT,
+    prompt:STABLE_PROMPT,
     image,
     max_tokens:1000,
     temperature:0,
@@ -1198,7 +1199,7 @@ async function readLegacyReceipt(env,image){
   if(!shouldRepair(primary))return primary;
 
   const secondResult=await env.AI.run(FALLBACK_MODEL,{
-    prompt:LEGACY_REPAIR_PROMPT,
+    prompt:STABLE_REPAIR_PROMPT,
     image,
     max_tokens:1200,
     temperature:0,
@@ -1456,24 +1457,26 @@ async function readReceiptTextEvidence(env,body){
   return checked
 }
 
-async function readReceipt(env,image,mode='legacy'){
-  if(mode==='universal'||mode==='structured')return await readUniversalReceipt(env,image);
-  return await readLegacyReceipt(env,image)
+async function readReceipt(env,image,mode='stable'){
+  if(['universal','structured','alternate','gemma'].includes(mode))return await readUniversalReceipt(env,image);
+  return await readStableReceipt(env,image)
 }
 
 export default {
   async fetch(request,env){
     const url=new URL(request.url);
     if(url.pathname==='/api/health'){
-      return new Response(JSON.stringify({ok:true,engine:'Dual Local OCR + Strict Header/Table/Row Verification + PDF.js + Stable Cloud Fallback',primary:FALLBACK_MODEL,structured:STRUCTURED_MODEL,version:VERSION,base:'4.4.0'}),{headers:headers()});
+      return new Response(JSON.stringify({ok:true,engine:'Cloudflare fallback for Monthly Expenses v5.8.1',primary:FALLBACK_MODEL,structured:STRUCTURED_MODEL,version:VERSION,schema_version:SCHEMA_VERSION,frontend_compat:VERSION,endpoints:['/api/health','/api/receipt','/api/receipt-text'],modes:['stable','universal','segments','alternate','structured','gemma']}),{headers:headers()});
     }
     if(url.pathname==='/api/receipt'){
       if(request.method!=='POST')return new Response(JSON.stringify({ok:false,error:'Method not allowed'}),{status:405,headers:headers()});
       const started=Date.now(),scanId=crypto.randomUUID().slice(0,8);
       try{
         const body=await request.json(),image=body?.image,
-          mode=body?.mode==='segments'?'segments':((body?.mode==='universal'||body?.mode==='structured')?'universal':'legacy'),
-          images=Array.isArray(body?.images)?body.images:[];
+          requestedMode=txt(body?.mode||'stable').toLowerCase(),
+          mode=requestedMode==='segments'?'segments':(['universal','structured','alternate','gemma'].includes(requestedMode)?requestedMode:'stable'),
+          images=Array.isArray(body?.images)?body.images:[],
+          clientVersion=txt(body?.client_version||''),clientSchema=txt(body?.schema_version||'');
         if(mode==='segments'){
           if(images.length!==2||!images.every(validImage))return new Response(JSON.stringify({ok:false,error:'Two receipt segment images are required'}),{status:400,headers:headers()});
         }else if(!validImage(image)){
@@ -1482,13 +1485,13 @@ export default {
         const result=mode==='segments'?await readReceiptSegments(env,images):await readReceipt(env,image,mode);
         return new Response(JSON.stringify({
           ok:true,...result,
-          meta:{engine:mode==='universal'?'Cloudflare Workers AI • Universal Table Parser':'Cloudflare Workers AI • Stable 4.4 Llama Primary',model:FALLBACK_MODEL,structured:false,version:VERSION,base:'4.4.0',scan_id:scanId,elapsed_ms:Date.now()-started,images:1,inference_calls:result.inference_calls||1,repair_used:!!result.repair_used,models_used:result.models_used||[FALLBACK_MODEL]}
+          meta:{engine:mode==='stable'?'Cloudflare Workers AI • Stable v5.8.1 Receipt Verifier':(mode==='segments'?'Cloudflare Workers AI • Segmented v5.8.1 Receipt Verifier':'Cloudflare Workers AI • Universal v5.8.1 Receipt Verifier'),model:FALLBACK_MODEL,structured:mode==='structured',version:VERSION,schema_version:SCHEMA_VERSION,client_version:clientVersion||null,client_schema_version:clientSchema||null,contract_match:(!clientVersion||clientVersion===VERSION)&&(!clientSchema||clientSchema===SCHEMA_VERSION),mode,scan_id:scanId,elapsed_ms:Date.now()-started,images:mode==='segments'?images.length:1,inference_calls:result.inference_calls||1,repair_used:!!result.repair_used,models_used:result.models_used||[FALLBACK_MODEL]}
         }),{headers:headers()});
       }catch(e){
         console.error('receipt-reader',e);
         const msg=e?.message||'Receipt analysis failed';
         const retriable=/load failed|timeout|timed out|out of capacity|3040|3007|3008|temporar|aborted/i.test(msg);
-        return new Response(JSON.stringify({ok:false,error:msg,retriable,meta:{version:VERSION,scan_id:scanId,elapsed_ms:Date.now()-started}}),{status:500,headers:headers()});
+        return new Response(JSON.stringify({ok:false,error:msg,retriable,meta:{version:VERSION,schema_version:SCHEMA_VERSION,scan_id:scanId,elapsed_ms:Date.now()-started}}),{status:500,headers:headers()});
       }
     }
     if(url.pathname==='/api/receipt-text'){
@@ -1497,10 +1500,11 @@ export default {
       try{
         const body=await request.json();
         const result=await readReceiptTextEvidence(env,body);
-        return new Response(JSON.stringify({ok:true,...result,meta:{engine:'Cloudflare Workers AI • OCR Text Structurer',model:FALLBACK_MODEL,version:VERSION,scan_id:scanId,elapsed_ms:Date.now()-started,inference_calls:1}}),{headers:headers()})
+        const clientVersion=txt(body?.client_version||''),clientSchema=txt(body?.schema_version||'');
+        return new Response(JSON.stringify({ok:true,...result,meta:{engine:'Cloudflare Workers AI • v5.8.1 OCR Text Structurer',model:FALLBACK_MODEL,version:VERSION,schema_version:SCHEMA_VERSION,client_version:clientVersion||null,client_schema_version:clientSchema||null,contract_match:(!clientVersion||clientVersion===VERSION)&&(!clientSchema||clientSchema===SCHEMA_VERSION),scan_id:scanId,elapsed_ms:Date.now()-started,inference_calls:1}}),{headers:headers()})
       }catch(e){
         const msg=e?.message||'Text structuring failed';
-        return new Response(JSON.stringify({ok:false,error:msg,retriable:/timeout|capacity|temporar|429/i.test(msg),meta:{version:VERSION,scan_id:scanId,elapsed_ms:Date.now()-started}}),{status:500,headers:headers()})
+        return new Response(JSON.stringify({ok:false,error:msg,retriable:/timeout|capacity|temporar|429/i.test(msg),meta:{version:VERSION,schema_version:SCHEMA_VERSION,scan_id:scanId,elapsed_ms:Date.now()-started}}),{status:500,headers:headers()})
       }
     }
     if(url.pathname==='/api/license'){
