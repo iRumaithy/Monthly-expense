@@ -1,7 +1,9 @@
-const VERSION = '5.10.0';
-const SCHEMA_VERSION = 'receipt-v5.10.0';
+const VERSION = '6.1.0';
+const SCHEMA_VERSION = 'receipt-v6.1.0';
 const GEMMA = '@cf/google/gemma-4-26b-a4b-it';
 const LLAMA = '@cf/meta/llama-4-scout-17b-16e-instruct';
+const PROTOCOL = 'receipt-consensus-v1';
+const CAPABILITIES = ['consensus','cross-family','cross-view','strict-items','partial-verified-fields'];
 
 const BASE_PROMPT = `You are a literal OCR reader for UAE receipts and tax invoices. Read ONLY pixels visible in the supplied receipt image. Never infer, autocomplete, normalize, translate, or guess a merchant/product name.
 
@@ -199,7 +201,7 @@ export default {
   async fetch(request,env){
     const url=new URL(request.url);
     if(request.method==='OPTIONS')return new Response(null,{status:204,headers:headers({'access-control-allow-methods':'GET,POST,OPTIONS','access-control-allow-headers':'content-type'})});
-    if(url.pathname==='/api/health')return new Response(JSON.stringify({ok:true,engine:'Strict cross-family + cross-view receipt consensus',version:VERSION,schema_version:SCHEMA_VERSION,frontend_compat:VERSION,models:[GEMMA,LLAMA],primary:GEMMA,verifier:LLAMA,vision_reads_per_scan:4,text_policy:'merchant/items require cross-family and cross-view agreement',modes:['consensus'],endpoints:['/api/health','/api/receipt']}),{headers:headers()});
+    if(url.pathname==='/api/health')return new Response(JSON.stringify({ok:true,engine:'Strict cross-family + cross-view receipt consensus',version:VERSION,schema_version:SCHEMA_VERSION,protocol:PROTOCOL,capabilities:CAPABILITIES,frontend_compat:'adaptive',models:[GEMMA,LLAMA],primary:GEMMA,verifier:LLAMA,vision_reads_per_scan:4,text_policy:'merchant/items require cross-family and cross-view agreement',modes:['consensus'],endpoints:['/api/health','/api/receipt']}),{headers:headers()});
     if(url.pathname==='/api/receipt'){
       if(request.method!=='POST')return new Response(JSON.stringify({ok:false,error:'Method not allowed'}),{status:405,headers:headers()});
       const started=Date.now(),scanId=crypto.randomUUID().slice(0,8);
@@ -207,7 +209,7 @@ export default {
         const body=await request.json(),image=body?.image,imageAlt=body?.image_alt,clientVersion=text(body?.client_version),clientSchema=text(body?.schema_version);
         if(!validImage(image))return new Response(JSON.stringify({ok:false,error:'One complete receipt image is required'}),{status:400,headers:headers()});
         const result=await readConsensus(env,image,validImage(imageAlt)?imageAlt:null);
-        return new Response(JSON.stringify({ok:true,...result,meta:{engine:'Cloudflare Workers AI • cross-family + cross-view consensus',version:VERSION,schema_version:SCHEMA_VERSION,client_version:clientVersion||null,client_schema_version:clientSchema||null,contract_match:(!clientVersion||clientVersion===VERSION)&&(!clientSchema||clientSchema===SCHEMA_VERSION),mode:'consensus',scan_id:scanId,elapsed_ms:Date.now()-started,inference_calls:result.inference_calls||2,models_used:result.models_used||[GEMMA,LLAMA],consensus_verified:!!result?.consensus?.verified,repair_used:!!result.repair_used}}),{headers:headers()})
+        return new Response(JSON.stringify({ok:true,...result,meta:{engine:'Cloudflare Workers AI • cross-family + cross-view consensus',version:VERSION,schema_version:SCHEMA_VERSION,client_version:clientVersion||null,client_schema_version:clientSchema||null,contract_match:(!clientSchema||clientSchema===SCHEMA_VERSION),protocol:PROTOCOL,capabilities:CAPABILITIES,mode:'consensus',scan_id:scanId,elapsed_ms:Date.now()-started,inference_calls:result.inference_calls||2,models_used:result.models_used||[GEMMA,LLAMA],consensus_verified:!!result?.consensus?.verified,repair_used:!!result.repair_used}}),{headers:headers()})
       }catch(e){const msg=e?.message||'Receipt analysis failed';return new Response(JSON.stringify({ok:false,error:msg,retriable:/timeout|capacity|temporar|429|abort/i.test(msg),meta:{version:VERSION,schema_version:SCHEMA_VERSION,scan_id:scanId,elapsed_ms:Date.now()-started}}),{status:500,headers:headers()})}
     }
     if(url.pathname==='/api/receipt-text')return new Response(JSON.stringify({ok:false,error:'Text-only structuring is disabled in strict accuracy mode. Use /api/receipt with the receipt image.'}),{status:409,headers:headers()});
