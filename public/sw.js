@@ -1,4 +1,4 @@
-const CACHE='monthly-expense-v5-8-1-ocr';
+const CACHE='monthly-expense-v5-10-0-strict-consensus';
 const CORE=['/','/index.html'];
 self.addEventListener('install',e=>{e.waitUntil(caches.open(CACHE).then(c=>c.addAll(CORE)).catch(()=>{}));self.skipWaiting()});
 self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k.startsWith('monthly-expense-v')&&k!==CACHE).map(k=>caches.delete(k)))));self.clients.claim()});
