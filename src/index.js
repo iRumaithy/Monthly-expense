@@ -39,7 +39,7 @@ DATE RULES:
 6. Use the transaction/invoice date, not Delivery Date, due date or Print Time.
 
 ITEM RULES:
-7. Emit ONE ITEM line for every distinct purchasable row.
+7. Emit ONE ITEM line for every distinct purchasable row. A description may wrap above OR below its numeric row; join wrapped description fragments into the same ITEM before moving to the next row.
 8. Copy English and Arabic item names literally. Never translate or spell-correct.
 9. quantity, unit_price and line_total must belong to the SAME row.
 10. COUNT is ONLY a printed count of distinct item rows. Do NOT use T.Pcs, Total Pieces, Total Qty or total quantity as COUNT.
@@ -72,7 +72,7 @@ ITEM|English item text|Arabic item text|quantity|unit price|line total
 
 Rules:
 1. STORE must be ACTUAL text visible on the receipt. NEVER output phrases such as "best customer-facing merchant/trade/store name", "store name", "merchant name", or any instruction text.
-2. Read every DISTINCT purchase row. Do not output totals, customer details, dates, payment methods, terms or balances as items.
+2. Read every DISTINCT purchase row. Item descriptions may wrap onto a line immediately above or below their quantity/amount row; combine those fragments into the same item. Do not output totals, customer details, dates, payment methods, terms or balances as items.
 3. Common subtotal labels include Excl.VAT, VATable Sales, Taxable Sales, Subtotal, Net W/Out Tax, G.Amt and Net Amount Before Tax.
 4. VAT labels include VAT Amount, VAT 5%, Tax.
 5. Common final-total labels include Grand Total, Gross, Net Amount, Total, Amount Due and final paid amount.
@@ -82,7 +82,7 @@ Rules:
 9. If only one money value is printed for a row, use it as line total.
 10. Read decimals exactly. If unclear, leave blank instead of guessing.
 11. No JSON, markdown, explanation or code fences.`;
-const VERSION = '5.4.0';
+const VERSION = '5.5.0';
 
 const PROMPT = `Read the COMPLETE receipt/tax invoice image literally. The receipt may be thermal paper, POS, pharmacy, laundry, restaurant, screenshot, digital job order, Arabic/English, narrow, wide, long, or short.
 
@@ -100,12 +100,12 @@ ITEM|English item text|Arabic item text|quantity|unit price|line total
 
 Rules:
 1. Inspect the entire image from top to bottom. Do not assume fixed locations.
-2. Read EVERY distinct purchase/service row. Never stop after the first row.
+2. Read EVERY distinct purchase/service row. Never stop after the first row. If an item description wraps above or below the numeric row, merge those adjacent description fragments into that same item.
 3. Keep quantity, unit price and line total from the SAME row.
 4. If the receipt has ONE amount/AED column, that value is the LINE TOTAL. Leave unit price blank if it is not printed.
 5. T.Pcs / Total Pieces / Total Qty is PIECES, not COUNT.
 6. Do not include headings, invoice/order/customer numbers, payment methods, balances, dates, totals, VAT, or terms as ITEM rows.
-7. STORE must be actual visible text. Prefer the customer-facing outlet over a parent/management company.
+7. STORE must be actual visible text. Prefer the customer-facing outlet over a parent/management company. Never use a customer/person line such as "Mr ...", an account/member number, phone number, bill number or order number as STORE.
 8. Preserve DATE_RAW exactly. Never swap day and month.
 9. Copy item names literally. Preserve both English and Arabic when both are printed. Never invent a translation.
 10. Common pre-tax labels: VATable Sales, Taxable Sales, Excl.VAT, G.Amt, Subtotal, Net W/Out Tax.
@@ -151,7 +151,7 @@ TOTAL|final payable amount
 ITEM|English item text|Arabic item text|quantity|unit price|line total
 
 Rules:
-1. Emit EVERY distinct item/service row that is visibly printed.
+1. Emit EVERY distinct item/service row that is visibly printed. Join wrapped description fragments immediately above/below the quantity/amount line into the same item.
 2. Never output headings, totals, VAT, customer details, invoice numbers, dates, payment methods, balances or terms as ITEM rows.
 3. If there is only one money column such as AED/Amount, that value is line_total; leave unit price blank if not separately printed.
 4. T.Pcs / Total Pieces / Total Qty is PIECES, not COUNT.
@@ -263,7 +263,11 @@ function merchant(v){
     .replace(/[*_#`~]+/g,' ')
     .replace(/[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]+/g,' ')
     .replace(/\s+/g,' ').trim();
-  s=s.replace(/\b(?:TAX\s*INVOICE|INVOICE|RECEIPT|JOB\s*ORDER|TRN|MOB(?:ILE)?|TEL(?:EPHONE)?)\b.*$/i,'').trim();
+  s=s.replace(/\b(?:TAX\s*INVOICE|INVOICE|RECEIPT|JOB\s*ORDER|TRN|MOB(?:ILE)?|TEL(?:EPHONE)?|PHONE|CUSTOMER|CASHIER|DATE|TIME)\b.*$/i,'').trim();
+  if(/^\s*(?:mr|mrs|ms|miss|dr)\b/i.test(s))return null;
+  if(/\b(?:customer|member|account|bill\s*#?|order\s*#?)\b/i.test(s))return null;
+  const letters=(s.match(/[A-Za-z]/g)||[]).length,digits=(s.match(/\d/g)||[]).length;
+  if(digits>=6&&letters<10)return null;
   if(/^(?:best\s+)?customer[-\s]*facing\s+(?:merchant|outlet|trade|store)|^(?:store|merchant|business)\s*name$|actual\s+(?:store|merchant)\s+name|name\s+visibly\s+printed/i.test(s))return null;
   if(/\b(?:best customer-facing merchant\/trade\/store name|customer-facing merchant\/trade\/store name)\b/i.test(s))return null;
   return /[A-Za-z]{3}/.test(s)?s:null;
@@ -292,6 +296,8 @@ function merchantCandidateScore(name,index=0,preferred=false){
   if(/\b(head\s*office|corporate|parent\s*company)\b/i.test(s))score-=28;
   if(/\b(municipality|building|street|road|mall)\b/i.test(s))score-=35;
   if(/\b(tax\s*invoice|invoice|receipt|trn|customer|cashier|bill\s*no|order\s*no)\b/i.test(s))score-=80;
+  if(/^\s*(?:mr|mrs|ms|miss|dr)\b/i.test(s))score-=140;
+  if((s.match(/\d/g)||[]).length>=6 && (s.match(/[A-Za-z]/g)||[]).length<10)score-=100;
 
   // Legal suffixes are neutral, not evidence of being the storefront.
   if(s.length>=5&&s.length<=100)score+=5;
@@ -1166,7 +1172,7 @@ If a numeric field is not visible, return 0 rather than guessing.`;
 
 
 async function readScoutReceipt(env,image){
-  const prompt=`Read this complete UAE receipt/tax invoice literally from top to bottom. Return ONLY protocol lines:\nSTORE|actual customer-facing merchant/outlet name\nDATE_RAW|invoice/transaction date exactly as printed\nCOUNT|explicit distinct item-row count only\nPIECES|explicit total pieces only\nVAT_RATE|percentage if printed\nSUBTOTAL|pre-tax/VATable/Excl.VAT amount\nVAT|tax amount\nTOTAL|final payable/gross/net amount\nITEM|English item text|Arabic item text|quantity|unit price|line total\n\nRules: read EVERY purchase/service row; keep values on the same row; preserve printed date order; never use customer/order IDs as merchant; never invent translations; if only one AED/Amount column exists treat it as line total; leave unreadable fields blank; no JSON or markdown.`;
+  const prompt=`Read this complete UAE receipt/tax invoice literally from top to bottom. Return ONLY protocol lines:\nSTORE|actual customer-facing merchant/outlet name\nDATE_RAW|invoice/transaction date exactly as printed\nCOUNT|explicit distinct item-row count only\nPIECES|explicit total pieces only\nVAT_RATE|percentage if printed\nSUBTOTAL|pre-tax/VATable/Excl.VAT amount\nVAT|tax amount\nTOTAL|final payable/gross/net amount\nITEM|English item text|Arabic item text|quantity|unit price|line total\n\nRules: read EVERY purchase/service row; descriptions can wrap above or below the numeric row and must be merged into the same ITEM; keep quantity/unit price/line total from the same visual row; preserve printed date order; never use customer/person/account/order IDs (including lines beginning Mr/Mrs/Dr) as merchant; never invent translations; if only one AED/Amount column exists treat it as line total; leave unreadable fields blank; no JSON or markdown.`;
   const result=await env.AI.run(VISION_RESCUE_MODEL,{prompt,image,max_tokens:1700,temperature:0,top_p:.05,stream:false});
   const raw=responseText(result);if(!raw)throw new Error('Llama 4 Vision rescue returned no text');
   const checked=validate(parseProtocol(raw));checked.transcript_lines=raw.split(/\n+/).filter(Boolean).length;checked.transcript_preview=raw.slice(0,2200);checked.primary_engine='llama4-vision-independent-rescue';checked.inference_calls=1;checked.models_used=[VISION_RESCUE_MODEL];return checked
@@ -1286,12 +1292,13 @@ Rules:
 3. Preserve printed date order; do not swap day/month.
 4. Read every distinct purchase/service row represented in evidence.
 5. T.Pcs / Total Pieces / Total Qty is PIECES, not COUNT.
-6. If a row has one money column, it is line_total; unit price may be blank.
-7. Preserve Arabic and English item text when both are present; never translate.
-8. Exclude headings, TRN, invoice/order/customer numbers, dates, payment methods, balances, terms, VAT and totals from ITEM.
+6. If a row has one money column, it is line_total; unit price may be blank. If quantity is not explicitly visible for a genuine item row, leave quantity blank rather than dropping the item.
+7. Product dosage/size numbers such as 10 MG, 500 ML, 2 KG are part of the item name and must never be treated as quantity. Preserve Arabic and English item text when both are present; never translate.
+8. Wrapped item descriptions may be split across adjacent OCR lines; merge them only when they clearly belong to the same row and keep quantity/price/line total from that row. Exclude headings, TRN, invoice/order/customer numbers, dates, payment methods, balances, terms, VAT and totals from ITEM.
 9. Common pre-tax labels: VATable Sales, Taxable Sales, Excl.VAT, G.Amt, Subtotal, Net W/Out Tax.
 10. Common final labels: Grand Total, Gross, Net Amount, Amount Due, Adv when it equals subtotal + VAT.
-11. If uncertain, leave blank. No JSON, markdown, commentary, examples or code fences.`;
+11. Merchant selection: prefer the prominent customer-facing business name above TAX INVOICE/receipt details; never use customer/member/Mr/Mrs identifiers as STORE.
+12. If uncertain, leave blank. No JSON, markdown, commentary, examples or code fences.`;
 
 async function readReceiptTextEvidence(env,body){
   const lines=Array.isArray(body?.lines)?body.lines:[];
