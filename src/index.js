@@ -1,6 +1,8 @@
+import { DurableObject } from "cloudflare:workers";
 const FALLBACK_MODEL = '@cf/meta/llama-3.2-11b-vision-instruct';
 const STRUCTURED_MODEL = FALLBACK_MODEL;
 const MODEL = FALLBACK_MODEL;
+const VISION_RESCUE_MODEL = '@cf/meta/llama-4-scout-17b-16e-instruct';
 
 const LEGACY_PROMPT = `You are a literal OCR transcriber specialized in many different UAE receipt and tax-invoice layouts.
 
@@ -80,7 +82,7 @@ Rules:
 9. If only one money value is printed for a row, use it as line total.
 10. Read decimals exactly. If unclear, leave blank instead of guessing.
 11. No JSON, markdown, explanation or code fences.`;
-const VERSION = '5.2.1';
+const VERSION = '5.4.0';
 
 const PROMPT = `Read the COMPLETE receipt/tax invoice image literally. The receipt may be thermal paper, POS, pharmacy, laundry, restaurant, screenshot, digital job order, Arabic/English, narrow, wide, long, or short.
 
@@ -1162,6 +1164,14 @@ If a numeric field is not visible, return 0 rather than guessing.`;
   return obj
 }
 
+
+async function readScoutReceipt(env,image){
+  const prompt=`Read this complete UAE receipt/tax invoice literally from top to bottom. Return ONLY protocol lines:\nSTORE|actual customer-facing merchant/outlet name\nDATE_RAW|invoice/transaction date exactly as printed\nCOUNT|explicit distinct item-row count only\nPIECES|explicit total pieces only\nVAT_RATE|percentage if printed\nSUBTOTAL|pre-tax/VATable/Excl.VAT amount\nVAT|tax amount\nTOTAL|final payable/gross/net amount\nITEM|English item text|Arabic item text|quantity|unit price|line total\n\nRules: read EVERY purchase/service row; keep values on the same row; preserve printed date order; never use customer/order IDs as merchant; never invent translations; if only one AED/Amount column exists treat it as line total; leave unreadable fields blank; no JSON or markdown.`;
+  const result=await env.AI.run(VISION_RESCUE_MODEL,{prompt,image,max_tokens:1700,temperature:0,top_p:.05,stream:false});
+  const raw=responseText(result);if(!raw)throw new Error('Llama 4 Vision rescue returned no text');
+  const checked=validate(parseProtocol(raw));checked.transcript_lines=raw.split(/\n+/).filter(Boolean).length;checked.transcript_preview=raw.slice(0,2200);checked.primary_engine='llama4-vision-independent-rescue';checked.inference_calls=1;checked.models_used=[VISION_RESCUE_MODEL];return checked
+}
+
 async function readUniversalReceipt(env,image){
   const candidates=[];
   let calls=0;
@@ -1217,6 +1227,16 @@ async function readUniversalReceipt(env,image){
 
   let best=candidates.filter(Boolean).sort((a,b)=>checkedQuality(b)-checkedQuality(a))[0]||null;
   if(best?.accepted){best.inference_calls=calls;return best}
+
+  // Independent modern vision rescue. It runs only when the frozen/stable-compatible
+  // universal passes could not produce an accepted receipt, so prior successes are untouched.
+  try{
+    const scout=await readScoutReceipt(env,image);calls++;
+    scout.inference_calls=calls;candidates.push(scout);
+    if(best){const merged=mergeCheckedCandidates(best,scout);if(merged){merged.primary_engine='llama4-merged-rescue';merged.inference_calls=calls;merged.models_used=[FALLBACK_MODEL,VISION_RESCUE_MODEL];candidates.push(merged)}}
+    best=candidates.filter(Boolean).sort((a,b)=>checkedQuality(b)-checkedQuality(a))[0]||null;
+    if(best?.accepted){best.inference_calls=calls;best.models_used=[FALLBACK_MODEL,VISION_RESCUE_MODEL];return best}
+  }catch(e){console.warn('llama4-vision-rescue',e)}
 
   // OPTIONAL last attempt: JSON Mode. Cloudflare documents that JSON Mode can fail
   // to satisfy a schema, so this branch is never allowed to abort the reader.
@@ -1299,11 +1319,70 @@ async function readReceipt(env,image,mode='legacy'){
   return await readLegacyReceipt(env,image)
 }
 
+
+function syncHeaders(extra={}){return {'content-type':'application/json; charset=utf-8','cache-control':'no-store',...extra}}
+function normalizeRoomCode(v){return String(v||'').toUpperCase().replace(/[^A-Z2-9]/g,'').slice(0,12)}
+function formatRoomCode(v){const s=normalizeRoomCode(v);return (s.match(/.{1,4}/g)||[s]).join('-')}
+function newRoomCode(){const alphabet='ABCDEFGHJKLMNPQRSTUVWXYZ23456789',bytes=new Uint8Array(12);crypto.getRandomValues(bytes);return [...bytes].map(b=>alphabet[b%alphabet.length]).join('')}
+function roomStub(env,code){const c=normalizeRoomCode(code);if(c.length!==12)throw new Error('Invalid sync code');return env.SYNC_ROOM.get(env.SYNC_ROOM.idFromName(c))}
+function isoGreater(a,b){return String(a||'')>String(b||'')}
+
+export class SyncRoom extends DurableObject{
+  async meta(){return await this.ctx.storage.get('meta')}
+  broadcast(msg,except=null){const text=JSON.stringify(msg);for(const ws of this.ctx.getWebSockets()){if(ws===except)continue;try{ws.send(text)}catch(e){}}}
+  async fetch(request){
+    const u=new URL(request.url),p=u.pathname;
+    if(p==='/room/create'&&request.method==='POST'){
+      let m=await this.meta();if(!m){m={createdAt:new Date().toISOString()};await this.ctx.storage.put('meta',m)}return new Response(JSON.stringify({ok:true,...m}),{headers:syncHeaders()})
+    }
+    const m=await this.meta();if(!m)return new Response(JSON.stringify({ok:false,error:'Sync group not found'}),{status:404,headers:syncHeaders()});
+    if(p==='/room/info')return new Response(JSON.stringify({ok:true,createdAt:m.createdAt}),{headers:syncHeaders()});
+    if(p==='/room/state'&&request.method==='GET'){
+      const [rr,dd,bb,ee]=await Promise.all([this.ctx.storage.list({prefix:'receipt:'}),this.ctx.storage.list({prefix:'deleted:'}),this.ctx.storage.list({prefix:'budget:'}),this.ctx.storage.list({prefix:'evidence-meta:'})]);
+      return new Response(JSON.stringify({ok:true,receipts:[...rr.values()],deleted:[...dd.values()],budgets:[...bb.entries()].map(([k,v])=>({month:k.slice(7),...v})),evidence:[...ee.entries()].map(([k,v])=>({id:k.slice(14),...v}))}),{headers:syncHeaders()})
+    }
+    if(p==='/room/op'&&request.method==='POST'){
+      const b=await request.json(),clientId=String(b.clientId||''),now=new Date().toISOString();
+      if(b.type==='upsert'&&b.receipt?.id){const r=b.receipt,id=String(r.id),old=await this.ctx.storage.get(`receipt:${id}`),del=await this.ctx.storage.get(`deleted:${id}`);if((!old||isoGreater(r.updatedAt,old.updatedAt))&&(!del||isoGreater(r.updatedAt,del.updatedAt))){await this.ctx.storage.put(`receipt:${id}`,r);await this.ctx.storage.delete(`deleted:${id}`);this.broadcast({type:'upsert',receipt:r,clientId})}}
+      else if(b.type==='delete'&&b.id){const id=String(b.id),ts=String(b.updatedAt||now),old=await this.ctx.storage.get(`receipt:${id}`),del=await this.ctx.storage.get(`deleted:${id}`);if((!old||!isoGreater(old.updatedAt,ts))&&(!del||isoGreater(ts,del.updatedAt))){await this.ctx.storage.delete([`receipt:${id}`,`evidence:${id}`,`evidence-meta:${id}`]);await this.ctx.storage.put(`deleted:${id}`,{id,updatedAt:ts});this.broadcast({type:'delete',id,updatedAt:ts,clientId})}}
+      else if(b.type==='budget'&&/^\d{4}-\d{2}$/.test(String(b.month||''))){const month=String(b.month),v={value:Number(b.value)||0,updatedAt:String(b.updatedAt||now)},old=await this.ctx.storage.get(`budget:${month}`);if(!old||isoGreater(v.updatedAt,old.updatedAt)){await this.ctx.storage.put(`budget:${month}`,v);this.broadcast({type:'budget',month,...v,clientId})}}
+      return new Response(JSON.stringify({ok:true}),{headers:syncHeaders()})
+    }
+    if(p.startsWith('/room/evidence/')){
+      const id=decodeURIComponent(p.slice('/room/evidence/'.length)).replace(/[^A-Za-z0-9_-]/g,'').slice(0,80);if(!id)return new Response('Bad id',{status:400});
+      if(request.method==='PUT'){const buf=await request.arrayBuffer();if(buf.byteLength>1900000)return new Response(JSON.stringify({ok:false,error:'Evidence image too large'}),{status:413,headers:syncHeaders()});const type=request.headers.get('content-type')||'image/jpeg',updatedAt=new Date().toISOString();await this.ctx.storage.put(`evidence:${id}`,buf);await this.ctx.storage.put(`evidence-meta:${id}`,{updatedAt,type,size:buf.byteLength});this.broadcast({type:'evidence',id,updatedAt});return new Response(JSON.stringify({ok:true}),{headers:syncHeaders()})}
+      if(request.method==='GET'){const [buf,meta]=await Promise.all([this.ctx.storage.get(`evidence:${id}`),this.ctx.storage.get(`evidence-meta:${id}`)]);if(!buf)return new Response('Not found',{status:404});return new Response(buf,{headers:{'content-type':meta?.type||'image/jpeg','cache-control':'private, no-store'}})}
+      if(request.method==='DELETE'){await this.ctx.storage.delete([`evidence:${id}`,`evidence-meta:${id}`]);this.broadcast({type:'evidence-delete',id});return new Response(JSON.stringify({ok:true}),{headers:syncHeaders()})}
+    }
+    if(p==='/room/ws'&&request.headers.get('Upgrade')==='websocket'){
+      const pair=new WebSocketPair(),client=pair[0],server=pair[1];this.ctx.acceptWebSocket(server);return new Response(null,{status:101,webSocket:client})
+    }
+    return new Response(JSON.stringify({ok:false,error:'Not found'}),{status:404,headers:syncHeaders()})
+  }
+  webSocketMessage(ws,message){if(String(message)==='ping'){try{ws.send(JSON.stringify({type:'pong',ts:Date.now()}))}catch(e){}}}
+  webSocketClose(){}
+  webSocketError(){}
+}
+
+async function handleSyncRequest(request,env,url){
+  try{
+    if(url.pathname==='/api/sync/create'&&request.method==='POST'){const code=newRoomCode(),stub=roomStub(env,code);const inner=new Request('https://room/room/create',{method:'POST'});const r=await stub.fetch(inner);if(!r.ok)return r;return new Response(JSON.stringify({ok:true,code:formatRoomCode(code)}),{headers:syncHeaders()})}
+    if(url.pathname==='/api/sync/join'&&request.method==='POST'){const b=await request.json(),code=normalizeRoomCode(b?.code),stub=roomStub(env,code),r=await stub.fetch('https://room/room/info');if(!r.ok)return new Response(JSON.stringify({ok:false,error:'Sync group not found'}),{status:404,headers:syncHeaders()});return new Response(JSON.stringify({ok:true,code:formatRoomCode(code)}),{headers:syncHeaders()})}
+    const code=normalizeRoomCode(url.searchParams.get('code'));if(code.length!==12)return new Response(JSON.stringify({ok:false,error:'Invalid sync code'}),{status:400,headers:syncHeaders()});const stub=roomStub(env,code);
+    if(url.pathname==='/api/sync/state')return stub.fetch(new Request('https://room/room/state',{method:'GET',headers:request.headers}));
+    if(url.pathname==='/api/sync/op'){const body=await request.text();return stub.fetch(new Request('https://room/room/op',{method:request.method,headers:request.headers,body}))};
+    if(url.pathname.startsWith('/api/sync/evidence/')){const id=url.pathname.slice('/api/sync/evidence/'.length);const init={method:request.method,headers:request.headers};if(request.method==='PUT')init.body=await request.arrayBuffer();return stub.fetch(new Request(`https://room/room/evidence/${encodeURIComponent(id)}`,init))}
+    if(url.pathname==='/api/sync/ws'){return stub.fetch(new Request('https://room/room/ws',request))}
+    return new Response(JSON.stringify({ok:false,error:'Unknown sync endpoint'}),{status:404,headers:syncHeaders()})
+  }catch(e){return new Response(JSON.stringify({ok:false,error:e?.message||'Sync failed'}),{status:500,headers:syncHeaders()})}
+}
+
 export default {
   async fetch(request,env){
     const url=new URL(request.url);
+    if(url.pathname.startsWith('/api/sync/'))return await handleSyncRequest(request,env,url);
     if(url.pathname==='/api/health'){
-      return new Response(JSON.stringify({ok:true,engine:'Dual Local OCR (PaddleOCR + Tesseract) + PDF.js + Stable Cloud Fallback',primary:FALLBACK_MODEL,structured:STRUCTURED_MODEL,version:VERSION,base:'4.4.0'}),{headers:headers()});
+      return new Response(JSON.stringify({ok:true,engine:'Dual Local OCR + Stable Cloud + Llama 4 Vision Rescue + Durable Object Sync',primary:FALLBACK_MODEL,rescue:VISION_RESCUE_MODEL,structured:STRUCTURED_MODEL,sync:'Durable Objects WebSocket',version:VERSION,base:'4.4.0'}),{headers:headers()});
     }
     if(url.pathname==='/api/receipt'){
       if(request.method!=='POST')return new Response(JSON.stringify({ok:false,error:'Method not allowed'}),{status:405,headers:headers()});
