@@ -82,7 +82,7 @@ Rules:
 9. If only one money value is printed for a row, use it as line total.
 10. Read decimals exactly. If unclear, leave blank instead of guessing.
 11. No JSON, markdown, explanation or code fences.`;
-const VERSION = '5.5.0';
+const VERSION = '5.6.0';
 
 const PROMPT = `Read the COMPLETE receipt/tax invoice image literally. The receipt may be thermal paper, POS, pharmacy, laundry, restaurant, screenshot, digital job order, Arabic/English, narrow, wide, long, or short.
 
@@ -104,8 +104,8 @@ Rules:
 3. Keep quantity, unit price and line total from the SAME row.
 4. If the receipt has ONE amount/AED column, that value is the LINE TOTAL. Leave unit price blank if it is not printed.
 5. T.Pcs / Total Pieces / Total Qty is PIECES, not COUNT.
-6. Do not include headings, invoice/order/customer numbers, payment methods, balances, dates, totals, VAT, or terms as ITEM rows.
-7. STORE must be actual visible text. Prefer the customer-facing outlet over a parent/management company. Never use a customer/person line such as "Mr ...", an account/member number, phone number, bill number or order number as STORE.
+6. Do not include headings, invoice/order/customer numbers, payment methods, balances, dates, totals, VAT, or terms as ITEM rows. T.Pcs / G.Amt / Tax / Adv / Bal.Amt summary lines are NEVER items even when they contain a quantity-like integer and money.
+7. STORE must be actual visible business text. Prefer the customer-facing outlet over a parent/management company. Never use a customer/person line such as "Mr ...", greetings, thank-you/service sentences, account/member numbers, phone numbers, bill numbers or order numbers as STORE. If no business name is visible, leave STORE blank.
 8. Preserve DATE_RAW exactly. Never swap day and month.
 9. Copy item names literally. Preserve both English and Arabic when both are printed. Never invent a translation.
 10. Common pre-tax labels: VATable Sales, Taxable Sales, Excl.VAT, G.Amt, Subtotal, Net W/Out Tax.
@@ -241,22 +241,12 @@ function num(v){
 function r2(v){const n=num(v);return n==null?null:Math.round((n+Number.EPSILON)*100)/100}
 function clamp(v){const n=Number(v);return Number.isFinite(n)?Math.max(0,Math.min(1,n)):0}
 function validDate(v){
-  let s=txt(v).trim();
-  if(!s)return null;
-  let y,m,d,match;
-  if((match=s.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/))){
-    y=+match[1];m=+match[2];d=+match[3];
-  }else if((match=s.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})$/))){
-    d=+match[1];m=+match[2];y=+match[3];
-  }else{
-    const months={jan:1,january:1,feb:2,february:2,mar:3,march:3,apr:4,april:4,may:5,jun:6,june:6,jul:7,july:7,aug:8,august:8,sep:9,september:9,oct:10,october:10,nov:11,november:11,dec:12,december:12};
-    match=s.match(/^(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})$/);
-    if(match){d=+match[1];m=months[match[2].toLowerCase()];y=+match[3];}
-  }
-  if(!y||!m||!d)return null;
-  const z=new Date(Date.UTC(y,m-1,d));
-  if(y<2000||y>2100||z.getUTCFullYear()!==y||z.getUTCMonth()!==m-1||z.getUTCDate()!==d)return null;
-  return `${String(y).padStart(4,'0')}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+  let s=txt(v).trim().replace(/\bju[il1]\b/ig,'Jul').replace(/\b([0-3])(?:I|l)(?=\s|[-\/.])/g,'$11').replace(/\b(?:I|l)(\d)(?=\s|[-\/.])/g,'1$1');
+  if(!s)return null;let y,m,d,match;
+  if((match=s.match(/\b(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})\b/))){y=+match[1];m=+match[2];d=+match[3]}
+  else if((match=s.match(/\b(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})\b/))){d=+match[1];m=+match[2];y=+match[3]}
+  else{const months={jan:1,january:1,feb:2,february:2,mar:3,march:3,apr:4,april:4,may:5,jun:6,june:6,jul:7,july:7,aug:8,august:8,sep:9,september:9,oct:10,october:10,nov:11,november:11,dec:12,december:12};match=s.match(/\b(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})\b/);if(match){d=+match[1];m=months[match[2].toLowerCase()];y=+match[3]}}
+  if(!y||!m||!d)return null;const z=new Date(Date.UTC(y,m-1,d));if(y<2000||y>2100||z.getUTCFullYear()!==y||z.getUTCMonth()!==m-1||z.getUTCDate()!==d)return null;return `${String(y).padStart(4,'0')}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`
 }
 function merchant(v){
   let s=txt(v)
@@ -264,8 +254,10 @@ function merchant(v){
     .replace(/[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]+/g,' ')
     .replace(/\s+/g,' ').trim();
   s=s.replace(/\b(?:TAX\s*INVOICE|INVOICE|RECEIPT|JOB\s*ORDER|TRN|MOB(?:ILE)?|TEL(?:EPHONE)?|PHONE|CUSTOMER|CASHIER|DATE|TIME)\b.*$/i,'').trim();
-  if(/^\s*(?:mr|mrs|ms|miss|dr)\b/i.test(s))return null;
+  if(/^\s*(?:mr|mrs|ms|miss|dr|hi|hello|dear|welcome)\b/i.test(s))return null;
   if(/\b(?:customer|member|account|bill\s*#?|order\s*#?)\b/i.test(s))return null;
+  if(/thanks?\s+(?:for|you)|\bthis\s+is\s+(?:a|an|the)\b|\byour\s+(?:recent\s+)?order\b/i.test(s))return null;
+  if(s.split(/\s+/).length>=8&&/[.!?,]/.test(s)&&!/(pharmacy|laundry|restaurant|cafe|coffee|market|store|shop|clinic|hospital|trading|services)/i.test(s))return null;
   const letters=(s.match(/[A-Za-z]/g)||[]).length,digits=(s.match(/\d/g)||[]).length;
   if(digits>=6&&letters<10)return null;
   if(/^(?:best\s+)?customer[-\s]*facing\s+(?:merchant|outlet|trade|store)|^(?:store|merchant|business)\s*name$|actual\s+(?:store|merchant)\s+name|name\s+visibly\s+printed/i.test(s))return null;
@@ -320,7 +312,8 @@ function chooseMerchant(preferred,candidates){
 }
 
 function summaryName(s){
-  return /^(?:vat|tax|subtotal|sub\s*total|vata?ble\s*sales|taxable\s*sales|net\s*w\/?out\s*tax|net\s*amount|gross|g\.?\s*amt|excl\.?\s*vat|grand\s*total|total|balance|bal\.?\s*amt|outstanding|amount\s*due|total\s*item|t\.?\s*pcs|cash|card|visa|online|change|trn|invoice|job\s*order|ضريبة|الإجمالي|الاجمالي|المجموع)/i.test(txt(s));
+  const n=txt(s).replace(/[.:]/g,' ').replace(/\s+/g,' ').trim();
+  return /^(?:vat|tax|subtotal|sub\s*total|vata?ble\s*sales|taxable\s*sales|net\s*w\/?out\s*tax|net\s*amount|gross|g\s*amt|gamt|excl\s*vat|grand\s*total|total|balance|bal\s*amt|outstanding|amount\s*due|total\s*item|t\s*pcs?|tpcs?|cash|card|visa|online|change|adv|booked\s*by|advance\s*balance|store\s*timing|terms?|conditions?|trn|invoice|job\s*order|ضريبة|الإجمالي|الاجمالي|المجموع)/i.test(n)||(/\bt\s*pcs?\b/i.test(n)&&/\bg\s*amt\b/i.test(n))
 }
 
 const RECEIPT_JSON_SCHEMA={
@@ -913,6 +906,7 @@ function reconcileItemRows(r,warnings){
 
 function validate(parsed){
   const r=parsed.out, warnings=[...r.warnings];
+  r.items=(r.items||[]).filter(x=>x&&!summaryName(x.name));
   reconcileItemRows(r,warnings);
 
   // Some VAT invoices legitimately have VAT Amount = 0.00 (zero-rated/exempt items),
@@ -928,6 +922,20 @@ function validate(parsed){
     r.rate=0;
   }
   const itemSum=r2(r.items.reduce((s,x)=>s+(x.line_total??0),0));
+  // Generic arithmetic repair: item rows can be printed either before VAT or VAT-inclusive.
+  // Choose only a model supported by the visible tax/labels; never invent a merchant or item.
+  if(r.tax!=null&&itemSum!=null&&itemSum>0){
+    const models=[
+      {subtotal:itemSum,total:r2(itemSum+r.tax),kind:'items-before-tax'},
+      ...(itemSum>=r.tax?[{subtotal:r2(itemSum-r.tax),total:itemSum,kind:'items-tax-inclusive'}]:[])
+    ];
+    const distance=m=>{let d=0,n=0;if(r.subtotal!=null){d+=Math.abs(m.subtotal-r.subtotal);n++}if(r.total!=null){d+=Math.abs(m.total-r.total);n++}return n?d/n:0};
+    models.sort((a,b)=>distance(a)-distance(b));const m=models[0],tol=Math.max(.18,(r.total||m.total)*.018);
+    const financeBroken=r.subtotal==null||r.total==null||Math.abs((Number(r.subtotal||0)+Number(r.tax||0))-Number(r.total||0))>.08;
+    if(financeBroken&&((r.total==null&&r.subtotal==null)||(r.total!=null&&Math.abs(m.total-r.total)<=tol)||(r.subtotal!=null&&Math.abs(m.subtotal-r.subtotal)<=tol))){r.subtotal=m.subtotal;r.total=m.total;warnings.push(`Financial fields reconciled from verified item rows (${m.kind})`)}
+  }
+  if(r.subtotal==null&&r.total!=null&&r.tax!=null&&r.total>=r.tax)r.subtotal=r2(r.total-r.tax);
+  if(r.total==null&&r.subtotal!=null&&r.tax!=null)r.total=r2(r.subtotal+r.tax);
   const quantitySum=Math.round(r.items.reduce((s,x)=>s+(Number(x.quantity)||0),0)*100)/100;
   let pieceCount=r._pieceCount??r.pieces??null;
   if(r.count!=null&&r.count!==r.items.length){
@@ -1147,7 +1155,7 @@ printed_piece_count is T.Pcs / total pieces / total quantity only when explicitl
 For each item preserve English and Arabic names when printed. If one language is absent, use an empty string for it.
 quantity, unit_price and line_total must belong to the same row.
 If the receipt has one AED/Amount money column, put that printed value in line_total and use 0 for unit_price if unit price is not separately printed.
-Do not include totals, VAT, payment methods, customer details, IDs, dates, headings, balances or terms as items.
+Do not include totals, VAT, payment methods, customer details, IDs, dates, headings, balances or terms as items. T.Pcs / G.Amt / Tax / Adv / Bal.Amt are financial/pieces summary rows, never purchase items.
 subtotal is the amount before VAT when explicitly labeled.
 tax is the VAT/tax money amount, not the percentage.
 total is the final payable/gross/net amount.
