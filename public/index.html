@@ -4,6 +4,17 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 <meta name="theme-color" content="#17324d" />
+<link rel="manifest" href="/manifest.webmanifest" />
+<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+<link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
+<link rel="icon" type="image/png" sizes="512x512" href="/icon-512.png" />
+<meta name="application-name" content="مصاريف الشهر" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
+<meta name="apple-mobile-web-app-title" content="مصاريف الشهر" />
+<meta name="format-detection" content="telephone=no" />
+
 <title>مصاريف الشهر</title>
 <style>
 :root{
@@ -145,6 +156,26 @@ button,input,textarea,select{font:inherit}button{cursor:pointer}.app{max-width:1
   .pr-detail.compact{gap:2.2mm}.pr-detail.compact .pr-items-table th,.pr-detail.compact .pr-items-table td{padding:1.35mm 1.1mm;font-size:7.2px}.pr-detail.compact .pr-panel-head{padding:1.9mm 2.3mm}.pr-detail.compact .pr-finance-box{padding:2mm}.pr-detail.compact .pr-evidence-body img{max-height:148mm}
   .pr-detail.ultra .pr-items-table th,.pr-detail.ultra .pr-items-table td{padding:.9mm .9mm;font-size:6.5px;line-height:1.18}.pr-detail.ultra .pr-main-grid{gap:2.2mm}.pr-detail.ultra .pr-receipt-head{padding-bottom:2.1mm}.pr-detail.ultra .pr-finance{gap:1.8mm}.pr-detail.ultra .pr-finance-box{padding:1.6mm}.pr-detail.ultra .pr-evidence-body{padding:.7mm 1.3mm 1.3mm}.pr-detail.ultra .pr-evidence-body img{max-height:138mm}
 }
+
+
+/* === v5.7.8 Home Screen / PWA support === */
+.pwa-install-card{margin-top:12px}
+.pwa-install-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px}
+.pwa-install-head strong{color:var(--navy);font-size:15px}
+.pwa-install-badge{font-size:11px;font-weight:900;border-radius:999px;padding:5px 9px;background:#efe2ce;color:var(--muted)}
+.pwa-install-badge.installed{background:#dcefe7;color:#23664f}
+.pwa-install-text{font-size:12px;color:var(--muted);line-height:1.75;margin:0 0 10px}
+.pwa-install-steps{display:none;margin-top:10px;padding:11px 12px;border:1px solid var(--line);border-radius:14px;background:#fffaf2;color:var(--text);font-size:12px;line-height:1.9}
+.pwa-install-steps.show{display:block}
+.pwa-install-steps b{color:var(--navy)}
+@supports(padding:max(0px)){
+  .app{padding-top:max(18px,env(safe-area-inset-top));padding-right:max(16px,env(safe-area-inset-right));padding-bottom:max(40px,env(safe-area-inset-bottom));padding-left:max(16px,env(safe-area-inset-left))}
+}
+@media (display-mode:standalone){
+  body{overscroll-behavior-y:none}
+  .pwa-install-card{display:block}
+}
+@media print{.pwa-install-card{display:none!important}}
 
 </style>
 
@@ -288,6 +319,12 @@ button,input,textarea,select{font:inherit}button{cursor:pointer}.app{max-width:1
         <div class="sync-actions"><button class="btn btn-soft full" id="syncJoinBtn" type="button" data-i18n="syncJoin">ربط بهذا الرمز</button></div>
       </div>
       <div class="sync-help" id="syncMessage" data-i18n="syncPrivacy">الرمز نفسه هو مفتاح المجموعة. احتفظ به خاصًا. تتم المزامنة عبر Cloudflare فقط عند حفظ تغيير، والصور تُضغط قبل رفعها.</div>
+    </div>
+    <div class="sync-card pwa-install-card" id="pwaInstallCard">
+      <div class="pwa-install-head"><strong id="pwaInstallTitle">إضافة للشاشة الرئيسية</strong><span class="pwa-install-badge" id="pwaInstallBadge">جاهز</span></div>
+      <p class="pwa-install-text" id="pwaInstallText">ثبّت مصاريف الشهر على شاشة الهاتف لفتحه مثل التطبيق مباشرةً بدون البحث عن الرابط.</p>
+      <button class="btn btn-primary" id="pwaInstallBtn" type="button" style="width:100%">إضافة إلى الشاشة الرئيسية</button>
+      <div class="pwa-install-steps" id="pwaInstallSteps"></div>
     </div>
   </div>
 </div>
@@ -707,7 +744,65 @@ function clearDraft(){clearTimeout(draftTimer);try{localStorage.removeItem(DRAFT
 async function restoreDraft(){let d=null;try{d=JSON.parse(localStorage.getItem(DRAFT_KEY)||'null')}catch(e){}if(!d||!d.ts||Date.now()-d.ts>1000*60*60*24*30)return false;editingId=d.editingId||null;$('#storeName').value=d.store||'';$('#invoiceDate').value=d.date||todayISO();renderCategoryOptions(d.category||'other');$('#subtotal').value=d.subtotal??'';$('#tax').value=d.tax??'';$('#finalTotal').value=d.total??'';$('#items').innerHTML='';((d.items||[]).length?d.items:[{}]).forEach(addItem);$('#editModeBadge').textContent=editingId?t('edit'):'';if(d.preview){try{const img=await new Promise((resolve,reject)=>{const x=new Image();x.onload=()=>resolve(x);x.onerror=reject;x.src=d.preview});sourceCanvas=document.createElement('canvas');sourceCanvas.width=img.naturalWidth||img.width;sourceCanvas.height=img.naturalHeight||img.height;sourceCanvas.getContext('2d').drawImage(img,0,0);currentCanvas=document.createElement('canvas');currentCanvas.width=sourceCanvas.width;currentCanvas.height=sourceCanvas.height;currentCanvas.getContext('2d').drawImage(sourceCanvas,0,0);showCurrentCanvas()}catch(e){}}calcTotals();showPage('new');toast(lang==='ar'?'تمت استعادة مسودة الفاتورة بعد إعادة فتح الصفحة':'Receipt draft restored after page reload');return true}
 async function releaseOCRWorkers(){const jobs=[];if(ocrWorker){try{jobs.push(ocrWorker.terminate())}catch(e){}ocrWorker=null}if(ocrEnglishWorker){try{jobs.push(ocrEnglishWorker.terminate())}catch(e){}ocrEnglishWorker=null}if(jobs.length)try{await Promise.allSettled(jobs)}catch(e){}}
 
-function applyLang(){document.documentElement.lang=lang;document.documentElement.dir=lang==='ar'?'rtl':'ltr';$$('[data-i18n]').forEach(el=>el.textContent=t(el.dataset.i18n));$('#langBtn').textContent=lang==='ar'?'English':'العربية';renderCategoryOptions();renderAll();refreshSyncUI()}
+function applyLang(){document.documentElement.lang=lang;document.documentElement.dir=lang==='ar'?'rtl':'ltr';$$('[data-i18n]').forEach(el=>el.textContent=t(el.dataset.i18n));$('#langBtn').textContent=lang==='ar'?'English':'العربية';renderCategoryOptions();renderAll();refreshSyncUI();refreshPwaInstallUI()}
+
+
+// === v5.7.8 Install to Home Screen (PWA) ===
+let deferredPwaInstallPrompt=null;
+function pwaIsStandalone(){return window.matchMedia?.('(display-mode: standalone)')?.matches===true||window.navigator.standalone===true}
+function pwaIsIOS(){return /iPad|iPhone|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1)}
+function pwaIsSafari(){return /Safari/i.test(navigator.userAgent)&&!/CriOS|FxiOS|EdgiOS|OPiOS/i.test(navigator.userAgent)}
+function refreshPwaInstallUI(){
+  const title=$('#pwaInstallTitle'),badge=$('#pwaInstallBadge'),text=$('#pwaInstallText'),btn=$('#pwaInstallBtn'),steps=$('#pwaInstallSteps');
+  if(!title||!badge||!text||!btn||!steps)return;
+  const installed=pwaIsStandalone();
+  title.textContent=lang==='ar'?'إضافة للشاشة الرئيسية':'Add to Home Screen';
+  if(installed){
+    badge.textContent=lang==='ar'?'مثبّت':'Installed';badge.classList.add('installed');
+    text.textContent=lang==='ar'?'أنت تفتح مصاريف الشهر الآن كتطبيق من الشاشة الرئيسية.':'Monthly Expenses is currently running as an installed home-screen app.';
+    btn.textContent=lang==='ar'?'مثبّت على الجهاز':'Installed on this device';btn.disabled=true;steps.classList.remove('show');steps.innerHTML='';return
+  }
+  badge.classList.remove('installed');btn.disabled=false;
+  if(deferredPwaInstallPrompt){
+    badge.textContent=lang==='ar'?'تثبيت مباشر':'Ready';
+    text.textContent=lang==='ar'?'يمكن تثبيت مصاريف الشهر الآن وفتحه لاحقًا من أيقونة مستقلة مثل التطبيقات.':'Install Monthly Expenses now and open it later from its own app icon.';
+    btn.textContent=lang==='ar'?'تثبيت التطبيق':'Install app';steps.classList.remove('show');steps.innerHTML='';return
+  }
+  if(pwaIsIOS()){
+    badge.textContent='iPhone / iPad';
+    text.textContent=lang==='ar'?'على أجهزة Apple تتم الإضافة من قائمة المشاركة في المتصفح. اضغط الزر لعرض الخطوات.':'On Apple devices, add the app from the browser Share menu. Tap below for the steps.';
+    btn.textContent=lang==='ar'?'عرض طريقة الإضافة':'Show install steps';return
+  }
+  badge.textContent=lang==='ar'?'جاهز':'Ready';
+  text.textContent=lang==='ar'?'إذا لم يظهر التثبيت المباشر، استخدم قائمة المتصفح واختر تثبيت التطبيق أو إضافة إلى الشاشة الرئيسية.':'If the native install prompt is unavailable, use your browser menu and choose Install app or Add to Home screen.';
+  btn.textContent=lang==='ar'?'طريقة الإضافة':'How to install'
+}
+function showPwaManualSteps(){
+  const steps=$('#pwaInstallSteps');if(!steps)return;
+  if(pwaIsIOS()){
+    steps.innerHTML=lang==='ar'
+      ?'<b>على iPhone / iPad:</b><br>1. افتح الموقع في Safari.<br>2. اضغط زر المشاركة <b>⎋</b> أسفل/أعلى Safari.<br>3. اختر <b>إضافة إلى الشاشة الرئيسية</b>.<br>4. اضغط <b>إضافة</b>. ستظهر أيقونة «مصاريف الشهر» وتفتح بواجهة مستقلة.'
+      :'<b>On iPhone / iPad:</b><br>1. Open this site in Safari.<br>2. Tap Safari’s <b>Share</b> button.<br>3. Choose <b>Add to Home Screen</b>.<br>4. Tap <b>Add</b>. “Monthly Expenses” will open as a standalone app.';
+  }else{
+    steps.innerHTML=lang==='ar'
+      ?'<b>على Android:</b><br>افتح قائمة Chrome (⋮) ثم اختر <b>تثبيت التطبيق</b> أو <b>إضافة إلى الشاشة الرئيسية</b>.'
+      :'<b>On Android:</b><br>Open the Chrome menu (⋮), then choose <b>Install app</b> or <b>Add to Home screen</b>.';
+  }
+  steps.classList.add('show')
+}
+window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredPwaInstallPrompt=e;refreshPwaInstallUI()});
+window.addEventListener('appinstalled',()=>{deferredPwaInstallPrompt=null;refreshPwaInstallUI();toast(lang==='ar'?'تم تثبيت مصاريف الشهر على الجهاز':'Monthly Expenses was installed')});
+window.matchMedia?.('(display-mode: standalone)')?.addEventListener?.('change',refreshPwaInstallUI);
+$('#pwaInstallBtn').onclick=async()=>{
+  if(pwaIsStandalone())return;
+  if(deferredPwaInstallPrompt){
+    try{await deferredPwaInstallPrompt.prompt();const choice=await deferredPwaInstallPrompt.userChoice;deferredPwaInstallPrompt=null;if(choice?.outcome==='accepted')toast(lang==='ar'?'تمت إضافة التطبيق':'App added');refreshPwaInstallUI()}catch(e){showPwaManualSteps()}
+    return
+  }
+  showPwaManualSteps()
+};
+refreshPwaInstallUI();
+
 $('#langBtn').onclick=()=>{lang=lang==='ar'?'en':'ar';localStorage.setItem('monthlyExpensesLang',lang);applyLang()};
 $('#settingsBtn').onclick=openSyncModal;$('#syncCloseBtn').onclick=closeSyncModal;$('#syncModal').onclick=e=>{if(e.target===$('#syncModal'))closeSyncModal()};$('#syncCreateBtn').onclick=syncCreateRoom;$('#syncJoinBtn').onclick=syncJoinRoom;$('#syncDisconnectBtn').onclick=syncDisconnect;$('#syncNowBtn').onclick=syncNow;$('#syncCopyBtn').onclick=async()=>{try{await navigator.clipboard.writeText(displaySyncCode(syncCode));toast(lang==='ar'?'تم نسخ الرمز':'Code copied')}catch(e){}};$('#syncJoinCode').oninput=e=>{const s=normalizeSyncCode(e.target.value);e.target.value=displaySyncCode(s)};
 
@@ -3001,10 +3096,10 @@ $('#restoreInput').onchange=async e=>{
   finally{e.target.value=''}
 };
 
-clearForm(false);applyLang();ensurePersistentStorage();restoreDraft();refreshSyncUI();setTimeout(()=>reconcileLocalEvidenceFlags().catch(()=>{}),250);if(syncCode){setTimeout(async()=>{try{await syncInitialPull(true);syncOpenSocket()}catch(e){console.warn('Initial sync unavailable',e)}},400)}setLocalAIStatus('loading',lang==='ar'?'جارٍ التحقق من اتصال Cloudflare AI…':'Checking Cloudflare AI connection…',5);setTimeout(checkCloudReaderHealth,250);
+clearForm(false);applyLang();const launchPage=new URLSearchParams(location.search).get('page');if(['dashboard','new','records'].includes(launchPage))showPage(launchPage);ensurePersistentStorage();restoreDraft();refreshSyncUI();setTimeout(()=>reconcileLocalEvidenceFlags().catch(()=>{}),250);if(syncCode){setTimeout(async()=>{try{await syncInitialPull(true);syncOpenSocket()}catch(e){console.warn('Initial sync unavailable',e)}},400)}setLocalAIStatus('loading',lang==='ar'?'جارٍ التحقق من اتصال Cloudflare AI…':'Checking Cloudflare AI connection…',5);setTimeout(checkCloudReaderHealth,250);
 </script>
 
-<footer class="app-version-footer" id="appVersionFooter" data-version="5.7.7">الإصدار 5.7.7</footer>
+<footer class="app-version-footer" id="appVersionFooter" data-version="5.7.8">الإصدار 5.7.8</footer>
 <script>if('serviceWorker' in navigator){window.addEventListener('load',async()=>{try{const r=await navigator.serviceWorker.register('/sw.js',{updateViaCache:'none'});r.update().catch(()=>{})}catch(e){}});}</script>
 </body>
 </html>
