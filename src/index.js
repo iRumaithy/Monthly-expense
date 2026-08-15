@@ -82,7 +82,7 @@ Rules:
 9. If only one money value is printed for a row, use it as line total.
 10. Read decimals exactly. If unclear, leave blank instead of guessing.
 11. No JSON, markdown, explanation or code fences.`;
-const VERSION = '5.6.0';
+const VERSION = '5.7.0';
 
 const PROMPT = `Read the COMPLETE receipt/tax invoice image literally. The receipt may be thermal paper, POS, pharmacy, laundry, restaurant, screenshot, digital job order, Arabic/English, narrow, wide, long, or short.
 
@@ -111,8 +111,9 @@ Rules:
 10. Common pre-tax labels: VATable Sales, Taxable Sales, Excl.VAT, G.Amt, Subtotal, Net W/Out Tax.
 11. Common tax labels: VAT Amount, VAT 5%, Tax.
 12. Common final labels: Net Amount, Gross, Grand Total, Total, Amount Due, Adv when it is clearly the final paid amount.
-13. Decimal accuracy is critical.
-14. If uncertain, leave a field blank rather than guessing.
+13. Decimal accuracy is critical. A long barcode/reference/QR/account number next to an item is metadata, never part of the item name.
+14. When VAT rate, pre-tax amount and final total are all visible, read them independently and ensure subtotal + VAT = final total.
+15. If uncertain, leave a field blank rather than guessing.
 15. No JSON, markdown, commentary, examples or code fences.`;
 
 const REPAIR_PROMPT = `Re-read the COMPLETE receipt image independently because the previous extraction did not reconcile.
@@ -602,6 +603,13 @@ function extractPlainTableItems(lines){
   return dedupeSegmentItems(items)
 }
 
+function cleanReceiptItemName(v){
+  return txt(v||'')
+    .replace(/\b(?:sku|barcode|bar\s*code|item\s*code|product\s*code|reference|ref|id)\s*[:#-]?\s*[A-Z0-9-]{6,}\b/gi,' ')
+    .replace(/\b\d{8,}\b/g,' ')
+    .replace(/\b(?=[A-Z0-9-]{10,}\b)(?=[A-Z0-9-]*\d)[A-Z0-9-]+\b/gi,' ')
+    .replace(/\s+/g,' ').trim()
+}
 function parseProtocol(rawText){
   const raw=txt(rawText).replace(/```(?:text|txt)?/gi,'').replace(/```/g,'');
   const out={store:null,storeCandidates:[],date:null,count:null,pieces:null,rate:null,subtotal:null,tax:null,total:null,items:[],warnings:[]};
@@ -619,7 +627,7 @@ function parseProtocol(rawText){
     if(key==='VAT'){out.tax=r2(p[1]);continue}
     if(key==='TOTAL'){out.total=r2(p[1]);continue}
     if(key==='ITEM'){
-      const en=txt(p[1]), ar=txt(p[2]);
+      const en=cleanReceiptItemName(p[1]), ar=cleanReceiptItemName(p[2]);
       let qty=num(p[3]), unit=r2(p[4]), total=r2(p[5]);
       if(!Number.isFinite(qty)||qty<=0||qty>999)qty=1;
       const name=en&&ar?`${en} — ${ar}`:(en||ar);
@@ -739,6 +747,7 @@ function itemSuspicionScore(item){
   if(/\b(thank|terms?|condition|street|building|mall|branch|pharmacy|laundry)\b/i.test(n))s+=25;
   if((item?.line_total==null)&&(item?.unit_price==null))s+=45;
   if(Number(item?.quantity||1)<=0||Number(item?.quantity||1)>100)s+=30;
+  if(/\b\d{8,}\b/.test(n)||/\b(?=[a-z0-9-]{10,}\b)(?=[a-z0-9-]*\d)[a-z0-9-]+\b/i.test(n))s+=80;
   if(n.length<2)s+=30;
   return s;
 }
@@ -950,13 +959,13 @@ function validate(parsed){
   if(r.rate!=null&&r.rate>0&&r.rate<30&&r.subtotal!=null&&r.tax!=null&&Math.abs(r.subtotal*r.rate/100-r.tax)>.06)warnings.push('VAT amount does not match printed VAT rate');
   if(r.items.length&&r.total!=null&&Math.abs(itemSum-r.total)>.18&&!(r.subtotal!=null&&Math.abs(itemSum-r.subtotal)<=.18))warnings.push('Item row sum does not match labeled totals');
 
-  // Exact financial reconciliation only when total + printed VAT rate support it.
+  // Exact financial reconciliation when final total + printed VAT rate are supported by visible item rows.
   if(r.total!=null&&r.rate!=null&&r.rate>0&&r.rate<30){
     const ds=r2(r.total/(1+r.rate/100)), dt=r2(r.total-ds);
-    const bad=r.subtotal==null||r.tax==null||Math.abs((r.subtotal+r.tax)-r.total)>.05||Math.abs(r.subtotal*r.rate/100-r.tax)>.05;
-    if(bad && (r.subtotal==null||Math.abs(r.subtotal-ds)<=.15) && (r.tax==null||Math.abs(r.tax-dt)<=.15)){
-      r.subtotal=ds;r.tax=dt;warnings.push('Financial fields reconciled from Grand Total and printed VAT rate');
-    }
+    const bad=r.subtotal==null||r.tax==null||Math.abs((Number(r.subtotal||0)+Number(r.tax||0))-r.total)>.05||Math.abs(Number(r.subtotal||0)*r.rate/100-Number(r.tax||0))>.05;
+    const rowsSupport=r.items.length>0&&(Math.abs(itemSum-r.total)<=Math.max(.18,r.total*.018)||Math.abs(itemSum-ds)<=Math.max(.18,ds*.018));
+    const labelsClose=(r.subtotal==null||Math.abs(r.subtotal-ds)<=.55)&&(r.tax==null||Math.abs(r.tax-dt)<=.30);
+    if(bad&&(rowsSupport||labelsClose)){r.subtotal=ds;r.tax=dt;warnings.push('Financial fields reconciled from Grand Total, printed VAT rate and item-row evidence')}
   }
 
   if(r.store&&storeLooksLikeItem(r.store,r.items)){
