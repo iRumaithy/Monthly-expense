@@ -1,10 +1,52 @@
-const CACHE='monthly-expense-v5-8-1-manual-update';
-const CORE=['/','/index.html','/manifest.webmanifest','/icon-192.png','/icon-512.png','/icon-maskable-512.png','/apple-touch-icon.png'];
+const CACHE='monthly-expense-v5-8-2-manual-update-safe';
+const SHELL_KEY='/__monthly_expense_app_shell__';
+const STATIC_CORE=['/manifest.webmanifest','/icon-192.png','/icon-512.png','/icon-maskable-512.png','/apple-touch-icon.png'];
+
+function isSameOrigin(url){return url.origin===self.location.origin}
+
+async function normalizedResponse(res){
+  // Safari rejects a Response returned by a Service Worker when that Response
+  // still carries redirect history (Response.redirected === true). Rebuild the
+  // response from bytes so the cached/navigation response is redirect-free.
+  const body=await res.arrayBuffer();
+  const headers=new Headers(res.headers);
+  headers.delete('content-length');
+  headers.delete('content-encoding');
+  headers.delete('location');
+  headers.set('cache-control','no-store');
+  return new Response(body,{status:200,statusText:'OK',headers});
+}
+
+async function fetchFreshShell(){
+  // Fetch the canonical root rather than /index.html because some hosts redirect
+  // /index.html -> /. Any redirect that still occurs is removed by normalizedResponse.
+  const res=await fetch(`/?__app_shell=${Date.now()}`,{cache:'no-store',redirect:'follow'});
+  if(!res.ok)throw new Error(`Shell HTTP ${res.status}`);
+  return normalizedResponse(res)
+}
+
+async function refreshShell(cache){
+  const clean=await fetchFreshShell();
+  await cache.put(SHELL_KEY,clean.clone());
+  return clean
+}
+
+async function cacheStatic(cache){
+  for(const path of STATIC_CORE){
+    try{
+      const res=await fetch(`${path}${path.includes('?')?'&':'?'}__static=${Date.now()}`,{cache:'no-store',redirect:'follow'});
+      if(res.ok)await cache.put(path,res.clone())
+    }catch(_){ }
+  }
+}
 
 self.addEventListener('install',e=>{
-  // Deliberately DO NOT skipWaiting. The current app remains active until the user
-  // explicitly presses "Update now" after having the opportunity to save a backup.
-  e.waitUntil(caches.open(CACHE).then(c=>c.addAll(CORE)).catch(()=>{}))
+  // Manual-update policy: do not activate automatically. The currently installed
+  // app remains in control until the user explicitly chooses "Update now".
+  e.waitUntil((async()=>{
+    const cache=await caches.open(CACHE);
+    await Promise.allSettled([refreshShell(cache),cacheStatic(cache)])
+  })())
 });
 
 self.addEventListener('message',e=>{
@@ -13,11 +55,9 @@ self.addEventListener('message',e=>{
     const port=e.ports&&e.ports[0];
     e.waitUntil((async()=>{
       try{
-        const c=await caches.open(CACHE);
-        for(const path of CORE){
-          const res=await fetch(`${path}${path.includes('?')?'&':'?'}__shell_refresh=${Date.now()}`,{cache:'no-store'});
-          if(res.ok)await c.put(path,res.clone())
-        }
+        const cache=await caches.open(CACHE);
+        await refreshShell(cache);
+        await cacheStatic(cache);
         port?.postMessage({ok:true})
       }catch(err){port?.postMessage({ok:false,error:String(err?.message||err)})}
     })())
@@ -32,29 +72,46 @@ self.addEventListener('activate',e=>{
 });
 
 self.addEventListener('fetch',e=>{
-  const r=e.request;if(r.method!=='GET')return;const u=new URL(r.url);
-  // API responses (OCR, sync, evidence, health) are always live and never cached.
-  if(u.origin===self.location.origin&&u.pathname.startsWith('/api/'))return;
-  // The page polls the network copy of index.html only to detect a new app version.
-  if(u.origin===self.location.origin&&u.searchParams.has('__update_check'))return;
+  const r=e.request;if(r.method!=='GET')return;
+  const u=new URL(r.url);
 
-  const cacheable=u.origin===self.location.origin||/cdn\.jsdelivr\.net$|unpkg\.com$|esm\.sh$|huggingface\.co$|paddle-model-ecology\.bj\.bcebos\.com$|tessdata\.projectnaptha\.com$/.test(u.hostname);
+  // Always-live routes.
+  if(isSameOrigin(u)&&u.pathname.startsWith('/api/'))return;
+  // Update/version checks and emergency recovery must bypass the Service Worker.
+  if(isSameOrigin(u)&&(u.searchParams.has('__update_check')||u.searchParams.has('__sw_recovery')))return;
+
+  const cacheable=isSameOrigin(u)||/cdn\.jsdelivr\.net$|unpkg\.com$|esm\.sh$|huggingface\.co$|paddle-model-ecology\.bj\.bcebos\.com$|tessdata\.projectnaptha\.com$/.test(u.hostname);
   if(!cacheable)return;
 
-  const isNav=r.mode==='navigate'||(u.origin===self.location.origin&&(u.pathname==='/'||u.pathname==='/index.html'));
+  const isNav=r.mode==='navigate'||(isSameOrigin(u)&&(u.pathname==='/'||u.pathname==='/index.html'));
   if(isNav){
-    // App shell is cache-first on purpose. A newly deployed HTML file cannot silently
-    // replace the user's current version while the new service worker is waiting.
-    e.respondWith(caches.open(CACHE).then(async c=>{
-      const shell=await c.match('/index.html')||await c.match('/');
+    e.respondWith((async()=>{
+      const cache=await caches.open(CACHE);
+      let shell=await cache.match(SHELL_KEY);
       if(shell)return shell;
-      return fetch(r,{cache:'no-store'})
-    }));return
+      try{
+        shell=await refreshShell(cache);
+        return shell
+      }catch(err){
+        // Last-resort network navigation; normalize it too so Safari never receives
+        // a redirect-bearing Response from this Service Worker.
+        const res=await fetch(r,{cache:'no-store',redirect:'follow'});
+        return normalizedResponse(res)
+      }
+    })());
+    return
   }
 
-  e.respondWith(caches.open(CACHE).then(async c=>{
-    const hit=await c.match(r);if(hit)return hit;
-    try{const res=await fetch(r);if(res.ok||res.type==='opaque')c.put(r,res.clone()).catch(()=>{});return res}
-    catch(err){if(hit)return hit;throw err}
-  }))
+  e.respondWith((async()=>{
+    const cache=await caches.open(CACHE);
+    const hit=await cache.match(r);if(hit)return hit;
+    try{
+      const res=await fetch(r);
+      if(res.ok||res.type==='opaque')cache.put(r,res.clone()).catch(()=>{});
+      return res
+    }catch(err){
+      if(hit)return hit;
+      throw err
+    }
+  })())
 });
