@@ -1,4 +1,4 @@
-const CACHE='monthly-expense-v5-8-0-manual-update';
+const CACHE='monthly-expense-v5-8-1-manual-update';
 const CORE=['/','/index.html','/manifest.webmanifest','/icon-192.png','/icon-512.png','/icon-maskable-512.png','/apple-touch-icon.png'];
 
 self.addEventListener('install',e=>{
