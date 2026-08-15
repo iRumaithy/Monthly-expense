@@ -1260,6 +1260,9 @@ function merchantLooksPersonalOrId(s){
   if(/^\s*[A-Z]{0,4}\s*[*xX#()\-]*\d{5,}\s*$/i.test(s))return true;
   return false
 }
+function merchantBusinessSignal(s){
+  return /\b(?:laundr(?:y|omat)?|dry\s*clean|pharmacy|restaurant|caf[eé]|coffee|market|supermarket|salon|clinic|hospital|trading|services|bakery|grocery|electronics|automatic|store|shop|garage|tailor|optical|medical)\b|(?:صيدلية|مغسلة|مطعم|مقهى|سوق|متجر|عيادة|مستشفى)/i.test(String(s||''))
+}
 function merchantSentenceLike(s){
   s=normalizeOcrText(s||'').trim();if(!s)return true;
   if(/^\s*(?:hi|hello|dear|welcome)\b/i.test(s))return true;
