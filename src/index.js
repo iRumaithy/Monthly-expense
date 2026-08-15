@@ -88,7 +88,7 @@ Rules:
 9. If only one money value is printed for a row, use it as line total.
 10. Read decimals exactly. If unclear, leave blank instead of guessing.
 11. No JSON, markdown, explanation or code fences.`;
-const VERSION='5.7.8';
+const VERSION='5.7.9';
 
 const PROMPT = `Read the COMPLETE receipt/tax invoice image literally. The receipt may be thermal paper, POS, pharmacy, laundry, restaurant, screenshot, digital job order, Arabic/English, narrow, wide, long, or short.
 
@@ -165,13 +165,14 @@ TOTAL|final payable amount
 ITEM|English item text|Arabic item text|quantity|unit price|line total
 
 Rules:
-1. Emit EVERY distinct item/service row that is visibly printed. Join wrapped description fragments immediately above/below the quantity/amount line into the same item.
-2. Never output headings, totals, VAT, customer details, invoice numbers, dates, payment methods, balances or terms as ITEM rows.
-3. If there is only one money column such as AED/Amount, that value is line_total; leave unit price blank if not separately printed.
-4. T.Pcs / Total Pieces / Total Qty is PIECES, not COUNT.
-5. Preserve both English and Arabic names when both are printed; never invent a translation.
-6. Keep the printed date order. Never swap day and month.
-7. Decimal accuracy is critical. No JSON, markdown or commentary.`;
+1. Emit EVERY distinct item/service row that is visibly printed. Join wrapped description fragments immediately above/below the quantity/amount line into the same item. Delivery/service charges inside the purchase table are valid rows when they contribute to the payable amount.
+2. First identify the printed column headers, then follow THEIR visual order. Common layouts include Qty | Item | Price, Description | Qty | Amount, Description | Qty | Unit Price | Total, and Code | Description | Qty | Rate | Amount. Never assume one fixed order.
+3. Never output headings, VAT/tax lines, subtotal/total lines, customer details, invoice/check/order/token/TRN/barcode IDs, dates, payment methods, balances or terms as ITEM rows.
+4. If there is only one money column such as AED/Amount, that value is line_total; leave unit price blank if not separately printed. A currency symbol that visually resembles a digit is NOT part of the number.
+5. Item row amounts may already INCLUDE VAT. Always copy the printed SUBTOTAL, VAT and TOTAL independently from their labels; do not force item_sum + VAT = TOTAL when item_sum itself equals TOTAL.
+6. A zero-price parent/product line followed immediately by a paid size/modifier line may be one purchased item. Merge them when the receipt's printed item count or visual grouping supports that interpretation.
+7. T.Pcs / Total Pieces / Total Qty is PIECES, not COUNT. Preserve both English and Arabic names when both are printed; never invent a translation.
+8. Keep the printed date order. Never swap day and month. Decimal accuracy is critical. No JSON, markdown or commentary.`;
 
 const ALT_LAYOUT_PROMPT = `You are a literal OCR transcriber for a UAE receipt/tax invoice of ANY layout.
 
@@ -1147,9 +1148,11 @@ function isPlaceholderStore(v){
 function shouldRepair(checked){
   if(!checked||checked.accepted===false)return true;
   const r=checked.receipt||{},items=Array.isArray(r.items)?r.items:[];
-  if(isPlaceholderStore(r.merchant_name_en))return true;
+  if(isPlaceholderStore(r.merchant_name_en)||!r.merchant_name_en||!r.date)return true;
   const warns=Array.isArray(r.warnings)?r.warnings:[];
   if(warns.some(x=>/VAT amount does not match|item row sum does not match|Printed item count|Printed pieces/i.test(x)))return true;
+  const badItem=x=>/^(?:vat|tax|subtotal|sub\s*total|total|grand\s*total|amount\s*due|cash|card|bill|check|order|token|trn|invoice|receipt|printed|date|time|customer|cid|ضريبة|الضريبة|الإجمالي|الاجمالي|المجموع)/i.test(txt(x?.name||x?.name_en||''));
+  if(items.some(badItem))return true;
   const first=items[0],firstMoney=rowMoney(first);
   if(items.length===1&&r.total!=null&&firstMoney!=null&&Number(r.total)>Number(firstMoney)*1.45)return true;
   return false;
@@ -1279,10 +1282,33 @@ If a numeric field is not visible, return 0 rather than guessing.`;
 
 
 async function readScoutReceipt(env,image){
-  const prompt=`Read this complete UAE receipt/tax invoice literally from top to bottom. Return ONLY protocol lines:\nSTORE|actual customer-facing merchant/outlet name\nDATE_RAW|invoice/transaction date exactly as printed\nCOUNT|explicit distinct item-row count only\nPIECES|explicit total pieces only\nVAT_RATE|percentage if printed\nSUBTOTAL|pre-tax/VATable/Excl.VAT amount\nVAT|tax amount\nTOTAL|final payable/gross/net amount\nITEM|English item text|Arabic item text|quantity|unit price|line total\n\nRules: read EVERY purchase/service row; descriptions can wrap above or below the numeric row and must be merged into the same ITEM; keep quantity/unit price/line total from the same visual row; preserve printed date order; never use customer/person/account/order IDs (including lines beginning Mr/Mrs/Dr) as merchant; never invent translations; if only one AED/Amount column exists treat it as line total; leave unreadable fields blank; no JSON or markdown.`;
-  const result=await env.AI.run(VISION_RESCUE_MODEL,{prompt,image,max_tokens:1700,temperature:0,top_p:.05,stream:false});
+  const prompt=`Act as an independent forensic receipt reader for ONE complete UAE receipt image. The previous reader was inconsistent, so do not copy its assumptions.
+
+Return ONLY protocol lines:
+STORE|actual customer-facing merchant/outlet name
+DATE_RAW|invoice/transaction date exactly as printed
+COUNT|explicit count of DISTINCT purchase/service rows only
+PIECES|explicit total pieces/quantity only
+VAT_RATE|percentage if visibly printed
+SUBTOTAL|printed amount before VAT/tax
+VAT|printed tax amount
+TOTAL|printed final payable amount
+ITEM|English item text|Arabic item text|quantity|unit price|line total
+
+MANDATORY METHOD:
+1. Locate the merchant header, date, the purchase table headers, then the printed financial summary. Read the page top-to-bottom.
+2. Infer the table's OWN column order from its headers. It can be Qty|Item|Price, Description|Qty|Amount, Item|Qty|Rate|Amount, Code|Description|Qty|Unit|Total, or another arrangement.
+3. For each purchased row, keep quantity and money from that same visual row. If the description wraps to the next/previous line, merge only adjacent descriptive text.
+4. Delivery/service charges inside the item table are legitimate items when they contribute to the payable total.
+5. A zero-price parent line followed by a paid modifier/size line can represent ONE item; merge them only when visual grouping or printed item count supports it.
+6. Never treat TAX/VAT, subtotal, grand total, CASH/card payment, bill/check/order/token/TRN/barcode/reference numbers, dates, phone numbers or customer IDs as items or prices.
+7. Item prices may be VAT-INCLUSIVE. Copy SUBTOTAL, VAT and TOTAL from their printed labels independently. It is valid for sum(ITEM line totals)=TOTAL while SUBTOTAL+VAT=TOTAL.
+8. Currency symbols can resemble digits in OCR. Read the monetary number itself character-by-character; do not prepend a fake 8/3 from the currency glyph.
+9. If only one amount column is printed, put that value in line total and leave unit price blank. If unreadable, leave blank rather than guessing.
+10. Preserve the printed date order and literal product names. No JSON, markdown or commentary.`;
+  const result=await env.AI.run(VISION_RESCUE_MODEL,{prompt,image,max_tokens:1900,temperature:0,top_p:.03,stream:false});
   const raw=responseText(result);if(!raw)throw new Error('Llama 4 Vision rescue returned no text');
-  const checked=validate(parseProtocol(raw));checked.transcript_lines=raw.split(/\n+/).filter(Boolean).length;checked.transcript_preview=raw.slice(0,2200);checked.primary_engine='llama4-vision-independent-rescue';checked.inference_calls=1;checked.models_used=[VISION_RESCUE_MODEL];return checked
+  const checked=validate(parseProtocol(raw));checked.transcript_lines=raw.split(/\n+/).filter(Boolean).length;checked.transcript_preview=raw.slice(0,2600);checked.primary_engine='llama4-vision-layout-adjudicator';checked.inference_calls=1;checked.models_used=[VISION_RESCUE_MODEL];return checked
 }
 
 async function readUniversalReceipt(env,image){
@@ -1304,7 +1330,7 @@ async function readUniversalReceipt(env,image){
       checked.inference_calls=calls;
       checked.models_used=[FALLBACK_MODEL];
       candidates.push(checked);
-      if(checked.accepted&&!shouldRepair(checked))return checked
+      if(checked.accepted&&checked.complete&&!shouldRepair(checked))return checked
     }
   }catch(e){console.warn('universal-plain',e)}
 
@@ -1339,7 +1365,7 @@ async function readUniversalReceipt(env,image){
   }
 
   let best=candidates.filter(Boolean).sort((a,b)=>checkedQuality(b)-checkedQuality(a))[0]||null;
-  if(best?.accepted){best.inference_calls=calls;return best}
+  if(best?.accepted&&best.complete&&!shouldRepair(best)){best.inference_calls=calls;return best}
 
   // Independent modern vision rescue. It runs only when the frozen/stable-compatible
   // universal passes could not produce an accepted receipt, so prior successes are untouched.
