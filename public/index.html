@@ -277,7 +277,7 @@ let lastOCRMerchantRaw='';
 let dashboardMonthKey=localStorage.getItem(DASHBOARD_MONTH_KEY)||null;
 let editingId=null,currentCanvas=null,sourceBitmap=null,sourceCanvas=null,enhanceLevel=1,ocrBusy=false,tesseractLoader=null,ocrWorker=null,ocrEnglishWorker=null;
 let receiptSourceMode='image',receiptSourceHint='gallery',pdfTextCandidate=null,pdfjsLoadPromise=null,lastDigitalOcrCandidate=null,receiptDocumentProvided=false;
-const EVIDENCE_DB_NAME='monthlyExpensesEvidence_v1',EVIDENCE_STORE='receiptImages';
+const EVIDENCE_DB_NAME='monthlyExpensesEvidence_v1',EVIDENCE_STORE='receiptImages',EVIDENCE_CACHE_NAME='monthly-expense-evidence-v2',EVIDENCE_FALLBACK_KEY='monthlyExpensesEvidenceFallback_v2';
 let evidenceDBPromise=null,pendingEvidenceReceiptId=null,evidenceObjectUrl=null,pendingAutoEvidenceBlob=null;
 
 let smartReaderBusy=false,localAIWorker=null,localAIReady=false,localAILoadPromise=null,localAILoadResolve=null,localAILoadReject=null,localAIRequestSeq=0,draftTimer=null;const localAIPending=new Map();
@@ -285,14 +285,14 @@ const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 document.addEventListener('submit',e=>e.preventDefault(),true);const secureButtonTypes=()=>{$$('button').forEach(b=>{if(!b.hasAttribute('type'))b.type='button'})};secureButtonTypes();window.addEventListener('pageshow',secureButtonTypes);
 const CATEGORIES=['groceries','dining','shopping','transport','health','bills','entertainment','home','other'];
 const I18N={
- ar:{appTitle:'مصاريف الشهر',appSub:'إدارة ذكية للفواتير والمشتريات الشهرية',backup:'نسخة احتياطية',restore:'استعادة',settings:'⚙️ الإعدادات',syncTitle:'مزامنة الأجهزة',syncNotLinked:'غير مرتبط',syncConnected:'متصل لحظيًا',syncConnecting:'جارٍ الاتصال…',syncCreate:'إنشاء مجموعة جديدة',syncJoin:'ربط بهذا الرمز',syncCopy:'نسخ الرمز',syncDisconnect:'فصل هذا الجهاز',syncNow:'مزامنة الآن',syncIntro:'أنشئ مجموعة في الهاتف الأول، ثم أدخل نفس الرمز في أي هاتف آخر. أي فاتورة تحفظ أو تعدل أو تحذف ستظهر تلقائيًا في الأجهزة المرتبطة.',syncPrivacy:'الرمز نفسه هو مفتاح المجموعة. احتفظ به خاصًا. تتم المزامنة عبر Cloudflare فقط عند حفظ تغيير، والصور تُضغط قبل رفعها.',syncCreated:'تم إنشاء مجموعة المزامنة',syncJoined:'تم ربط الجهاز بالمجموعة',syncDone:'اكتملت المزامنة',syncInvalid:'رمز المزامنة غير صحيح',syncOffline:'تعذر الاتصال بالمزامنة الآن؛ ستبقى البيانات محفوظة محليًا.',dashboard:'الرئيسية',dashboardMonth:'الشهر المعروض',currentMonth:'الشهر الحالي',previousMonth:'الشهر السابق',nextMonth:'الشهر التالي',newInvoice:'تسجيل فاتورة جديدة',monthlyRecords:'السجلات الشهرية',monthSpend:'إجمالي الشهر',invoiceCount:'عدد الفواتير',savedLocally:'محفوظة على الجهاز',avgInvoice:'متوسط الفاتورة',monthAverage:'متوسط الشهر الحالي',budgetRemaining:'المتبقي من الميزانية',monthlyBudget:'الميزانية الشهرية',budgetAmount:'قيمة الميزانية',saveBudget:'حفظ الميزانية',budgetSaved:'تم حفظ ميزانية الشهر',spentOfBudget:'تم إنفاق',noBudget:'لم تحدد ميزانية بعد',categoryDistribution:'التوزيع حسب التصنيف',storesDistribution:'التوزيع حسب المحلات',topFive:'أعلى 5',dailySpend:'الإنفاق اليومي',recentInvoices:'أحدث الفواتير',viewAll:'عرض الكل',receiptScan:'تصوير / رفع الفاتورة',ocrAuto:'PaddleOCR + Tesseract — قارئان محليان + PDF.js',takePhoto:'تصوير بالكاميرا',choosePhoto:'اختيار صورة من الألبوم',choosePdf:'اختيار ملف PDF',rotateLeft:'↶ تدوير',rotateRight:'↷ تدوير',enhanceAgain:'✨ تحسين',scanAgain:'إعادة القراءة الذكية',enhanced:'محسّنة للقراءة',ocrHint:'الموقع لا يعتمد على محرك واحد: يبدأ بـ PaddleOCR الرسمي المدمج، ثم Tesseract محليًا عند الحاجة، ثم Cloudflare كخيار أخير فقط. لقطات الشاشة وPDF تُقرأ بدقة مكبرة وعلى شرائح.',ocrNote:'الإصدار 5.5.0 يثبت الدليل التلقائي بقراءة تحقق بعد الحفظ، ويضيف محلل جداول مرنًا يجمع أفضل صفوف الأصناف من المحركات المختلفة، ويدعم الصفوف ذات السعر الواحد والكمية غير المطبوعة، مع تدقيق أقوى لاسم المحل دون إضافة زمن OCR جديد.',invoiceData:'بيانات الفاتورة',storeName:'اسم المحل',invoiceDate:'تاريخ الفاتورة',category:'التصنيف',subtotal:'المبلغ قبل الضريبة',tax:'الضريبة',finalTotal:'الإجمالي النهائي',purchases:'المشتريات',addItem:'+ إضافة غرض',itemsSubtotal:'مجموع الأغراض',calculatedTax:'الضريبة',calculatedTotal:'الإجمالي',clear:'مسح',approve:'اعتماد وحفظ الفاتورة',printReport:'طباعة التقرير',item:'الغرض',price:'السعر',qty:'العدد',noData:'لا توجد فواتير محفوظة لهذا الشهر.',delete:'حذف',edit:'تعديل',saved:'تم حفظ الفاتورة بنجاح',updated:'تم تحديث الفاتورة',required:'يرجى إدخال اسم المحل وتاريخ الفاتورة والإجمالي النهائي.',scanning:'جارٍ قراءة الفاتورة…',preparing:'جارٍ تحسين الصورة وقص الحواف…',scanDone:'تم تحليل الفاتورة. راجع البيانات ثم اعتمدها.',scanFail:'تعذر استخراج البيانات بدقة. يمكنك تعديلها أو إدخالها يدويًا.',ocrNeedsNet:'يحتاج الاتصال في أول مرة لتنزيل نموذج OCR وحفظه على الجهاز. بعد ذلك يعمل القارئ الأساسي محليًا، ويُستخدم Cloudflare فقط للحالات الصعبة أو كاحتياط.',localAIReader:'قارئ PaddleOCR المحلي',aiChecking:'جارٍ التحقق من محرك OCR…',aiLoading:'جارٍ تهيئة PaddleOCR…',aiReady:'جاهز على الجهاز',aiFallback:'مسار سحابي احتياطي',aiError:'تعذر تشغيل محرك OCR',aiLocalNote:'PaddleOCR هو القارئ الأساسي: يقرأ النص وإحداثياته محليًا، ثم يتحقق من الجداول والأرقام حسابيًا. Cloudflare احتياط فقط.',aiPrivate:'OCR محلي + Cloudflare احتياطي',aiAnalyzing:'جارٍ تحليل النص ومواقع الأسطر على الجهاز…',aiMerged:'اكتملت القراءة السريعة والتحقق من الفاتورة',currency:'د.إ',invoice:'فاتورة',itemsCount:'أغراض',confirmDelete:'هل تريد حذف هذه الفاتورة؟',backupDone:'تم تنزيل النسخة الاحتياطية',restoreDone:'تمت استعادة النسخة الاحتياطية',restoreFail:'ملف النسخة الاحتياطية غير صالح',quality:'جودة الاستخراج',vatDetected:'تم اكتشاف ضريبة القيمة المضافة 5%',fieldsDetected:'حقول مكتشفة',jan:'يناير',feb:'فبراير',mar:'مارس',apr:'أبريل',may:'مايو',jun:'يونيو',jul:'يوليو',aug:'أغسطس',sep:'سبتمبر',oct:'أكتوبر',nov:'نوفمبر',dec:'ديسمبر',groceries:'بقالة ومواد غذائية',dining:'مطاعم ومقاهي',shopping:'تسوق',transport:'مواصلات ووقود',health:'صحة وصيدلية',bills:'فواتير وخدمات',entertainment:'ترفيه',home:'منزل',other:'أخرى',
+ ar:{appTitle:'مصاريف الشهر',appSub:'إدارة ذكية للفواتير والمشتريات الشهرية',backup:'نسخة احتياطية',restore:'استعادة',settings:'⚙️ الإعدادات',syncTitle:'مزامنة الأجهزة',syncNotLinked:'غير مرتبط',syncConnected:'متصل لحظيًا',syncConnecting:'جارٍ الاتصال…',syncCreate:'إنشاء مجموعة جديدة',syncJoin:'ربط بهذا الرمز',syncCopy:'نسخ الرمز',syncDisconnect:'فصل هذا الجهاز',syncNow:'مزامنة الآن',syncIntro:'أنشئ مجموعة في الهاتف الأول، ثم أدخل نفس الرمز في أي هاتف آخر. أي فاتورة تحفظ أو تعدل أو تحذف ستظهر تلقائيًا في الأجهزة المرتبطة.',syncPrivacy:'الرمز نفسه هو مفتاح المجموعة. احتفظ به خاصًا. تتم المزامنة عبر Cloudflare فقط عند حفظ تغيير، والصور تُضغط قبل رفعها.',syncCreated:'تم إنشاء مجموعة المزامنة',syncJoined:'تم ربط الجهاز بالمجموعة',syncDone:'اكتملت المزامنة',syncInvalid:'رمز المزامنة غير صحيح',syncOffline:'تعذر الاتصال بالمزامنة الآن؛ ستبقى البيانات محفوظة محليًا.',dashboard:'الرئيسية',dashboardMonth:'الشهر المعروض',currentMonth:'الشهر الحالي',previousMonth:'الشهر السابق',nextMonth:'الشهر التالي',newInvoice:'تسجيل فاتورة جديدة',monthlyRecords:'السجلات الشهرية',monthSpend:'إجمالي الشهر',invoiceCount:'عدد الفواتير',savedLocally:'محفوظة على الجهاز',avgInvoice:'متوسط الفاتورة',monthAverage:'متوسط الشهر الحالي',budgetRemaining:'المتبقي من الميزانية',monthlyBudget:'الميزانية الشهرية',budgetAmount:'قيمة الميزانية',saveBudget:'حفظ الميزانية',budgetSaved:'تم حفظ ميزانية الشهر',spentOfBudget:'تم إنفاق',noBudget:'لم تحدد ميزانية بعد',categoryDistribution:'التوزيع حسب التصنيف',storesDistribution:'التوزيع حسب المحلات',topFive:'أعلى 5',dailySpend:'الإنفاق اليومي',recentInvoices:'أحدث الفواتير',viewAll:'عرض الكل',receiptScan:'تصوير / رفع الفاتورة',ocrAuto:'PaddleOCR + Tesseract — قارئان محليان + PDF.js',takePhoto:'تصوير بالكاميرا',choosePhoto:'اختيار صورة من الألبوم',choosePdf:'اختيار ملف PDF',rotateLeft:'↶ تدوير',rotateRight:'↷ تدوير',enhanceAgain:'✨ تحسين',scanAgain:'إعادة القراءة الذكية',enhanced:'محسّنة للقراءة',ocrHint:'الموقع لا يعتمد على محرك واحد: يبدأ بـ PaddleOCR الرسمي المدمج، ثم Tesseract محليًا عند الحاجة، ثم Cloudflare كخيار أخير فقط. لقطات الشاشة وPDF تُقرأ بدقة مكبرة وعلى شرائح.',ocrNote:'الإصدار 5.6.0 يبقي محرك 5.5.0 المستقر كما هو، ويضيف فوقه طبقة تحقق نهائية لا تستبدل نتيجة ناجحة إلا بدليل أقوى: حفظ دليل متعدد المسارات، استبعاد صفوف الإجماليات من الأصناف، تصحيح التاريخ المرن، موازنة الأصناف مع الضريبة والإجمالي، وإنقاذ خاص للقطات الشاشة الداكنة.',invoiceData:'بيانات الفاتورة',storeName:'اسم المحل',invoiceDate:'تاريخ الفاتورة',category:'التصنيف',subtotal:'المبلغ قبل الضريبة',tax:'الضريبة',finalTotal:'الإجمالي النهائي',purchases:'المشتريات',addItem:'+ إضافة غرض',itemsSubtotal:'مجموع الأغراض',calculatedTax:'الضريبة',calculatedTotal:'الإجمالي',clear:'مسح',approve:'اعتماد وحفظ الفاتورة',printReport:'طباعة التقرير',item:'الغرض',price:'السعر',qty:'العدد',noData:'لا توجد فواتير محفوظة لهذا الشهر.',delete:'حذف',edit:'تعديل',saved:'تم حفظ الفاتورة بنجاح',updated:'تم تحديث الفاتورة',required:'يرجى إدخال اسم المحل وتاريخ الفاتورة والإجمالي النهائي.',scanning:'جارٍ قراءة الفاتورة…',preparing:'جارٍ تحسين الصورة وقص الحواف…',scanDone:'تم تحليل الفاتورة. راجع البيانات ثم اعتمدها.',scanFail:'تعذر استخراج البيانات بدقة. يمكنك تعديلها أو إدخالها يدويًا.',ocrNeedsNet:'يحتاج الاتصال في أول مرة لتنزيل نموذج OCR وحفظه على الجهاز. بعد ذلك يعمل القارئ الأساسي محليًا، ويُستخدم Cloudflare فقط للحالات الصعبة أو كاحتياط.',localAIReader:'قارئ PaddleOCR المحلي',aiChecking:'جارٍ التحقق من محرك OCR…',aiLoading:'جارٍ تهيئة PaddleOCR…',aiReady:'جاهز على الجهاز',aiFallback:'مسار سحابي احتياطي',aiError:'تعذر تشغيل محرك OCR',aiLocalNote:'PaddleOCR هو القارئ الأساسي: يقرأ النص وإحداثياته محليًا، ثم يتحقق من الجداول والأرقام حسابيًا. Cloudflare احتياط فقط.',aiPrivate:'OCR محلي + Cloudflare احتياطي',aiAnalyzing:'جارٍ تحليل النص ومواقع الأسطر على الجهاز…',aiMerged:'اكتملت القراءة السريعة والتحقق من الفاتورة',currency:'د.إ',invoice:'فاتورة',itemsCount:'أغراض',confirmDelete:'هل تريد حذف هذه الفاتورة؟',backupDone:'تم تنزيل النسخة الاحتياطية',restoreDone:'تمت استعادة النسخة الاحتياطية',restoreFail:'ملف النسخة الاحتياطية غير صالح',quality:'جودة الاستخراج',vatDetected:'تم اكتشاف ضريبة القيمة المضافة 5%',fieldsDetected:'حقول مكتشفة',jan:'يناير',feb:'فبراير',mar:'مارس',apr:'أبريل',may:'مايو',jun:'يونيو',jul:'يوليو',aug:'أغسطس',sep:'سبتمبر',oct:'أكتوبر',nov:'نوفمبر',dec:'ديسمبر',groceries:'بقالة ومواد غذائية',dining:'مطاعم ومقاهي',shopping:'تسوق',transport:'مواصلات ووقود',health:'صحة وصيدلية',bills:'فواتير وخدمات',entertainment:'ترفيه',home:'منزل',other:'أخرى',
 receiptEvidence:'صورة الفاتورة كدليل',evidenceAttached:'صورة دليل مرفقة',evidenceAuto:'مرفقة تلقائيًا من الفاتورة',evidenceManual:'مرفقة يدويًا',noEvidence:'لا توجد صورة دليل',
 addEvidence:'إضافة صورة دليل',viewEvidence:'عرض صورة الدليل',replaceEvidence:'استبدال الصورة',deleteEvidence:'حذف صورة الدليل',
 evidenceSaved:'تم حفظ صورة الفاتورة كدليل',evidenceDeleted:'تم حذف صورة الدليل',confirmDeleteEvidence:'هل تريد حذف صورة الدليل المرفقة؟',
 manualEvidencePrompt:'تم اعتماد الفاتورة بدون صورة. هل تريد إضافة صورة الفاتورة كدليل الآن؟',
 takeEvidencePhoto:'تصوير صورة الدليل',chooseEvidencePhoto:'اختيار صورة الدليل من الألبوم',later:'لاحقًا',
 evidenceStorageFail:'تعذر حفظ صورة الدليل على الجهاز',evidenceNotFound:'صورة الدليل غير موجودة على هذا الجهاز'},
- en:{appTitle:'Monthly Expenses',appSub:'Smart monthly receipt & spending manager',backup:'Backup',restore:'Restore',settings:'⚙️ Settings',syncTitle:'Device Sync',syncNotLinked:'Not linked',syncConnected:'Live connected',syncConnecting:'Connecting…',syncCreate:'Create New Group',syncJoin:'Link With This Code',syncCopy:'Copy Code',syncDisconnect:'Disconnect This Device',syncNow:'Sync Now',syncIntro:'Create a group on the first phone, then enter the same code on another phone. Saved, edited or deleted receipts appear automatically on linked devices.',syncPrivacy:'The group code is the shared key. Keep it private. Cloudflare sync runs only when data changes, and receipt images are compressed before upload.',syncCreated:'Sync group created',syncJoined:'Device linked to group',syncDone:'Sync completed',syncInvalid:'Invalid sync code',syncOffline:'Sync is temporarily unavailable; data remains saved locally.',dashboard:'Dashboard',dashboardMonth:'Displayed Month',currentMonth:'Current Month',previousMonth:'Previous Month',nextMonth:'Next Month',newInvoice:'New Receipt',monthlyRecords:'Monthly Records',monthSpend:'Month Total',invoiceCount:'Receipts',savedLocally:'Saved on this device',avgInvoice:'Average Receipt',monthAverage:'Current month average',budgetRemaining:'Budget Remaining',monthlyBudget:'Monthly Budget',budgetAmount:'Budget Amount',saveBudget:'Save Budget',budgetSaved:'Monthly budget saved',spentOfBudget:'Spent',noBudget:'No budget set yet',categoryDistribution:'Spend by Category',storesDistribution:'Spend by Store',topFive:'Top 5',dailySpend:'Daily Spending',recentInvoices:'Recent Receipts',viewAll:'View All',receiptScan:'Scan / Upload Receipt',ocrAuto:'PaddleOCR + Tesseract — Dual Local OCR + PDF.js',takePhoto:'Take Photo',choosePhoto:'Choose from Photos',choosePdf:'Choose PDF File',rotateLeft:'↶ Rotate',rotateRight:'↷ Rotate',enhanceAgain:'✨ Enhance',scanAgain:'Smart Re-scan',enhanced:'Enhanced for OCR',ocrHint:'The app no longer depends on one OCR engine: official built-in PaddleOCR runs first, Tesseract runs locally if needed, and Cloudflare is last. Screenshots/PDFs use enlarged overlapping tiles.',ocrNote:'v5.5.0 verifies automatic receipt evidence with a read-back check, merges complementary item rows across OCR engines, supports one-money-column rows with implicit quantity 1, and strengthens merchant recovery without adding OCR passes.',invoiceData:'Receipt Details',storeName:'Store Name',invoiceDate:'Receipt Date',category:'Category',subtotal:'Subtotal Before Tax',tax:'Tax',finalTotal:'Final Total',purchases:'Items',addItem:'+ Add Item',itemsSubtotal:'Items Subtotal',calculatedTax:'Tax',calculatedTotal:'Total',clear:'Clear',approve:'Approve & Save Receipt',printReport:'Print Report',item:'Item',price:'Price',qty:'Qty',noData:'No saved receipts for this month.',delete:'Delete',edit:'Edit',saved:'Receipt saved successfully',updated:'Receipt updated',required:'Please enter store name, receipt date and final total.',scanning:'Reading receipt…',preparing:'Enhancing image and cropping edges…',scanDone:'Receipt analyzed. Review the fields before saving.',scanFail:'Could not extract the data accurately. You can edit or enter it manually.',ocrNeedsNet:'Cloud AI requires an internet connection. If it is unavailable, fields stay blank instead of running a slow fallback.',localAIReader:'Cloud Smart Receipt Reader',aiChecking:'Checking Cloudflare…',aiLoading:'Connecting to Cloudflare AI…',aiReady:'Connected & Ready',aiFallback:'Local fallback reader',aiError:'Cloud reader unavailable',aiLocalNote:'One Llama request with an enlarged item table, followed by local parsing in the secure Worker.',aiPrivate:'Secure Worker processing',aiAnalyzing:'Reading enlarged receipt regions with Cloudflare AI…',aiMerged:'Cloud AI receipt analysis complete',currency:'AED',invoice:'Receipt',itemsCount:'Items',confirmDelete:'Delete this receipt?',backupDone:'Backup downloaded',restoreDone:'Backup restored',restoreFail:'Invalid backup file',quality:'Extraction quality',vatDetected:'5% VAT detected',fieldsDetected:'fields detected',jan:'January',feb:'February',mar:'March',apr:'April',may:'May',jun:'June',jul:'July',aug:'August',sep:'September',oct:'October',nov:'November',dec:'December',groceries:'Groceries',dining:'Dining & Coffee',shopping:'Shopping',transport:'Transport & Fuel',health:'Health & Pharmacy',bills:'Bills & Services',entertainment:'Entertainment',home:'Home',other:'Other',
+ en:{appTitle:'Monthly Expenses',appSub:'Smart monthly receipt & spending manager',backup:'Backup',restore:'Restore',settings:'⚙️ Settings',syncTitle:'Device Sync',syncNotLinked:'Not linked',syncConnected:'Live connected',syncConnecting:'Connecting…',syncCreate:'Create New Group',syncJoin:'Link With This Code',syncCopy:'Copy Code',syncDisconnect:'Disconnect This Device',syncNow:'Sync Now',syncIntro:'Create a group on the first phone, then enter the same code on another phone. Saved, edited or deleted receipts appear automatically on linked devices.',syncPrivacy:'The group code is the shared key. Keep it private. Cloudflare sync runs only when data changes, and receipt images are compressed before upload.',syncCreated:'Sync group created',syncJoined:'Device linked to group',syncDone:'Sync completed',syncInvalid:'Invalid sync code',syncOffline:'Sync is temporarily unavailable; data remains saved locally.',dashboard:'Dashboard',dashboardMonth:'Displayed Month',currentMonth:'Current Month',previousMonth:'Previous Month',nextMonth:'Next Month',newInvoice:'New Receipt',monthlyRecords:'Monthly Records',monthSpend:'Month Total',invoiceCount:'Receipts',savedLocally:'Saved on this device',avgInvoice:'Average Receipt',monthAverage:'Current month average',budgetRemaining:'Budget Remaining',monthlyBudget:'Monthly Budget',budgetAmount:'Budget Amount',saveBudget:'Save Budget',budgetSaved:'Monthly budget saved',spentOfBudget:'Spent',noBudget:'No budget set yet',categoryDistribution:'Spend by Category',storesDistribution:'Spend by Store',topFive:'Top 5',dailySpend:'Daily Spending',recentInvoices:'Recent Receipts',viewAll:'View All',receiptScan:'Scan / Upload Receipt',ocrAuto:'PaddleOCR + Tesseract — Dual Local OCR + PDF.js',takePhoto:'Take Photo',choosePhoto:'Choose from Photos',choosePdf:'Choose PDF File',rotateLeft:'↶ Rotate',rotateRight:'↷ Rotate',enhanceAgain:'✨ Enhance',scanAgain:'Smart Re-scan',enhanced:'Enhanced for OCR',ocrHint:'The app no longer depends on one OCR engine: official built-in PaddleOCR runs first, Tesseract runs locally if needed, and Cloudflare is last. Screenshots/PDFs use enlarged overlapping tiles.',ocrNote:'v5.6.0 keeps the stable 5.5.0 reader intact and adds a final evidence-driven verification layer: multi-backend receipt-image storage, summary-row rejection, tolerant date recovery, arithmetic reconciliation, and dark-screenshot rescue. A successful prior result is never replaced by weaker evidence.',invoiceData:'Receipt Details',storeName:'Store Name',invoiceDate:'Receipt Date',category:'Category',subtotal:'Subtotal Before Tax',tax:'Tax',finalTotal:'Final Total',purchases:'Items',addItem:'+ Add Item',itemsSubtotal:'Items Subtotal',calculatedTax:'Tax',calculatedTotal:'Total',clear:'Clear',approve:'Approve & Save Receipt',printReport:'Print Report',item:'Item',price:'Price',qty:'Qty',noData:'No saved receipts for this month.',delete:'Delete',edit:'Edit',saved:'Receipt saved successfully',updated:'Receipt updated',required:'Please enter store name, receipt date and final total.',scanning:'Reading receipt…',preparing:'Enhancing image and cropping edges…',scanDone:'Receipt analyzed. Review the fields before saving.',scanFail:'Could not extract the data accurately. You can edit or enter it manually.',ocrNeedsNet:'Cloud AI requires an internet connection. If it is unavailable, fields stay blank instead of running a slow fallback.',localAIReader:'Cloud Smart Receipt Reader',aiChecking:'Checking Cloudflare…',aiLoading:'Connecting to Cloudflare AI…',aiReady:'Connected & Ready',aiFallback:'Local fallback reader',aiError:'Cloud reader unavailable',aiLocalNote:'One Llama request with an enlarged item table, followed by local parsing in the secure Worker.',aiPrivate:'Secure Worker processing',aiAnalyzing:'Reading enlarged receipt regions with Cloudflare AI…',aiMerged:'Cloud AI receipt analysis complete',currency:'AED',invoice:'Receipt',itemsCount:'Items',confirmDelete:'Delete this receipt?',backupDone:'Backup downloaded',restoreDone:'Backup restored',restoreFail:'Invalid backup file',quality:'Extraction quality',vatDetected:'5% VAT detected',fieldsDetected:'fields detected',jan:'January',feb:'February',mar:'March',apr:'April',may:'May',jun:'June',jul:'July',aug:'August',sep:'September',oct:'October',nov:'November',dec:'December',groceries:'Groceries',dining:'Dining & Coffee',shopping:'Shopping',transport:'Transport & Fuel',health:'Health & Pharmacy',bills:'Bills & Services',entertainment:'Entertainment',home:'Home',other:'Other',
 receiptEvidence:'Receipt Evidence Image',evidenceAttached:'Evidence image attached',evidenceAuto:'Automatically attached from receipt',evidenceManual:'Manually attached',noEvidence:'No evidence image',
 addEvidence:'Add Evidence Image',viewEvidence:'View Evidence Image',replaceEvidence:'Replace Image',deleteEvidence:'Delete Evidence Image',
 evidenceSaved:'Receipt evidence image saved',evidenceDeleted:'Evidence image deleted',confirmDeleteEvidence:'Delete the attached evidence image?',
@@ -385,7 +385,8 @@ async function syncDownloadEvidence(id){if(!syncCode)return;const r=await fetch(
 async function evidenceBlobForSync(blob){
   if(!blob||blob.size<=1450000)return blob;const url=URL.createObjectURL(blob);try{const img=await new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=rej;i.src=url}),max=1200,scale=Math.min(1,max/Math.max(img.width,img.height)),c=document.createElement('canvas');c.width=Math.max(1,Math.round(img.width*scale));c.height=Math.max(1,Math.round(img.height*scale));c.getContext('2d').drawImage(img,0,0,c.width,c.height);return await new Promise(res=>c.toBlob(res,'image/jpeg',.70))}finally{URL.revokeObjectURL(url)}
 }
-async function syncUploadEvidence(id){if(!syncCode)return;try{let blob=await evidenceGet(id);if(!blob)return;blob=await evidenceBlobForSync(blob);if(!blob||blob.size>1800000)return;await fetch(`/api/sync/evidence/${encodeURIComponent(id)}?code=${encodeURIComponent(syncCode)}`,{method:'PUT',headers:{'content-type':blob.type||'image/jpeg'},body:blob})}catch(e){console.warn('Evidence sync upload',e)}}
+async function syncUploadEvidenceBlob(id,blob){if(!syncCode||!blob)return false;try{blob=await evidenceBlobForSync(blob);if(!blob||blob.size>1800000)return false;const r=await fetch(`/api/sync/evidence/${encodeURIComponent(id)}?code=${encodeURIComponent(syncCode)}`,{method:'PUT',headers:{'content-type':blob.type||'image/jpeg'},body:blob});return r.ok}catch(e){console.warn('Evidence sync upload',e);return false}}
+async function syncUploadEvidence(id){if(!syncCode)return false;try{const blob=await evidenceGet(id);return blob?await syncUploadEvidenceBlob(id,blob):false}catch(e){console.warn('Evidence sync upload',e);return false}}
 async function syncDeleteEvidenceRemote(id){if(!syncCode)return;try{await fetch(`/api/sync/evidence/${encodeURIComponent(id)}?code=${encodeURIComponent(syncCode)}`,{method:'DELETE'})}catch(e){}}
 async function syncSendOp(op){if(!syncCode||syncApplyingRemote)return null;try{return await syncApi('/api/sync/op',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({...op,clientId:syncClientId})})}catch(e){console.warn('Sync operation queued locally',e);return null}}
 async function syncSendReceipt(rec){if(!rec||!syncCode||syncApplyingRemote)return;await syncSendOp({type:'upsert',receipt:rec});if(rec.hasEvidence)syncUploadEvidence(rec.id)}
@@ -412,42 +413,82 @@ async function syncNow(){try{await syncInitialPull(true);syncOpenSocket();toast(
 function openEvidenceDB(){
   if(evidenceDBPromise)return evidenceDBPromise;
   evidenceDBPromise=new Promise((resolve,reject)=>{
-    const req=indexedDB.open(EVIDENCE_DB_NAME,1);
-    req.onupgradeneeded=()=>{const db=req.result;if(!db.objectStoreNames.contains(EVIDENCE_STORE))db.createObjectStore(EVIDENCE_STORE,{keyPath:'id'})};
-    req.onsuccess=()=>resolve(req.result);
-    req.onerror=()=>reject(req.error||new Error('IndexedDB unavailable'));
+    let settled=false;
+    try{
+      const req=indexedDB.open(EVIDENCE_DB_NAME,1);
+      req.onupgradeneeded=()=>{const db=req.result;if(!db.objectStoreNames.contains(EVIDENCE_STORE))db.createObjectStore(EVIDENCE_STORE,{keyPath:'id'})};
+      req.onsuccess=()=>{settled=true;resolve(req.result)};
+      req.onerror=()=>{settled=true;evidenceDBPromise=null;reject(req.error||new Error('IndexedDB unavailable'))};
+      req.onblocked=()=>{if(!settled){evidenceDBPromise=null;reject(new Error('IndexedDB blocked'))}}
+    }catch(e){evidenceDBPromise=null;reject(e)}
   });
   return evidenceDBPromise
 }
-async function evidencePut(id,blob){
-  const db=await openEvidenceDB();
+async function evidencePutIDB(id,blob){
+  const db=await openEvidenceDB(),bytes=await blob.arrayBuffer();
   return await new Promise((resolve,reject)=>{
     const tx=db.transaction(EVIDENCE_STORE,'readwrite');
-    tx.objectStore(EVIDENCE_STORE).put({id,blob,updatedAt:new Date().toISOString()});
-    tx.oncomplete=()=>resolve(true);tx.onerror=()=>reject(tx.error)
+    tx.objectStore(EVIDENCE_STORE).put({id,bytes,type:blob.type||'image/jpeg',size:blob.size,updatedAt:new Date().toISOString()});
+    tx.oncomplete=()=>resolve(true);tx.onerror=()=>reject(tx.error||new Error('IndexedDB evidence write failed'));tx.onabort=()=>reject(tx.error||new Error('IndexedDB evidence write aborted'))
   })
 }
-async function evidencePutVerified(id,blob){
-  if(!id||!blob)return false;
-  let lastErr=null;
-  for(let attempt=0;attempt<2;attempt++){
-    try{
-      if(attempt){evidenceDBPromise=null;await new Promise(r=>setTimeout(r,80))}
-      await evidencePut(id,blob);
-      const check=await evidenceGet(id);
-      if(check&&check.size>0)return true;
-      throw new Error('Evidence verification failed')
-    }catch(e){lastErr=e;console.warn('Evidence save attempt failed',attempt+1,e)}
-  }
-  if(lastErr)throw lastErr;
-  return false
-}
-async function evidenceGet(id){
+async function evidenceGetIDB(id){
   const db=await openEvidenceDB();
   return await new Promise((resolve,reject)=>{
     const req=db.transaction(EVIDENCE_STORE,'readonly').objectStore(EVIDENCE_STORE).get(id);
-    req.onsuccess=()=>resolve(req.result?.blob||null);req.onerror=()=>reject(req.error)
+    req.onsuccess=()=>{const r=req.result;if(!r){resolve(null);return}if(r.blob instanceof Blob){resolve(r.blob);return}if(r.bytes){resolve(new Blob([r.bytes],{type:r.type||'image/jpeg'}));return}resolve(null)};
+    req.onerror=()=>reject(req.error||new Error('IndexedDB evidence read failed'))
   })
+}
+function evidenceCacheRequest(id){return new Request(`${location.origin}/__monthly_expense_evidence__/${encodeURIComponent(id)}`,{method:'GET'})}
+async function evidencePutCache(id,blob){
+  if(!('caches' in window))throw new Error('CacheStorage unavailable');
+  const cache=await caches.open(EVIDENCE_CACHE_NAME);await cache.put(evidenceCacheRequest(id),new Response(blob,{headers:{'content-type':blob.type||'image/jpeg','cache-control':'private, max-age=31536000'}}));return true
+}
+async function evidenceGetCache(id){
+  if(!('caches' in window))return null;const cache=await caches.open(EVIDENCE_CACHE_NAME),res=await cache.match(evidenceCacheRequest(id));return res?await res.blob():null
+}
+function evidenceFallbackMap(){try{return JSON.parse(localStorage.getItem(EVIDENCE_FALLBACK_KEY)||'{}')||{}}catch(e){return{}}}
+async function compactEvidenceFallback(blob){
+  if(!blob)return null;if(blob.size<=320000)return blob;
+  const url=URL.createObjectURL(blob);try{
+    const img=await new Promise((resolve,reject)=>{const i=new Image();i.onload=()=>resolve(i);i.onerror=reject;i.src=url});
+    const max=950,scale=Math.min(1,max/Math.max(img.width,img.height)),c=document.createElement('canvas');c.width=Math.max(1,Math.round(img.width*scale));c.height=Math.max(1,Math.round(img.height*scale));c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+    return await new Promise(resolve=>c.toBlob(resolve,'image/jpeg',.58))
+  }finally{URL.revokeObjectURL(url)}
+}
+async function evidencePutLocalFallback(id,blob){
+  const small=await compactEvidenceFallback(blob);if(!small)throw new Error('Evidence fallback conversion failed');const url=await blobToDataURL(small),map=evidenceFallbackMap();map[id]={url,type:small.type||'image/jpeg',size:small.size,updatedAt:new Date().toISOString()};
+  const entries=()=>Object.entries(map).sort((a,b)=>String(a[1]?.updatedAt||'').localeCompare(String(b[1]?.updatedAt||'')));
+  for(let tries=0;tries<8;tries++){
+    try{localStorage.setItem(EVIDENCE_FALLBACK_KEY,JSON.stringify(map));return true}catch(e){const oldest=entries()[0];if(!oldest||oldest[0]===id)throw e;delete map[oldest[0]]}
+  }
+  return false
+}
+async function evidenceGetLocalFallback(id){const r=evidenceFallbackMap()[id];return r?.url?dataURLToBlob(r.url):null}
+async function evidencePut(id,blob){
+  if(!id||!blob)throw new Error('Missing evidence payload');let stored=false,lastErr=null;
+  try{await evidencePutIDB(id,blob);stored=true}catch(e){lastErr=e;console.warn('Evidence IndexedDB write failed',e);evidenceDBPromise=null}
+  try{await evidencePutCache(id,blob);stored=true}catch(e){lastErr=lastErr||e;console.warn('Evidence CacheStorage write failed',e)}
+  if(!stored){try{stored=await evidencePutLocalFallback(id,blob)}catch(e){lastErr=e;console.warn('Evidence localStorage fallback failed',e)}}
+  if(!stored)throw lastErr||new Error('No evidence storage backend available');return true
+}
+async function evidencePutVerified(id,blob){
+  if(!id||!blob)return false;let lastErr=null;
+  for(let attempt=0;attempt<2;attempt++){
+    try{
+      if(attempt){evidenceDBPromise=null;await new Promise(r=>setTimeout(r,90))}
+      await evidencePut(id,blob);const check=await evidenceGet(id);
+      if(check&&check.size>64)return true;throw new Error('Evidence verification failed')
+    }catch(e){lastErr=e;console.warn('Evidence save attempt failed',attempt+1,e)}
+  }
+  if(lastErr)throw lastErr;return false
+}
+async function evidenceGet(id){
+  try{const b=await evidenceGetIDB(id);if(b&&b.size)return b}catch(e){console.warn('Evidence IndexedDB read failed',e);evidenceDBPromise=null}
+  try{const b=await evidenceGetCache(id);if(b&&b.size)return b}catch(e){console.warn('Evidence CacheStorage read failed',e)}
+  try{const b=await evidenceGetLocalFallback(id);if(b&&b.size)return b}catch(e){console.warn('Evidence local fallback read failed',e)}
+  return null
 }
 async function reconcileLocalEvidenceFlags(){
   let changed=false;
@@ -459,22 +500,14 @@ async function reconcileLocalEvidenceFlags(){
   return changed
 }
 async function evidenceDelete(id){
-  try{
-    const db=await openEvidenceDB();
-    await new Promise((resolve,reject)=>{
-      const tx=db.transaction(EVIDENCE_STORE,'readwrite');tx.objectStore(EVIDENCE_STORE).delete(id);
-      tx.oncomplete=()=>resolve(true);tx.onerror=()=>reject(tx.error)
-    })
-  }catch(e){console.warn('Evidence delete failed',e)}
+  try{const db=await openEvidenceDB();await new Promise((resolve,reject)=>{const tx=db.transaction(EVIDENCE_STORE,'readwrite');tx.objectStore(EVIDENCE_STORE).delete(id);tx.oncomplete=()=>resolve(true);tx.onerror=()=>reject(tx.error)})}catch(e){console.warn('Evidence IndexedDB delete failed',e)}
+  try{if('caches' in window){const cache=await caches.open(EVIDENCE_CACHE_NAME);await cache.delete(evidenceCacheRequest(id))}}catch(e){console.warn('Evidence cache delete failed',e)}
+  try{const map=evidenceFallbackMap();if(map[id]){delete map[id];localStorage.setItem(EVIDENCE_FALLBACK_KEY,JSON.stringify(map))}}catch(e){}
 }
 async function evidenceClearAll(){
-  try{
-    const db=await openEvidenceDB();
-    await new Promise((resolve,reject)=>{
-      const tx=db.transaction(EVIDENCE_STORE,'readwrite');tx.objectStore(EVIDENCE_STORE).clear();
-      tx.oncomplete=()=>resolve(true);tx.onerror=()=>reject(tx.error)
-    })
-  }catch(e){console.warn('Evidence clear failed',e)}
+  try{const db=await openEvidenceDB();await new Promise((resolve,reject)=>{const tx=db.transaction(EVIDENCE_STORE,'readwrite');tx.objectStore(EVIDENCE_STORE).clear();tx.oncomplete=()=>resolve(true);tx.onerror=()=>reject(tx.error)})}catch(e){console.warn('Evidence IndexedDB clear failed',e)}
+  try{if('caches' in window)await caches.delete(EVIDENCE_CACHE_NAME)}catch(e){}
+  try{localStorage.removeItem(EVIDENCE_FALLBACK_KEY)}catch(e){}
 }
 async function canvasToEvidenceBlob(canvas){
   if(!canvas)return null;
@@ -540,7 +573,8 @@ $('#evidenceCloseBtn').onclick=closeEvidenceModal;
 $('#evidenceModal').onclick=e=>{if(e.target===$('#evidenceModal'))closeEvidenceModal()};
 window.viewReceiptEvidence=async id=>{
   try{
-    const blob=await evidenceGet(id);
+    let blob=await evidenceGet(id);
+    if(!blob&&syncCode){try{await syncDownloadEvidence(id);blob=await evidenceGet(id)}catch(e){}}
     if(!blob){updateReceiptEvidenceFlag(id,false);renderAll();toast(t('evidenceNotFound'));return}
     if(evidenceObjectUrl)URL.revokeObjectURL(evidenceObjectUrl);
     evidenceObjectUrl=URL.createObjectURL(blob);
@@ -612,13 +646,16 @@ $('#saveBtn').onclick=async()=>{
   const rec={id,store,date,category:$('#category').value||'other',subtotal:Number($('#subtotal').value||0),tax:Number($('#tax').value||0),total,items:getItems(),hasEvidence:hadEvidence,evidenceUpdatedAt:old?.evidenceUpdatedAt||null,evidenceOrigin:old?.evidenceOrigin||null,createdAt:old?.createdAt||new Date().toISOString(),updatedAt:new Date().toISOString()};
 
   if(receiptDocumentProvided||pendingAutoEvidenceBlob||proofCanvas){
+    let proofBlob=null,localEvidenceSaved=false,remoteEvidenceSaved=false;
     try{
       await ensurePersistentStorage();
-      const proofBlob=pendingAutoEvidenceBlob||await canvasToEvidenceBlob(proofCanvas);
-      if(proofBlob&&await evidencePutVerified(id,proofBlob)){
-        rec.hasEvidence=true;rec.evidenceUpdatedAt=new Date().toISOString();rec.evidenceOrigin='scan';
-      }
-    }catch(e){console.warn('Automatic receipt evidence save failed',e)}
+      proofBlob=pendingAutoEvidenceBlob||await canvasToEvidenceBlob(proofCanvas);
+      if(proofBlob)localEvidenceSaved=await evidencePutVerified(id,proofBlob);
+    }catch(e){console.warn('Automatic receipt evidence local save failed',e)}
+    if(!localEvidenceSaved&&proofBlob&&syncCode){remoteEvidenceSaved=await syncUploadEvidenceBlob(id,proofBlob)}
+    if(localEvidenceSaved||remoteEvidenceSaved){
+      rec.hasEvidence=true;rec.evidenceUpdatedAt=new Date().toISOString();rec.evidenceOrigin='scan';
+    }
   }
 
   if(editingId){const i=data.findIndex(x=>x.id===editingId);if(i>=0)data[i]=rec;toast(t('updated'))}
@@ -792,8 +829,14 @@ function inkBounds(canvas){
   const pad=Math.max(8,Math.round(Math.min(w,h)*.025));minX=Math.max(0,minX-pad);minY=Math.max(0,minY-pad);maxX=Math.min(w-1,maxX+pad);maxY=Math.min(h-1,maxY+pad);
   const sx=canvas.width/w,sy=canvas.height/h;return{x:Math.round(minX*sx),y:Math.round(minY*sy),w:Math.max(1,Math.round((maxX-minX+1)*sx)),h:Math.max(1,Math.round((maxY-minY+1)*sy))}
 }
+function documentLooksDark(canvas){
+  if(!canvas)return false;const max=220,scale=Math.min(1,max/Math.max(canvas.width,canvas.height)),w=Math.max(20,Math.round(canvas.width*scale)),h=Math.max(20,Math.round(canvas.height*scale)),c=document.createElement('canvas');c.width=w;c.height=h;const x=c.getContext('2d',{willReadFrequently:true});x.drawImage(canvas,0,0,w,h);const d=x.getImageData(0,0,w,h).data;let sum=0,dark=0,n=0;for(let i=0;i<d.length;i+=4){const L=.299*d[i]+.587*d[i+1]+.114*d[i+2];sum+=L;if(L<125)dark++;n++}return n>0&&(sum/n<135||dark/n>.58)
+}
+function normalizeDocumentPolarity(canvas){
+  if(!documentLooksDark(canvas))return canvas;const c=document.createElement('canvas');c.width=canvas.width;c.height=canvas.height;const x=c.getContext('2d',{willReadFrequently:true});x.drawImage(canvas,0,0);const im=x.getImageData(0,0,c.width,c.height),d=im.data;for(let i=0;i<d.length;i+=4){const g=255-(.299*d[i]+.587*d[i+1]+.114*d[i+2]);const v=Math.max(0,Math.min(255,(g-128)*1.12+128));d[i]=d[i+1]=d[i+2]=v;d[i+3]=255}x.putImageData(im,0,0);return c
+}
 function prepareDigitalDocumentCanvas(canvas){
-  const b=inkBounds(canvas),crop=document.createElement('canvas');crop.width=b.w;crop.height=b.h;crop.getContext('2d').drawImage(canvas,b.x,b.y,b.w,b.h,0,0,b.w,b.h);
+  const normalized=normalizeDocumentPolarity(canvas),b=inkBounds(normalized),crop=document.createElement('canvas');crop.width=b.w;crop.height=b.h;crop.getContext('2d').drawImage(normalized,b.x,b.y,b.w,b.h,0,0,b.w,b.h);
   const targetW=/iPhone|iPad|iPod/i.test(navigator.userAgent)?1450:1750,scale=Math.max(1,Math.min(4,targetW/Math.max(1,crop.width))),maxPixels=/iPhone|iPad|iPod/i.test(navigator.userAgent)?10500000:16000000;
   let w=Math.round(crop.width*scale),h=Math.round(crop.height*scale),areaScale=Math.min(1,Math.sqrt(maxPixels/Math.max(1,w*h)));w=Math.max(1,Math.round(w*areaScale));h=Math.max(1,Math.round(h*areaScale));
   const out=document.createElement('canvas');out.width=w;out.height=h;const x=out.getContext('2d',{willReadFrequently:true});x.fillStyle='#fff';x.fillRect(0,0,w,h);x.imageSmoothingEnabled=true;x.imageSmoothingQuality='high';x.drawImage(crop,0,0,w,h);
@@ -902,14 +945,41 @@ async function recognizeTargetedRegions(worker,englishWorker,res,numericRes){
   }catch(e){console.warn('Targeted English item OCR unavailable',e)}
   return out
 }
+function summaryLikeItemName(name){
+  const s=normalizeOcrText(name||'').replace(/[.:]/g,' ').replace(/\s+/g,' ').trim();if(!s)return true;
+  return /^(?:T\s*Pcs?|TPcs?|Total\s*(?:Pcs|Pieces|Qty|Quantity|Items?)|G\s*Amt|GAmt|Sub\s*Total|Subtotal|VATable\s*Sales|Taxable\s*Sales|Excl\s*VAT|Net\s*W\/?Out\s*Tax|VAT|Tax|Adv|Bal\s*Amt|Balance|Gross|Grand\s*Total|Net\s*Amount|Amount\s*Due|Discount|Cash|Card|Visa|Online|Change|Booked\s*By|Advance\s*Balance|Store\s*Timing|Terms?|Conditions?|المجموع|الإجمالي|الاجمالي|الضريبة)\b/i.test(s)||(/\bT\s*Pcs?\b/i.test(s)&&/\bG\s*Amt\b/i.test(s))
+}
+function receiptMoneyTol(v){return Math.max(.12,Math.abs(Number(v)||0)*.012)}
+function reconcileReceiptFinancials(parsed){
+  const rows=parsed.itemRows||[],itemSum=Number(rows.reduce((s,x)=>s+Number((x.readTotal??x.price*x.qty)||0),0).toFixed(2));
+  let subtotal=Number(parsed.subtotal),tax=Number(parsed.tax),total=Number(parsed.total);if(!Number.isFinite(subtotal))subtotal=null;if(!Number.isFinite(tax))tax=null;if(!Number.isFinite(total))total=null;
+  if(tax!=null&&Math.abs(tax)<.005)tax=0;
+  if(subtotal!=null&&tax!=null&&total!=null&&Math.abs(subtotal+tax-total)<=receiptMoneyTol(total))return{...parsed,subtotal:Number(subtotal.toFixed(2)),tax:Number(tax.toFixed(2)),total:Number(total.toFixed(2)),_itemSum:itemSum};
+  const candidates=[];
+  const add=(sub,tx,tot,source)=>{if(![sub,tx,tot].every(Number.isFinite)||sub<0||tx<0||tot<=0)return;let score=0;if(subtotal!=null)score-=Math.abs(sub-subtotal)/receiptMoneyTol(Math.max(sub,subtotal))*8;if(total!=null)score-=Math.abs(tot-total)/receiptMoneyTol(Math.max(tot,total))*10;if(tax!=null)score-=Math.abs(tx-tax)/receiptMoneyTol(Math.max(tx,tax,1))*7;if(itemSum>0){const d=Math.min(Math.abs(itemSum-sub),Math.abs(itemSum-tot));score-=d/receiptMoneyTol(Math.max(itemSum,tot))*9;score+=d<=receiptMoneyTol(Math.max(itemSum,tot))?22:0}if(source==='labels')score+=30;if(source==='items')score+=rows.length>=2?24:10;candidates.push({sub:Number(sub.toFixed(2)),tx:Number(tx.toFixed(2)),tot:Number(tot.toFixed(2)),score,source})};
+  if(subtotal!=null&&tax!=null)add(subtotal,tax,subtotal+tax,'labels');
+  if(total!=null&&tax!=null&&total>=tax)add(total-tax,tax,total,'labels');
+  if(itemSum>0&&tax!=null){add(itemSum,tax,itemSum+tax,'items');if(itemSum>=tax)add(itemSum-tax,tax,itemSum,'items')}
+  if(itemSum>0&&tax==null&&subtotal!=null&&total!=null&&total>=subtotal)add(subtotal,total-subtotal,total,'labels');
+  candidates.sort((a,b)=>b.score-a.score);const best=candidates[0];
+  if(best&&(subtotal==null||tax==null||total==null||Math.abs((subtotal||0)+(tax||0)-(total||0))>receiptMoneyTol(total||itemSum)||best.score>18)){subtotal=best.sub;tax=best.tx;total=best.tot}
+  if(subtotal==null&&total!=null&&tax!=null&&total>=tax)subtotal=Number((total-tax).toFixed(2));
+  if(total==null&&subtotal!=null&&tax!=null)total=Number((subtotal+tax).toFixed(2));
+  return{...parsed,subtotal,tax,total,_itemSum:itemSum}
+}
 function sanitizeParsedReceipt(parsed){
-  if(!parsed)return parsed;const total=Number(parsed.total||0),bad=/(excl\.?\s*vat|vat\s*5|tax|grand\s*total|subtotal|sub\s*total|outstanding|balance|round\s*off|print\s*time|total\s*item|الإجمالي|الضريبة|المجموع)/i;
-  let list=(parsed.itemRows||[]).map(it=>it?{...it,name:cleanItemSequenceName(it.name)}:it).filter(it=>{const p=Number(it?.price),rt=Number(it?.readTotal??p*Number(it?.qty||1)),nm=String(it?.name||'').trim();return it&&nm.length>=2&&!bad.test(nm)&&Number.isFinite(p)&&p>0&&(!total||p<=Math.max(total*1.05,50))&&(!total||rt<=Math.max(total*1.08,50))});
+  if(!parsed)return parsed;let total=Number(parsed.total||0),bad=/(excl\.?\s*vat|vat\s*5|tax|grand\s*total|subtotal|sub\s*total|outstanding|balance|round\s*off|print\s*time|total\s*item|الإجمالي|الضريبة|المجموع)/i;
+  if(parsed.store&&(merchantCandidateBad(parsed.store)||merchantTrustScore(parsed.store)<=0))parsed.store='';
+  let list=(parsed.itemRows||[]).map(it=>it?{...it,name:cleanItemSequenceName(it.name)}:it).filter(it=>{const p=Number(it?.price),rt=Number(it?.readTotal??p*Number(it?.qty||1)),nm=String(it?.name||'').trim();return it&&nm.length>=2&&!summaryLikeItemName(nm)&&!bad.test(nm)&&Number.isFinite(p)&&p>0&&(!total||p<=Math.max(total*1.05,80))&&(!total||rt<=Math.max(total*1.08,80))});
   if(parsed.itemsExpected&&list.length>parsed.itemsExpected){
     const target=[parsed.subtotal,parsed.total].filter(x=>Number(x)>0),n=parsed.itemsExpected;
-    if(list.length<=10&&n<=6){let best=list.slice(0,n),bestD=Infinity;const combos=[];const rec=(start,arr)=>{if(arr.length===n){combos.push([...arr]);return}for(let i=start;i<list.length;i++)rec(i+1,[...arr,list[i]])};rec(0,[]);for(const c of combos){const sm=c.reduce((s,x)=>s+Number(x.readTotal??x.price*x.qty),0),d=target.length?Math.min(...target.map(t=>Math.abs(sm-t))):0;if(d<bestD){bestD=d;best=c}}list=best.sort((a,b)=>(a.y??999999)-(b.y??999999))}
+    if(list.length<=12&&n<=8){let best=list.slice(0,n),bestD=Infinity;const combos=[];const rec=(start,arr)=>{if(arr.length===n){combos.push([...arr]);return}for(let i=start;i<list.length;i++)rec(i+1,[...arr,list[i]])};rec(0,[]);for(const c of combos){const sm=c.reduce((s,x)=>s+Number(x.readTotal??x.price*x.qty),0),d=target.length?Math.min(...target.map(t=>Math.abs(sm-t))):0,pen=c.reduce((s,x)=>s+(summaryLikeItemName(x.name)?100:Math.max(0,-itemNameTrustScore(x.name))),0);if(d+pen<bestD){bestD=d+pen;best=c}}list=best.sort((a,b)=>(a.y??999999)-(b.y??999999))}
   }
-  parsed.itemRows=list;parsed.items=list.length;return parsed
+  parsed.itemRows=list;parsed.items=list.length;parsed=reconcileReceiptFinancials(parsed);
+  const sum=Number((parsed.itemRows||[]).reduce((s,x)=>s+Number((x.readTotal??x.price*x.qty)||0),0).toFixed(2)),targets=[parsed.subtotal,parsed.total].filter(v=>Number.isFinite(v)&&v>0),countOk=!parsed.itemsExpected||parsed.itemsExpected===parsed.items;
+  const finance=parsed.subtotal!=null&&parsed.tax!=null&&parsed.total!=null&&Math.abs(Number(parsed.subtotal)+Number(parsed.tax)-Number(parsed.total))<=receiptMoneyTol(parsed.total);
+  const itemMatch=!!parsed.items&&targets.some(t=>Math.abs(sum-t)<=Math.max(.16,Math.abs(t)*.02));parsed.totalReliable=finance||itemMatch;parsed.accepted=!!(parsed.total!=null&&parsed.items&&(finance||itemMatch)&&countOk);parsed.category=inferCategory(`${parsed.store||''}\n${parsed.itemRows.map(x=>x.name).join('\n')}`);
+  return parsed
 }
 function normalizedNameKey(s){return normalizeOcrText(s).toUpperCase().replace(/[^A-Z0-9\u0600-\u06FF]+/g,' ').trim()}
 function levenshtein(a,b){a=normalizedNameKey(a);b=normalizedNameKey(b);const m=a.length,n=b.length;if(!m||!n)return Math.max(m,n);let prev=Array.from({length:n+1},(_,i)=>i);for(let i=1;i<=m;i++){const cur=[i];for(let j=1;j<=n;j++)cur[j]=Math.min(cur[j-1]+1,prev[j]+1,prev[j-1]+(a[i-1]===b[j-1]?0:1));prev=cur}return prev[n]}
@@ -958,24 +1028,35 @@ async function runTesseractSpatialReader(options={}){
   const digital=options.digital!==false&&(receiptSourceMode==='screenshot'||receiptSourceMode==='pdfRaster'||receiptSourceHint!=='camera'||currentCanvas.height/currentCanvas.width>1.65);
   const worker=await promiseDeadline(getOcrWorker(),24000,'Tesseract initialization timeout'),OCR=window.Tesseract,all=[];
   $('#ocrMeter').style.display='block';setLocalAIStatus('loading',lang==='ar'?'Paddle لم يكتمل؛ تشغيل محرك OCR المحلي الثاني…':'Paddle incomplete; starting the second local OCR engine…',58);
+  let doc=null;
   if(digital){
-    const doc=prepareDigitalDocumentCanvas(currentCanvas),tiles=digitalTiles(doc);
+    doc=prepareDigitalDocumentCanvas(currentCanvas);const tiles=digitalTiles(doc);
     await worker.setParameters({tessedit_pageseg_mode:OCR.PSM?.SINGLE_BLOCK??'6',tessedit_char_whitelist:'',preserve_interword_spaces:'1',user_defined_dpi:'300'});
     for(let i=0;i<tiles.length;i++){
       const tile=tiles[i],raw=tileCanvas(doc,tile),gray=makeOcrVariant(raw,'gray',Math.min(1750,doc.width));
       $('#ocrStatus').textContent=lang==='ar'?`المحرك المحلي الثاني: الجزء ${i+1} من ${tiles.length}…`:`Second local OCR: tile ${i+1} of ${tiles.length}…`;
       const {data}=await promiseDeadline(worker.recognize(gray,{rotateAuto:false},{text:true,blocks:true,tsv:true}),24000,'Tesseract tile timeout');
-      all.push(...tessDataSpatialLines(data,gray,tile,doc));$('#ocrMeterBar').style.width=`${Math.min(90,58+Math.round((i+1)/tiles.length*28))}%`;
-      await new Promise(r=>setTimeout(r,0))
+      all.push(...tessDataSpatialLines(data,gray,tile,doc));$('#ocrMeterBar').style.width=`${Math.min(90,58+Math.round((i+1)/tiles.length*28))}%`;await new Promise(r=>setTimeout(r,0))
     }
   }else{
-    const gray=makeOcrVariant(currentCanvas,'gray',1750);
-    await worker.setParameters({tessedit_pageseg_mode:OCR.PSM?.SPARSE_TEXT??'11',tessedit_char_whitelist:'',preserve_interword_spaces:'1',user_defined_dpi:'300'});
-    const {data}=await promiseDeadline(worker.recognize(gray,{rotateAuto:true},{text:true,blocks:true,tsv:true}),30000,'Tesseract receipt timeout');
-    all.push(...tessDataSpatialLines(data,gray))
+    const gray=makeOcrVariant(currentCanvas,'gray',1750);await worker.setParameters({tessedit_pageseg_mode:OCR.PSM?.SPARSE_TEXT??'11',tessedit_char_whitelist:'',preserve_interword_spaces:'1',user_defined_dpi:'300'});
+    const {data}=await promiseDeadline(worker.recognize(gray,{rotateAuto:true},{text:true,blocks:true,tsv:true}),30000,'Tesseract receipt timeout');all.push(...tessDataSpatialLines(data,gray))
   }
-  let parsed=spatialReceiptParseLines(dedupeSpatialLines(all),'Tesseract.js Arabic + English • Local Spatial OCR');
-  parsed=sanitizeParsedReceipt(applyLearnedNames(parsed));return parsed
+  let parsed=sanitizeParsedReceipt(applyLearnedNames(spatialReceiptParseLines(dedupeSpatialLines(all),'Tesseract.js Arabic + English • Local Spatial OCR')));
+  // Targeted sparse rescue runs only when a digital receipt is missing header/date/financial labels.
+  // It adds no cost to receipts that already passed, and never replaces a stronger item table.
+  if(digital&&doc&&(!parsed.store||!parsed.date||parsed.subtotal==null||parsed.total==null)){
+    try{
+      await worker.setParameters({tessedit_pageseg_mode:OCR.PSM?.SPARSE_TEXT??'11',tessedit_char_whitelist:'',preserve_interword_spaces:'1',user_defined_dpi:'300'});
+      const rescueTiles=[];
+      if(!parsed.store||!parsed.date)rescueTiles.push({y:0,h:Math.max(1,Math.round(doc.height*.46))});
+      if(parsed.subtotal==null||parsed.total==null)rescueTiles.push({y:Math.max(0,Math.round(doc.height*.36)),h:Math.max(1,Math.round(doc.height*.56))});
+      const extra=[];
+      for(const tile of rescueTiles){const raw=tileCanvas(doc,tile),gray=makeOcrVariant(raw,'gray',Math.min(1550,doc.width)),{data}=await promiseDeadline(worker.recognize(gray,{rotateAuto:false},{text:true,blocks:true,tsv:true}),16000,'Tesseract targeted rescue timeout');extra.push(...tessDataSpatialLines(data,gray,tile,doc))}
+      if(extra.length){const rescued=sanitizeParsedReceipt(applyLearnedNames(spatialReceiptParseLines(dedupeSpatialLines([...all,...extra]),'Tesseract.js • Targeted Digital Rescue')));parsed=mergeReceiptCandidates(rescued,parsed)||parsed}
+    }catch(e){console.warn('Targeted digital OCR rescue failed',e)}
+  }
+  return sanitizeParsedReceipt(applyLearnedNames(parsed))
 }
 function usablePartialCandidate(p){
   if(!p)return false;const fields=[p.store,p.date,p.subtotal,p.tax,p.total].filter(v=>v!==null&&v!==undefined&&v!=='').length,finance=p.total!=null&&p.subtotal!=null&&p.tax!=null&&Math.abs(Number(p.subtotal)+Number(p.tax)-Number(p.total))<=.15;
@@ -1133,11 +1214,17 @@ function spatialRows(lines){
   for(const l of src){let best=null,bd=9;for(const r of rows.slice(-10)){const d=Math.abs(l.cy-r.cy);if(d<bd&&d<=tol){best=r;bd=d}}if(!best){best={cy:l.cy,cells:[]};rows.push(best)}best.cells.push(l);best.cy=best.cells.reduce((s,x)=>s+x.cy,0)/best.cells.length}
   return rows.sort((a,b)=>a.cy-b.cy).map(r=>{r.cells.sort((a,b)=>a.x0-b.x0);const text=r.cells.map(x=>x.text).join(' ').replace(/\s+/g,' ').trim();return{...r,text,x0:Math.min(...r.cells.map(x=>x.x0)),x1:Math.max(...r.cells.map(x=>x.x1)),score:r.cells.reduce((s,x)=>s+x.score,0)/r.cells.length}}).filter(r=>r.text)
 }
+function normalizeDateOcrText(s){
+  s=normalizeDigits(s||'').replace(/\bju[il1]\b/ig,'Jul').replace(/\baug(?:ust)?\b/ig,'Aug').replace(/\bsep(?:t(?:ember)?)?\b/ig,'Sep');
+  s=s.replace(/\b([0-3])(?:I|l)(?=\s|[-\/.])/g,'$11').replace(/\b(?:I|l)(\d)(?=\s|[-\/.])/g,'1$1');
+  return s
+}
 function universalDate(rows){
-  const months={jan:1,january:1,feb:2,february:2,mar:3,march:3,apr:4,april:4,may:5,jun:6,june:6,jul:7,july:7,aug:8,august:8,sep:9,september:9,oct:10,october:10,nov:11,november:11,dec:12,december:12},hits=[];
-  for(const r of rows){const s=normalizeDigits(r.text),bad=/(expected|delivery|delv\.?\s*date|due\s*date|expiry|expire|valid\s*until)/i.test(s);let m;
-    for(const re of [/(\d{1,2})[-\/.](\d{1,2})[-\/.](20\d{2})/g,/(20\d{2})[-\/.](\d{1,2})[-\/.](\d{1,2})/g])while((m=re.exec(s))){let y,mo,d;if(m[1].length===4){y=+m[1];mo=+m[2];d=+m[3]}else{d=+m[1];mo=+m[2];y=+m[3]}if(mo>0&&mo<13&&d>0&&d<32)hits.push({value:`${y}-${String(mo).padStart(2,'0')}-${String(d).padStart(2,'0')}`,score:(bad?-80:0)+(/(?:invoice|order|transaction|receipt)?\s*date/i.test(s)?35:0)+(r.cy<.55?10:0)})}
-    const tm=s.match(/\b(\d{1,2})\s+(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+(20\d{2})\b/i);if(tm){const mo=months[tm[2].toLowerCase()];hits.push({value:`${tm[3]}-${String(mo).padStart(2,'0')}-${String(+tm[1]).padStart(2,'0')}`,score:(bad?-80:0)+(/date/i.test(s)?30:0)+15})}
+  const months={jan:1,january:1,feb:2,february:2,mar:3,march:3,apr:4,april:1+3,may:5,jun:6,june:6,jul:7,july:7,aug:8,august:8,sep:9,september:9,oct:10,october:10,nov:11,november:11,dec:12,december:12},hits=[];
+  const src=[];for(let i=0;i<rows.length;i++){src.push({text:rows[i].text,cy:rows[i].cy});if(i+1<rows.length&&Math.abs(rows[i+1].cy-rows[i].cy)<.065)src.push({text:`${rows[i].text} ${rows[i+1].text}`,cy:(rows[i].cy+rows[i+1].cy)/2})}
+  for(const r of src){const s=normalizeDateOcrText(r.text),bad=/(expected|delivery|delv\.?\s*date|due\s*date|expiry|expire|valid\s*until)/i.test(s);let m;
+    for(const re of [/(\d{1,2})[-\/.](\d{1,2})[-\/.](20\d{2})/g,/(20\d{2})[-\/.](\d{1,2})[-\/.](\d{1,2})/g])while((m=re.exec(s))){let y,mo,d;if(m[1].length===4){y=+m[1];mo=+m[2];d=+m[3]}else{d=+m[1];mo=+m[2];y=+m[3]}if(mo>0&&mo<13&&d>0&&d<32)hits.push({value:`${y}-${String(mo).padStart(2,'0')}-${String(d).padStart(2,'0')}`,score:(bad?-90:0)+(/(?:invoice|order|transaction|receipt)?\s*date/i.test(s)?38:0)+(r.cy<.58?10:0)})}
+    const tm=s.match(/\b(\d{1,2})\s+(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+(20\d{2})\b/i);if(tm){const mo=months[tm[2].toLowerCase()];hits.push({value:`${tm[3]}-${String(mo).padStart(2,'0')}-${String(+tm[1]).padStart(2,'0')}`,score:(bad?-90:0)+(/date/i.test(s)?32:0)+18+(r.cy<.58?8:0)})}
   }
   return hits.sort((a,b)=>b.score-a.score)[0]?.value||''
 }
@@ -1173,9 +1260,17 @@ function merchantLooksPersonalOrId(s){
   if(/^\s*[A-Z]{0,4}\s*[*xX#()\-]*\d{5,}\s*$/i.test(s))return true;
   return false
 }
+function merchantSentenceLike(s){
+  s=normalizeOcrText(s||'').trim();if(!s)return true;
+  if(/^\s*(?:hi|hello|dear|welcome)\b/i.test(s))return true;
+  if(/thanks?\s+(?:for|you)|\bthis\s+is\s+(?:a|an|the)\b|\byour\s+(?:recent\s+)?order\b|\bplease\s+(?:call|keep|visit|retain)\b/i.test(s))return true;
+  const words=s.split(/\s+/).filter(Boolean),business=merchantBusinessSignal(s);
+  if(!business&&words.length>=8&&/[.!?,]/.test(s))return true;
+  return false
+}
 function merchantTrustScore(s){
   s=merchantAdministrativeTrim(s);
-  if(!s||merchantLooksPersonalOrId(s))return-999;
+  if(!s||merchantLooksPersonalOrId(s)||merchantSentenceLike(s))return-999;
   const letters=(s.match(/[A-Za-z]/g)||[]).length,digits=(s.match(/\d/g)||[]).length;
   let sc=letters-digits*4;
   if(/laundr[yv]|laundromat|dry\s*clean|pharmacy|restaurant|caf[eé]|coffee|market|supermarket|grocery|salon|clinic|hospital|bakery|electronics|automatic|trading|services|shop|store/i.test(s))sc+=80;
@@ -1185,7 +1280,7 @@ function merchantTrustScore(s){
 }
 function merchantCandidateBad(s){
   const raw=normalizeOcrText(s||'');
-  return merchantLooksPersonalOrId(raw)||/(?:^\s*(?:hi|hello|dear|welcome)\b|thanks?\s+(?:for|you)|^\s*(?:tax\s*invoice|invoice|receipt|trn|order\s*(?:no|number)?|customer|cashier|date|time|mobile|phone|tel|near|street|road|mall|terms|conditions|amount|total|vat|tax|qty|quantity)\b)/i.test(raw)
+  return merchantLooksPersonalOrId(raw)||merchantSentenceLike(raw)||/(?:^\s*(?:tax\s*invoice|invoice|receipt|trn|order\s*(?:no|number)?|customer|cashier|date|time|mobile|phone|tel|near|street|road|mall|terms|conditions|amount|total|vat|tax|qty|quantity)\b)/i.test(raw)
 }
 function spatialMerchant(rows){
   const headerIndex=rows.findIndex(r=>rowHeader(r.text)),cutoff=headerIndex>=0?rows[headerIndex].cy:.48;
@@ -1214,7 +1309,7 @@ function spatialMerchant(rows){
   return''
 }
 function rowHeader(s){return /(?:\bitem\b|description|product|service|الصنف|الوصف|البيان)/i.test(s)&&/(?:qty|quantity|كمية|الكمية|amount|aed|rate|price|السعر|المبلغ)/i.test(s)}
-function rowStop(s){return /^(?:T\.?\s*Pcs|Total\s*Pieces|Total\s*Qty|Total\s*items?|Subtotal|Sub\s*Total|G\.?\s*Amt|Tax|VAT|Adv|Bal\.?\s*Amt|Gross|Grand\s*Total|Net\s*Amount|Booked\s*By|Advance\s*balance|Terms?|المجموع|الإجمالي|الضريبة)/i.test(s.trim())}
+function rowStop(s){const n=normalizeOcrText(s||'').replace(/[.:]/g,' ').replace(/\s+/g,' ').trim();return /^(?:T\s*Pcs?|TPcs?|Total\s*(?:Pieces|Qty|Quantity|items?)|Subtotal|Sub\s*Total|G\s*Amt|GAmt|Tax|VAT|Adv|Bal\s*Amt|Gross|Grand\s*Total|Net\s*Amount|VATable\s*Sales|Taxable\s*Sales|Booked\s*By|Advance\s*balance|Store\s*Timing|Terms?|Conditions?|المجموع|الإجمالي|الضريبة)/i.test(n)||(/\bT\s*Pcs?\b/i.test(n)&&/\bG\s*Amt\b/i.test(n))}
 function unitPriceFromRowMonies(monies,qty,rowTotal){
   qty=Math.max(1,Number(qty)||1);rowTotal=Number(rowTotal);
   const prior=(monies||[]).slice(0,-1).map(x=>Number(x?.value)).filter(v=>Number.isFinite(v)&&v>0);
@@ -1266,6 +1361,29 @@ function itemContinuationCandidate(s){
   if(/(?:invoice|receipt|customer|cashier|date|time|total|vat|tax|balance|terms|condition|thank|phone|mobile|trn)/i.test(s))return'';
   const letters=(s.match(/[A-Za-z\u0600-\u06FF]/g)||[]).length;return letters>=2?s:''
 }
+function spatialItemsLookaround(rows){
+  const header=rows.findIndex(r=>rowHeader(r.text)),start=header>=0?header+1:0,work=[];
+  for(let i=start;i<rows.length;i++){const s=normalizeOcrText(rows[i].text||'');if(rowStop(s)){if(work.length)break;continue}if(header<0&&rows[i].cy<.15)continue;work.push({row:rows[i],index:i,text:s})}
+  const numeric=[];
+  for(let j=0;j<work.length;j++){const it=parseSpatialItemText(work[j].text,'');if(it){it.y=work[j].row.cy;numeric.push({j,it})}}
+  const out=[];
+  for(let k=0;k<numeric.length;k++){
+    const cur=numeric[k],prevJ=k?numeric[k-1].j:-1,nextJ=k+1<numeric.length?numeric[k+1].j:work.length;
+    let name=cleanItemSequenceName(cur.it.name),prefix=[];
+    for(let j=Math.max(prevJ+1,cur.j-2);j<cur.j;j++){
+      const c=itemContinuationCandidate(work[j].text);if(!c||/[\u0600-\u06FF]/.test(c))continue;
+      if(/[-–—/]\s*$/.test(c)||/^(?:men|women|ladies|gents|household|kids?)\s*[-–—/]?$/i.test(c)||itemNameTrustScore(name)<3)prefix.push(c)
+    }
+    if(prefix.length)name=cleanItemSequenceName(`${prefix.slice(-2).join(' ')} ${name}`);
+    if(itemNameNeedsContinuation(name)){
+      for(let j=cur.j+1;j<Math.min(nextJ,cur.j+3);j++){const c=itemContinuationCandidate(work[j].text);if(c&& !/[\u0600-\u06FF]/.test(c)){name=cleanItemSequenceName(`${name} ${c}`);break}}
+    }
+    // Arabic text directly under the numeric row is a translation/printed continuation of the same item.
+    for(let j=cur.j+1;j<Math.min(nextJ,cur.j+3);j++){const c=itemContinuationCandidate(work[j].text);if(c&&/[\u0600-\u06FF]/.test(c)&&!/[\u0600-\u06FF]/.test(name)){name=cleanItemSequenceName(`${name} — ${c}`);break}}
+    cur.it.name=name;if(name&&!merchantCandidateBad(name))out.push(cur.it)
+  }
+  return out
+}
 function spatialItems(rows){
   let header=rows.findIndex(r=>rowHeader(r.text)),items=[],pending='',started=header>=0;
   for(let i=header>=0?header+1:0;i<rows.length;i++){
@@ -1316,7 +1434,7 @@ function spatialItems(rows){
 }
 
 function spatialReceiptParseLines(lines,engine='PaddleOCR PP-OCRv5 Arabic/English • Spatial OCR'){
-  lines=dedupeSpatialLines(lines||[]);const rows=spatialRows(lines),tot=spatialTotals(rows),itemRows=spatialItems(rows),store0=spatialMerchant(rows),store=merchantTrustScore(store0)>0?store0:'',date=universalDate(rows),itemSum=Number(itemRows.reduce((s,x)=>s+Number(x.readTotal||x.price*x.qty||0),0).toFixed(2));
+  lines=dedupeSpatialLines(lines||[]);const rows=spatialRows(lines),tot=spatialTotals(rows),seqItems=spatialItems(rows),lookItems=spatialItemsLookaround(rows),scoreItems=x=>x.reduce((s,it)=>s+itemNameTrustScore(it.name)+8,0)-Math.abs(x.length-(tot.itemCount||x.length))*10,itemRows=scoreItems(lookItems)>scoreItems(seqItems)+2?lookItems:seqItems,store0=spatialMerchant(rows),store=merchantTrustScore(store0)>0?store0:'',date=universalDate(rows),itemSum=Number(itemRows.reduce((s,x)=>s+Number(x.readTotal||x.price*x.qty||0),0).toFixed(2));
   let subtotal=tot.subtotal,tax=tot.tax,total=tot.total;if(subtotal==null&&itemRows.length&&total!=null&&tax!=null&&Math.abs(itemSum+tax-total)<=.15)subtotal=itemSum;
   const finance=Number.isFinite(subtotal)&&Number.isFinite(tax)&&Number.isFinite(total)&&Math.abs(subtotal+tax-total)<=.15;
   const itemMatch=itemRows.length&&([subtotal,total].filter(Number.isFinite).some(t=>Math.abs(itemSum-t)<=Math.max(.15,Math.abs(t)*.015)));
@@ -1626,12 +1744,12 @@ function cloudReceiptToParsed(payload){
     if(!business&&(clashes||/\b(kandoora|kandora|pyjama|pajama|undershirt|vest|lungi|towel|washing|wash)\b/i.test(mk)))canonicalMerchant='';
   }
   const vals=[canonicalMerchant,r.date,r.total,r.subtotal,r.tax,items.length].filter(v=>v!==null&&v!==undefined&&v!==''&&v!==0).length;
-  return{
+  return sanitizeParsedReceipt({
     store:canonicalMerchant,date:r.date||'',category:inferCategory(`${canonicalMerchant} ${(r.items||[]).map(x=>x.name||'').join(' ')}`),
     subtotal:r.subtotal??null,tax:r.tax??null,total:r.total??null,itemRows:items,items:items.length,itemsExpected:Number(r.printed_item_count)||0,
     score:Number(payload?.score??0)||Math.min(100,vals*14),fields:vals,vatEvidence:Number(r.tax||0)>0,totalReliable:r.total!=null,
     localAI:true,engine:'PaddleOCR v5 + Tesseract Local Rescue • PDF.js • Cloud Last',warnings:Array.isArray(r.warnings)?r.warnings:[],readerMeta:payload?.meta||null,accepted:payload?.accepted!==false
-  }
+  })
 }
 async function checkCloudReaderHealth(){
   try{
@@ -2391,7 +2509,7 @@ $('#restoreInput').onchange=async e=>{
 clearForm(false);applyLang();ensurePersistentStorage();restoreDraft();refreshSyncUI();setTimeout(()=>reconcileLocalEvidenceFlags().catch(()=>{}),250);if(syncCode){setTimeout(async()=>{try{await syncInitialPull(true);syncOpenSocket()}catch(e){console.warn('Initial sync unavailable',e)}},400)}setLocalAIStatus('loading',lang==='ar'?'جارٍ التحقق من اتصال Cloudflare AI…':'Checking Cloudflare AI connection…',5);setTimeout(checkCloudReaderHealth,250);
 </script>
 
-<footer class="app-version-footer" id="appVersionFooter" data-version="5.5.0">الإصدار 5.5.0</footer>
+<footer class="app-version-footer" id="appVersionFooter" data-version="5.6.0">الإصدار 5.6.0</footer>
 <script>if('serviceWorker' in navigator){window.addEventListener('load',async()=>{try{const r=await navigator.serviceWorker.register('/sw.js',{updateViaCache:'none'});r.update().catch(()=>{})}catch(e){}});}</script>
 </body>
 </html>
