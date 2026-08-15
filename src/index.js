@@ -3,7 +3,6 @@ const FALLBACK_MODEL = '@cf/meta/llama-3.2-11b-vision-instruct';
 const STRUCTURED_MODEL = FALLBACK_MODEL;
 const MODEL = FALLBACK_MODEL;
 const VISION_RESCUE_MODEL = '@cf/meta/llama-4-scout-17b-16e-instruct';
-const DOCUMENT_VISION_MODEL = '@cf/google/gemma-4-26b-a4b-it';
 
 const LEGACY_PROMPT = `You are a literal OCR transcriber specialized in many different UAE receipt and tax-invoice layouts.
 
@@ -89,7 +88,7 @@ Rules:
 9. If only one money value is printed for a row, use it as line total.
 10. Read decimals exactly. If unclear, leave blank instead of guessing.
 11. No JSON, markdown, explanation or code fences.`;
-const VERSION='5.9.1';
+const VERSION='5.9.2';
 
 const PROMPT = `Read the COMPLETE receipt/tax invoice image literally. The receipt may be thermal paper, POS, pharmacy, laundry, restaurant, screenshot, digital job order, Arabic/English, narrow, wide, long, or short.
 
@@ -276,13 +275,6 @@ function merchant(v){
     .replace(/[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]+/g,' ')
     .replace(/\s+/g,' ').trim();
   s=s.replace(/\b(?:TAX\s*INVOICE|INVOICE|RECEIPT|JOB\s*ORDER|TRN|MOB(?:ILE)?|TEL(?:EPHONE)?|PHONE|CUSTOMER|CASHIER|DATE|TIME)\b.*$/i,'').trim();
-  // Trim location/address tails after a recognized customer-facing business type.
-  const bt=s.match(/\b(?:restaurant|caf[eé]|coffee|pharmacy|laundry|laundromat|bakery|market|store|shop)\b/i);
-  if(bt){
-    const end=bt.index+bt[0].length,tail=s.slice(end);
-    if(/\b(?:souq|mall|building|street|road|abu\s*dhabi|al\s*ain|dubai|u\.?a\.?e\.?)\b/i.test(tail))s=s.slice(0,end).trim();
-  }
-  s=s.replace(/\b(Restaurant|Cafe|Coffee|Pharmacy|Laundry)\b(?:\s+\1\b)+/ig,'$1').replace(/\s+\d{1,4}\s*$/,'').trim();
   if(/^\s*(?:mr|mrs|ms|miss|dr|hi|hello|dear|welcome)\b/i.test(s))return null;
   if(/\b(?:customer|member|account|bill\s*#?|order\s*#?)\b/i.test(s))return null;
   if(/thanks?\s+(?:for|you)|\bthis\s+is\s+(?:a|an|the)\b|\byour\s+(?:recent\s+)?order\b/i.test(s))return null;
@@ -315,7 +307,7 @@ function merchantCandidateScore(name,index=0,preferred=false){
   if(/\b(holding|holdings|investment|investments)\b/i.test(s))score-=42;
   if(/\bmanagement\b/i.test(s))score-=24;
   if(/\b(head\s*office|corporate|parent\s*company)\b/i.test(s))score-=28;
-  if(/\b(municipality|building|street|road|mall|souq|abu\s*dhabi|al\s*ain|dubai)\b/i.test(s))score-=35;
+  if(/\b(municipality|building|street|road|mall)\b/i.test(s))score-=35;
   if(/\b(tax\s*invoice|invoice|receipt|trn|customer|cashier|bill\s*no|order\s*no)\b/i.test(s))score-=80;
   if(/^\s*(?:mr|mrs|ms|miss|dr)\b/i.test(s))score-=140;
   if((s.match(/\d/g)||[]).length>=6 && (s.match(/[A-Za-z]/g)||[]).length<10)score-=100;
@@ -1115,10 +1107,6 @@ function checkedQuality(c){
   const items=Array.isArray(r.items)?r.items:[];
   s+=Math.min(30,items.length*4);
   if(r.merchant_name_en)s+=8;
-  const mn=txt(r.merchant_name_en||'');
-  const locHits=(mn.match(/\b(?:souq|mall|building|street|road|abu\s*dhabi|al\s*ain|dubai)\b/gi)||[]).length;
-  if(locHits>=2)s-=45;
-  if(items.some(x=>/^\s*(?:dine\s*in|\d+\s*[x×]\s*(?:AED|DHS?)|\+)/i.test(txt(x?.name||''))))s-=55;
   if(r.date)s+=8;
   if(r.total!=null)s+=8;
   const warns=Array.isArray(r.warnings)?r.warnings:[];
@@ -1274,11 +1262,11 @@ printed_item_count is the count of distinct purchase rows only when explicitly p
 printed_piece_count is T.Pcs / total pieces / total quantity only when explicitly printed; otherwise 0.
 For each item preserve English and Arabic names when printed. If one language is absent, use an empty string for it.
 quantity, unit_price and line_total must belong to the same row.
-If the receipt has one AED/Amount money column, put that printed value in line_total and use 0 for unit_price if unit price is not separately printed. Infer the quantity ONLY from the visual Qty/Quantity column under its header; never swap an integer-looking amount with quantity.
-Do not include totals, VAT, payment methods, customer details, IDs, dates, headings, balances or terms as items. T.Pcs / G.Amt / Tax / Adv / Bal.Amt are financial/pieces summary rows, never purchase items. If a paid parent product row has its own amount and indented component/add-on lines underneath (for example a base price plus flavor/add-on price), output ONE item using the parent row amount; the indented component lines are price breakdown, not extra purchased rows.
+If the receipt has one AED/Amount money column, put that printed value in line_total and use 0 for unit_price if unit price is not separately printed.
+Do not include totals, VAT, payment methods, customer details, IDs, dates, headings, balances or terms as items. T.Pcs / G.Amt / Tax / Adv / Bal.Amt are financial/pieces summary rows, never purchase items.
 subtotal is the amount before VAT when explicitly labeled.
 tax is the VAT/tax money amount, not the percentage.
-total is the final payable/gross/net/Amount Due value copied from the printed label. Never replace a visible labeled total with a value calculated from item rows.
+total is the final payable/gross/net amount.
 If a numeric field is not visible, return 0 rather than guessing.`;
 
   const result=await env.AI.run(STRUCTURED_MODEL,{
@@ -1315,168 +1303,18 @@ ITEM|English item text|Arabic item text|quantity|unit price|line total
 
 MANDATORY METHOD:
 1. Locate the merchant header, date, the purchase table headers, then the printed financial summary. Read the page top-to-bottom.
-2. Infer the table's OWN column order from its headers. It can be Qty|Item|Price, Description|Qty|Amount, Item|Qty|Rate|Amount, Code|Description|Qty|Unit|Total, or another arrangement. Follow the x-position under each printed header: in Description|Qty|Amount, an integer in the Qty column is quantity and the rightmost money under Amount is the line total. Never swap them just because the amount is 5.00 or another small integer-like value.
+2. Infer the table's OWN column order from its headers. It can be Qty|Item|Price, Description|Qty|Amount, Item|Qty|Rate|Amount, Code|Description|Qty|Unit|Total, or another arrangement.
 3. For each purchased row, keep quantity and money from that same visual row. If the description wraps to the next/previous line, merge only adjacent descriptive text.
 4. Delivery/service charges inside the item table are legitimate items when they contribute to the payable total.
-5. Parent/modifier hierarchy: when a main product row itself prints a final amount at the right edge and the following indented lines show a base/component/add-on breakdown (such as '1 x AED ...' and '+ add-on (AED ...)'), output ONE ITEM for the parent using the parent row amount. Do not replace the parent amount with the base component and do not create the add-on as a second purchase. If the parent has 0.00 and only the child is paid, then merge the child into the parent.
+5. A zero-price parent line followed by a paid modifier/size line can represent ONE item; merge them only when visual grouping or printed item count supports it.
 6. Never treat TAX/VAT, subtotal, grand total, CASH/card payment, bill/check/order/token/TRN/barcode/reference numbers, dates, phone numbers or customer IDs as items or prices.
-7. Item prices may be VAT-INCLUSIVE. Copy SUBTOTAL, VAT and TOTAL from their printed labels independently. Labels such as “Total before VAT/Total before tax” are SUBTOTAL, “VAT incl.” followed by a money amount is the VAT money amount, and “Grand Total/Amount Due” is TOTAL. Printed labeled totals outrank arithmetic reconstruction. It is valid for sum(ITEM line totals)=TOTAL while SUBTOTAL+VAT=TOTAL.
+7. Item prices may be VAT-INCLUSIVE. Copy SUBTOTAL, VAT and TOTAL from their printed labels independently. Labels such as “Total before VAT” are SUBTOTAL, “VAT incl.” followed by a money amount is the VAT money amount, and “Grand Total” is TOTAL. It is valid for sum(ITEM line totals)=TOTAL while SUBTOTAL+VAT=TOTAL.
 8. Currency symbols can resemble digits in OCR. Read the monetary number itself character-by-character; do not prepend a fake 8/3 from the currency glyph.
 9. If only one amount column is printed, put that value in line total and leave unit price blank. If unreadable, leave blank rather than guessing.
 10. Preserve the printed date order and literal product names. No JSON, markdown or commentary.`;
   const result=await env.AI.run(VISION_RESCUE_MODEL,{prompt,image,max_tokens:1900,temperature:0,top_p:.03,stream:false});
   const raw=responseText(result);if(!raw)throw new Error('Llama 4 Vision rescue returned no text');
   const checked=validate(parseProtocol(raw));checked.transcript_lines=raw.split(/\n+/).filter(Boolean).length;checked.transcript_preview=raw.slice(0,2600);checked.primary_engine='llama4-vision-layout-adjudicator';checked.inference_calls=1;checked.models_used=[VISION_RESCUE_MODEL];return checked
-}
-
-
-async function readStrictLayoutAudit(env,image){
-  const prompt=`Independently audit ONE complete receipt image for layout accuracy. Do not reuse any prior extraction.
-
-Return ONLY:
-STORE|customer-facing business name
-DATE_RAW|transaction/invoice/order date exactly as printed
-COUNT|explicit distinct purchased-row count only
-PIECES|explicit total pieces only
-VAT_RATE|printed percentage
-SUBTOTAL|printed before-tax amount
-VAT|printed tax money amount
-TOTAL|printed final payable/Amount Due/Grand Total
-ITEM|English item text|Arabic item text|quantity|unit price|line total
-
-STRICT LAYOUT RULES:
-1. First locate the actual merchant header. A mall/souq/city/address line is never STORE when a business/cafe/restaurant/pharmacy/laundry name is printed above it.
-2. Locate the table headers and use their horizontal positions. For Description|Qty|Amount, quantity comes from the Qty column and the rightmost amount comes from Amount. Never swap 1 and 5.00, 2 and 10.00, etc.
-3. If there is no Qty column, default genuine top-level item quantity to 1 unless an explicit quantity is printed.
-4. Parent/modifier receipts: a top-level product row with its own right-edge amount is the purchased item. Indented lines underneath such as "1 x AED 32.00" or "+ flavor (AED 10.00)" are component breakdowns. Keep ONE item at the parent amount. Do not substitute the child/base price for the parent total.
-5. Only if the parent line itself is 0.00 or has no amount may a paid child/modifier determine the item's amount.
-6. TOTAL/SUBTOTAL/VAT must be copied from their explicit labels. Never calculate a different total merely because extracted item rows happen to sum to it.
-7. Exclude VAT, subtotal, total, Amount Due, Cash/Card, bill/check/order/token/TRN/barcode/reference/date/customer/phone/address lines from ITEM.
-8. Preserve literal item names and printed date order. If uncertain leave blank. No JSON, markdown, commentary.`;
-  const result=await env.AI.run(VISION_RESCUE_MODEL,{prompt,image,max_tokens:2000,temperature:0,top_p:.02,stream:false});
-  const raw=responseText(result);if(!raw)throw new Error('Strict layout audit returned no text');
-  const checked=validate(parseProtocol(raw));
-  checked.transcript_lines=raw.split(/\n+/).filter(Boolean).length;
-  checked.transcript_preview=raw.slice(0,2800);
-  checked.primary_engine='llama4-strict-layout-audit';
-  checked.inference_calls=1;
-  checked.models_used=[VISION_RESCUE_MODEL];
-  return checked
-}
-
-
-const DOCUMENT_VISION_PROMPT = `You are the primary document-vision OCR engine for ONE complete retail receipt, tax invoice, POS bill, pharmacy invoice, laundry ticket, restaurant receipt, cafe receipt, service invoice, screenshot, or scanned receipt from any merchant and any layout.
-
-Your job is to READ THE ACTUAL IMAGE, not infer a familiar template. Work from visual geometry and printed labels. Return ONLY these protocol lines:
-STORE|actual customer-facing merchant/outlet/brand name
-DATE_RAW|transaction/invoice/order date exactly as printed
-COUNT|explicit count of DISTINCT purchased rows only, otherwise blank
-PIECES|explicit total pieces/total quantity only, otherwise blank
-VAT_RATE|printed VAT/tax percentage, otherwise blank
-SUBTOTAL|printed amount before tax/VAT
-VAT|printed VAT/tax money amount
-TOTAL|printed final payable / Grand Total / Amount Due
-ITEM|English item text|Arabic item text|quantity|unit price|line total
-
-UNIVERSAL READING RULES:
-1. First identify the receipt paper/document boundaries. Ignore phone screens, carpets, tables, hands, background objects, browser UI, and any text outside the receipt.
-2. Read the merchant from the prominent business header. Address/location lines (mall, souq, city, street, UAE, phone, TRN) are not the merchant when a brand/outlet name is visible.
-3. Read the transaction/invoice date exactly as printed. Two-digit years such as 26 mean 2026 when normalized later by software. Do not use a date visible on a phone/background outside the receipt.
-4. Locate the item table headers and infer THEIR visual x-positions. Layouts vary: Qty|Item|Price, Description|Qty|Amount, Item|Qty|Rate|Amount, Code|Description|Qty|Unit|Total, or no explicit headers. Never assume a fixed column order.
-5. For every top-level purchased row, keep the description, quantity, unit price, and line total from the SAME visual row. Quantity comes from Qty/Quantity/Pcs only. If no quantity is printed for a genuine top-level item, use quantity 1.
-6. If one money column is printed, that is the line total. If unit price is not separately printed, leave unit price blank/0.
-7. Parent/modifier hierarchy is critical. If a top-level product prints its own right-edge amount and indented lines underneath show component/base/add-on pricing (for example “1 x AED 32.00” and “+ flavor (AED 10.00)”), output ONE ITEM using the parent product amount. The child lines are a price breakdown, not separate purchases. Only when the parent is 0.00 or has no amount may a paid child define the purchased item amount.
-8. A delivery/service charge inside the purchase table is a valid ITEM if it contributes to the payable amount. “Dine in”, “Take away”, room/table identifiers, cashier/creator, bill/order/token/check numbers are not items.
-9. VAT, Tax, Subtotal, Total before tax/VAT, Grand Total, Amount Due, Cash, Card, Change, Balance, TRN, invoice/order numbers, phone numbers, dates, barcodes and reference IDs are NEVER items.
-10. Copy SUBTOTAL, VAT, TOTAL, and VAT_RATE from their PRINTED LABELS independently. Do not replace a visible labeled total with a value calculated from extracted items.
-11. Item prices may be VAT-inclusive. It is valid for sum(item line totals)=TOTAL while SUBTOTAL+VAT=TOTAL. For modifier receipts the top-level parent amounts may sum to TOTAL even though base components sum to something else.
-12. Read decimal digits character-by-character. Do not drop a leading 1 (124.00 is not 104.00; 118.10 is not 98.10). Currency symbols are not digits.
-13. Preserve literal item names. Merge only adjacent wrapped description lines that visually belong to the same purchased row.
-14. If a field is genuinely unreadable, leave it blank rather than guessing. No markdown, commentary, JSON, or examples in the response.`;
-
-async function readGemmaDocumentReceipt(env,image){
-  const result=await env.AI.run(DOCUMENT_VISION_MODEL,{
-    prompt:DOCUMENT_VISION_PROMPT,
-    image,
-    max_tokens:2200,
-    temperature:0,
-    top_p:.02,
-    stream:false
-  });
-  const raw=responseText(result);if(!raw)throw new Error('Gemma 4 document reader returned no text');
-  const checked=validate(parseProtocol(raw));
-  checked.transcript_lines=raw.split(/\n+/).filter(Boolean).length;
-  checked.transcript_preview=raw.slice(0,3200);
-  checked.primary_engine='gemma4-universal-document-vision';
-  checked.inference_calls=1;
-  checked.models_used=[DOCUMENT_VISION_MODEL];
-  return checked
-}
-
-function candidateItemSumV590(c){
-  const r=c?.receipt||{},items=Array.isArray(r.items)?r.items:[];
-  return r2(items.reduce((s,x)=>s+(rowMoney(x)||0),0))
-}
-function candidateMoneyNearV590(a,b){
-  a=Number(a);b=Number(b);if(!Number.isFinite(a)||!Number.isFinite(b))return null;
-  return Math.abs(a-b)<=Math.max(.08,Math.max(Math.abs(a),Math.abs(b))*.004)
-}
-function candidateMerchantKeyV590(v){return merchantKey(v||'').replace(/\b(?:restaurant|cafe|coffee|pharmacy|laundry|laundromat|shop|store)\b/g,'').trim()}
-function pairVisionAgreementV590(a,b){
-  if(!a||!b)return-120;const ar=a.receipt||{},br=b.receipt||{};let s=0,n=0;
-  for(const k of ['total','subtotal','tax']){
-    const near=candidateMoneyNearV590(ar[k],br[k]);if(near===null)continue;n++;s+=near?(k==='total'?85:55):(k==='total'?-70:-35)
-  }
-  const as=candidateItemSumV590(a),bs=candidateItemSumV590(b);if(as>0&&bs>0){n++;s+=candidateMoneyNearV590(as,bs)?55:-30}
-  const ai=Array.isArray(ar.items)?ar.items:[],bi=Array.isArray(br.items)?br.items:[];
-  if(ai.length&&bi.length){n++;s+=ai.length===bi.length?30:-18}
-  if(ar.date&&br.date){n++;s+=ar.date===br.date?24:-20}
-  const ak=candidateMerchantKeyV590(ar.merchant_name_en),bk=candidateMerchantKeyV590(br.merchant_name_en);
-  if(ak&&bk){n++;s+=(ak.includes(bk)||bk.includes(ak))?18:-8}
-  return n?s:-20
-}
-function visionConsensusRankV590(c,list){
-  if(!c)return-99999;let s=checkedQuality(c);
-  if(c.primary_engine==='gemma4-universal-document-vision')s+=35;
-  if(c.accepted&&!shouldRepair(c))s+=70;else s-=45;
-  for(const alt of list){if(alt!==c)s+=pairVisionAgreementV590(c,alt)*.55}
-  return s
-}
-function visionPairStronglyAgreesV590(a,b){
-  if(!a||!b)return false;const ar=a.receipt||{},br=b.receipt||{};
-  const total=candidateMoneyNearV590(ar.total,br.total),tax=candidateMoneyNearV590(ar.tax,br.tax),sub=candidateMoneyNearV590(ar.subtotal,br.subtotal);
-  const ai=Array.isArray(ar.items)?ar.items:[],bi=Array.isArray(br.items)?br.items:[];
-  return total===true && (tax!==false) && (sub!==false) && (!ai.length||!bi.length||ai.length===bi.length)
-}
-async function readVisionConsensusReceipt(env,image){
-  const candidates=[];let calls=0;
-  const first=await Promise.allSettled([readGemmaDocumentReceipt(env,image),readStrictLayoutAudit(env,image)]);
-  for(const x of first){if(x.status==='fulfilled'&&x.value){calls++;candidates.push(x.value)}}
-  if(!candidates.length)throw new Error('Universal vision consensus returned no result');
-
-  let needThird=candidates.length<2||!visionPairStronglyAgreesV590(candidates[0],candidates[1])||candidates.some(shouldRepair);
-  if(needThird){
-    try{
-      const obj=await runStructuredLlama(env,image);calls++;
-      if(obj){const c=checkedFromStructuredJson(obj);c.primary_engine='llama32-structured-vision-tiebreak';c.inference_calls=1;c.models_used=[STRUCTURED_MODEL];c.transcript_preview=JSON.stringify(obj).slice(0,3000);candidates.push(c)}
-    }catch(e){console.warn('vision-consensus-structured-tiebreak',e)}
-  }
-
-  const ranked=candidates.slice().sort((a,b)=>visionConsensusRankV590(b,candidates)-visionConsensusRankV590(a,candidates));
-  let best=ranked[0]||null;if(!best)throw new Error('Universal vision consensus returned no usable result');
-  // Only fill missing merchant/date from another vision candidate. Never mix item rows or money fields across models.
-  const br=best.receipt||{};
-  for(const alt of ranked.slice(1)){
-    const ar=alt.receipt||{};
-    if(!br.merchant_name_en&&ar.merchant_name_en)br.merchant_name_en=ar.merchant_name_en;
-    if(!br.date&&ar.date)br.date=ar.date;
-  }
-  best.receipt=br;best.complete=!!best.accepted&&!!br.merchant_name_en&&!!br.date;
-  best.primary_engine=`vision-consensus:${best.primary_engine||'unknown'}`;
-  best.inference_calls=calls;
-  best.models_used=[...new Set(candidates.flatMap(x=>x.models_used||[]))];
-  best.consensus_candidates=candidates.map(x=>({engine:x.primary_engine,accepted:!!x.accepted,score:x.score,total:x.receipt?.total,subtotal:x.receipt?.subtotal,tax:x.receipt?.tax,items:x.receipt?.items?.length||0}));
-  return best
 }
 
 async function readUniversalReceipt(env,image){
@@ -1627,24 +1465,17 @@ async function readReceiptTextEvidence(env,body){
 async function readForensicReceipt(env,image){
   const candidates=[];let calls=0;
   try{
-    const scout=await readScoutReceipt(env,image);calls++;scout.inference_calls=calls;candidates.push(scout)
+    const scout=await readScoutReceipt(env,image);calls++;scout.inference_calls=calls;candidates.push(scout);
+    if(scout.accepted&&!shouldRepair(scout)){scout.models_used=[VISION_RESCUE_MODEL];return scout}
   }catch(e){console.warn('forensic-scout',e)}
   try{
-    const strict=await readStrictLayoutAudit(env,image);calls++;strict.inference_calls=calls;candidates.push(strict)
-  }catch(e){console.warn('forensic-strict-layout',e)}
-
-  let best=chooseBestChecked(candidates);
-  // Structured JSON is a third opinion only when the two independent vision passes
-  // still disagree or fail validation.
-  if(!best||shouldRepair(best)){
-    try{
-      const obj=await runStructuredLlama(env,image);calls++;
-      if(obj){
-        const checked=checkedFromStructuredJson(obj);checked.primary_engine='forensic-structured-json';checked.inference_calls=calls;checked.models_used=[STRUCTURED_MODEL];checked.transcript_preview=JSON.stringify(obj).slice(0,2600);candidates.push(checked);
-        best=chooseBestChecked(candidates)
-      }
-    }catch(e){console.warn('forensic-structured',e)}
-  }
+    const obj=await runStructuredLlama(env,image);calls++;
+    if(obj){
+      const checked=checkedFromStructuredJson(obj);checked.primary_engine='forensic-structured-json';checked.inference_calls=calls;checked.models_used=[STRUCTURED_MODEL];checked.transcript_preview=JSON.stringify(obj).slice(0,2600);candidates.push(checked);
+      if(checked.accepted&&!shouldRepair(checked))return checked
+    }
+  }catch(e){console.warn('forensic-structured',e)}
+  const best=chooseBestChecked(candidates);
   if(!best)throw new Error('Forensic receipt reader returned no usable extraction');
   best.inference_calls=calls;best.models_used=[VISION_RESCUE_MODEL,STRUCTURED_MODEL];
   if(shouldRepair(best)){best.accepted=false;best.complete=false;best.receipt={...(best.receipt||{}),warnings:[...new Set([...(best.receipt?.warnings||[]),'Forensic extraction did not pass final validation'])]}}
@@ -1652,7 +1483,6 @@ async function readForensicReceipt(env,image){
 }
 
 async function readReceipt(env,image,mode='legacy'){
-  if(mode==='vision2')return await readVisionConsensusReceipt(env,image);
   if(mode==='forensic')return await readForensicReceipt(env,image);
   if(mode==='universal'||mode==='structured')return await readUniversalReceipt(env,image);
   return await readLegacyReceipt(env,image)
@@ -1721,7 +1551,7 @@ export default {
     const url=new URL(request.url);
     if(url.pathname.startsWith('/api/sync/'))return await handleSyncRequest(request,env,url);
     if(url.pathname==='/api/health'){
-      return new Response(JSON.stringify({ok:true,engine:'Dual Local OCR + Gemma 4 + Llama 4 Universal Vision Consensus + Durable Object Sync',primary:FALLBACK_MODEL,rescue:VISION_RESCUE_MODEL,document_vision:DOCUMENT_VISION_MODEL,structured:STRUCTURED_MODEL,sync:'Durable Objects WebSocket',version:VERSION,base:'4.4.0'}),{headers:headers()});
+      return new Response(JSON.stringify({ok:true,engine:'Stable Dual Local OCR + Stable Cloud + Llama 4 Forensic Rescue + Durable Object Sync',primary:FALLBACK_MODEL,rescue:VISION_RESCUE_MODEL,structured:STRUCTURED_MODEL,sync:'Durable Objects WebSocket',version:VERSION,base:'4.4.0'}),{headers:headers()});
     }
     if(url.pathname==='/api/receipt'){
       if(request.method!=='POST')return new Response(JSON.stringify({ok:false,error:'Method not allowed'}),{status:405,headers:headers()});
@@ -1729,7 +1559,7 @@ export default {
       try{
         const body=await request.json(),image=body?.image,
           requestedMode=String(body?.mode||'legacy').toLowerCase(),
-          mode=requestedMode==='segments'?'segments':(requestedMode==='vision2'?'vision2':(requestedMode==='forensic'?'forensic':((requestedMode==='universal'||requestedMode==='structured')?'universal':'legacy'))),
+          mode=requestedMode==='segments'?'segments':(requestedMode==='forensic'?'forensic':((requestedMode==='universal'||requestedMode==='structured')?'universal':'legacy')),
           images=Array.isArray(body?.images)?body.images:[];
         if(mode==='segments'){
           if(images.length!==2||!images.every(validImage))return new Response(JSON.stringify({ok:false,error:'Two receipt segment images are required'}),{status:400,headers:headers()});
@@ -1739,7 +1569,7 @@ export default {
         const result=mode==='segments'?await readReceiptSegments(env,images):await readReceipt(env,image,mode);
         return new Response(JSON.stringify({
           ok:true,...result,
-          meta:{engine:mode==='vision2'?'Cloudflare Workers AI • Gemma 4 + Llama Vision Consensus':(mode==='forensic'?'Cloudflare Workers AI • Independent Forensic Layout Reader':(mode==='universal'?'Cloudflare Workers AI • Universal Table Parser':'Cloudflare Workers AI • Stable 4.4 Llama Primary')),model:mode==='vision2'?DOCUMENT_VISION_MODEL:(mode==='forensic'?VISION_RESCUE_MODEL:FALLBACK_MODEL),structured:false,version:VERSION,base:'4.4.0',scan_id:scanId,elapsed_ms:Date.now()-started,images:1,inference_calls:result.inference_calls||1,repair_used:!!result.repair_used,models_used:result.models_used||[mode==='vision2'?DOCUMENT_VISION_MODEL:(mode==='forensic'?VISION_RESCUE_MODEL:FALLBACK_MODEL)]}
+          meta:{engine:mode==='forensic'?'Cloudflare Workers AI • Independent Forensic Layout Reader':(mode==='universal'?'Cloudflare Workers AI • Universal Table Parser':'Cloudflare Workers AI • Stable 4.4 Llama Primary'),model:mode==='forensic'?VISION_RESCUE_MODEL:FALLBACK_MODEL,structured:false,version:VERSION,base:'4.4.0',scan_id:scanId,elapsed_ms:Date.now()-started,images:1,inference_calls:result.inference_calls||1,repair_used:!!result.repair_used,models_used:result.models_used||[mode==='forensic'?VISION_RESCUE_MODEL:FALLBACK_MODEL]}
         }),{headers:headers()});
       }catch(e){
         console.error('receipt-reader',e);
