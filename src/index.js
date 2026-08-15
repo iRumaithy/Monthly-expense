@@ -88,7 +88,7 @@ Rules:
 9. If only one money value is printed for a row, use it as line total.
 10. Read decimals exactly. If unclear, leave blank instead of guessing.
 11. No JSON, markdown, explanation or code fences.`;
-const VERSION='5.7.9';
+const VERSION='5.8.0';
 
 const PROMPT = `Read the COMPLETE receipt/tax invoice image literally. The receipt may be thermal paper, POS, pharmacy, laundry, restaurant, screenshot, digital job order, Arabic/English, narrow, wide, long, or short.
 
@@ -258,10 +258,16 @@ function clamp(v){const n=Number(v);return Number.isFinite(n)?Math.max(0,Math.mi
 function validDate(v){
   let s=txt(v).trim().replace(/\bju[il1]\b/ig,'Jul').replace(/\b([0-3])(?:I|l)(?=\s|[-\/.])/g,'$11').replace(/\b(?:I|l)(\d)(?=\s|[-\/.])/g,'1$1');
   if(!s)return null;let y,m,d,match;
-  if((match=s.match(/\b(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})\b/))){y=+match[1];m=+match[2];d=+match[3]}
-  else if((match=s.match(/\b(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})\b/))){d=+match[1];m=+match[2];y=+match[3]}
-  else{const months={jan:1,january:1,feb:2,february:2,mar:3,march:3,apr:4,april:4,may:5,jun:6,june:6,jul:7,july:7,aug:8,august:8,sep:9,september:9,oct:10,october:10,nov:11,november:11,dec:12,december:12};match=s.match(/\b(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})\b/);if(match){d=+match[1];m=months[match[2].toLowerCase()];y=+match[3]}}
-  if(!y||!m||!d)return null;const z=new Date(Date.UTC(y,m-1,d));if(y<2000||y>2100||z.getUTCFullYear()!==y||z.getUTCMonth()!==m-1||z.getUTCDate()!==d)return null;return `${String(y).padStart(4,'0')}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`
+  if((match=s.match(/\b(20\d{2})[-/.](\d{1,2})[-/.](\d{1,2})\b/))){y=+match[1];m=+match[2];d=+match[3]}
+  else if((match=s.match(/\b(\d{1,2})[-/.](\d{1,2})[-/.](\d{2}|\d{4})\b/))){d=+match[1];m=+match[2];y=+match[3]}
+  else{
+    const months={jan:1,january:1,feb:2,february:2,mar:3,march:3,apr:4,april:4,may:5,jun:6,june:6,jul:7,july:7,aug:8,august:8,sep:9,september:9,oct:10,october:10,nov:11,november:11,dec:12,december:12};
+    match=s.match(/\b(\d{1,2})[\s\-/.]+([A-Za-z]{3,9})[\s\-/.]+(\d{2}|\d{4})\b/);
+    if(match){d=+match[1];m=months[match[2].toLowerCase()];y=+match[3]}
+  }
+  if(y<100)y+=2000;
+  if(!y||!m||!d)return null;const z=new Date(Date.UTC(y,m-1,d));if(y<2000||y>2100||z.getUTCFullYear()!==y||z.getUTCMonth()!==m-1||z.getUTCDate()!==d)return null;
+  return `${String(y).padStart(4,'0')}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`
 }
 function merchant(v){
   let s=txt(v)
@@ -403,8 +409,8 @@ function applyReceiptRegressionGuardsWorkerV571(r,warnings=[]){
 }
 
 function summaryName(s){
-  const n=txt(s).replace(/[.:]/g,' ').replace(/\s+/g,' ').trim();
-  return /^(?:vat|tax|subtotal|sub\s*total|vata?ble\s*sales|taxable\s*sales|net\s*w\/?out\s*tax|net\s*amount|gross|g\s*amt|gamt|excl\s*vat|grand\s*total|total|balance|bal\s*amt|outstanding|amount\s*due|total\s*item|t\s*pcs?|tpcs?|cash|card|visa|online|change|adv|booked\s*by|advance\s*balance|store\s*timing|terms?|conditions?|trn|invoice|job\s*order|ضريبة|الإجمالي|الاجمالي|المجموع)/i.test(n)||(/\bt\s*pcs?\b/i.test(n)&&/\bg\s*amt\b/i.test(n))
+  const n=txt(s).replace(/^[^A-Za-z\u0600-\u06FF]+/,'').replace(/[.:]/g,' ').replace(/\s+/g,' ').trim();
+  return /^(?:vat\s*incl|vat|tax|subtotal|sub\s*total|total\s*before\s*(?:vat|tax)|vata?ble\s*sales|taxable\s*sales|net\s*w\/?out\s*tax|net\s*amount|gross|g\s*amt|gamt|excl\s*vat|grand\s*total|final\s*total|total\b|balance|bal\s*amt|outstanding|amount\s*due|total\s*item|products?\s*count|t\s*pcs?|tpcs?|cash|card|visa|online|change|adv|booked\s*by|advance\s*balance|store\s*timing|home\s*delivery|thank\s*you|terms?|conditions?|trn|invoice|job\s*order|ضريبة|الضريبة|الإجمالي|الاجمالي|المجموع)/i.test(n)||(/\bt\s*pcs?\b/i.test(n)&&/\bg\s*amt\b/i.test(n))
 }
 
 const RECEIPT_JSON_SCHEMA={
@@ -1151,7 +1157,7 @@ function shouldRepair(checked){
   if(isPlaceholderStore(r.merchant_name_en)||!r.merchant_name_en||!r.date)return true;
   const warns=Array.isArray(r.warnings)?r.warnings:[];
   if(warns.some(x=>/VAT amount does not match|item row sum does not match|Printed item count|Printed pieces/i.test(x)))return true;
-  const badItem=x=>/^(?:vat|tax|subtotal|sub\s*total|total|grand\s*total|amount\s*due|cash|card|bill|check|order|token|trn|invoice|receipt|printed|date|time|customer|cid|ضريبة|الضريبة|الإجمالي|الاجمالي|المجموع)/i.test(txt(x?.name||x?.name_en||''));
+  const badItem=x=>/^(?:vat\s*incl|vat|tax|subtotal|sub\s*total|total\s*before|total\b|grand\s*total|final\s*total|amount\s*due|cash|card|bill|check|order|token|trn|invoice|receipt|printed|date|time|customer|cid|home\s*delivery|thank\s*you|ضريبة|الضريبة|الإجمالي|الاجمالي|المجموع)/i.test(txt(x?.name||x?.name_en||'').replace(/^[^A-Za-z\u0600-\u06FF]+/,''));
   if(items.some(badItem))return true;
   const first=items[0],firstMoney=rowMoney(first);
   if(items.length===1&&r.total!=null&&firstMoney!=null&&Number(r.total)>Number(firstMoney)*1.45)return true;
@@ -1302,7 +1308,7 @@ MANDATORY METHOD:
 4. Delivery/service charges inside the item table are legitimate items when they contribute to the payable total.
 5. A zero-price parent line followed by a paid modifier/size line can represent ONE item; merge them only when visual grouping or printed item count supports it.
 6. Never treat TAX/VAT, subtotal, grand total, CASH/card payment, bill/check/order/token/TRN/barcode/reference numbers, dates, phone numbers or customer IDs as items or prices.
-7. Item prices may be VAT-INCLUSIVE. Copy SUBTOTAL, VAT and TOTAL from their printed labels independently. It is valid for sum(ITEM line totals)=TOTAL while SUBTOTAL+VAT=TOTAL.
+7. Item prices may be VAT-INCLUSIVE. Copy SUBTOTAL, VAT and TOTAL from their printed labels independently. Labels such as “Total before VAT” are SUBTOTAL, “VAT incl.” followed by a money amount is the VAT money amount, and “Grand Total” is TOTAL. It is valid for sum(ITEM line totals)=TOTAL while SUBTOTAL+VAT=TOTAL.
 8. Currency symbols can resemble digits in OCR. Read the monetary number itself character-by-character; do not prepend a fake 8/3 from the currency glyph.
 9. If only one amount column is printed, put that value in line total and leave unit price blank. If unreadable, leave blank rather than guessing.
 10. Preserve the printed date order and literal product names. No JSON, markdown or commentary.`;
@@ -1374,7 +1380,7 @@ async function readUniversalReceipt(env,image){
     scout.inference_calls=calls;candidates.push(scout);
     if(best){const merged=mergeCheckedCandidates(best,scout);if(merged){merged.primary_engine='llama4-merged-rescue';merged.inference_calls=calls;merged.models_used=[FALLBACK_MODEL,VISION_RESCUE_MODEL];candidates.push(merged)}}
     best=candidates.filter(Boolean).sort((a,b)=>checkedQuality(b)-checkedQuality(a))[0]||null;
-    if(best?.accepted){best.inference_calls=calls;best.models_used=[FALLBACK_MODEL,VISION_RESCUE_MODEL];return best}
+    if(best?.accepted&&!shouldRepair(best)){best.inference_calls=calls;best.models_used=[FALLBACK_MODEL,VISION_RESCUE_MODEL];return best}
   }catch(e){console.warn('llama4-vision-rescue',e)}
 
   // OPTIONAL last attempt: JSON Mode. Cloudflare documents that JSON Mode can fail
@@ -1396,10 +1402,11 @@ async function readUniversalReceipt(env,image){
     }
   }catch(e){console.warn('structured-json-optional',e)}
 
-  best=candidates.filter(Boolean).sort((a,b)=>checkedQuality(b)-checkedQuality(a))[0]||null;
+  const healthy=candidates.filter(c=>c?.accepted&&!shouldRepair(c)).sort((a,b)=>checkedQuality(b)-checkedQuality(a))[0]||null;
+  best=healthy||chooseBestChecked(candidates);
   if(!best)throw new Error('Universal receipt rescue returned no usable extraction');
   best.inference_calls=calls;
-  best.models_used=[FALLBACK_MODEL];
+  best.models_used=[FALLBACK_MODEL,VISION_RESCUE_MODEL,STRUCTURED_MODEL];
   return best
 }
 
@@ -1454,7 +1461,27 @@ async function readReceiptTextEvidence(env,body){
   return checked
 }
 
+
+async function readForensicReceipt(env,image){
+  const candidates=[];let calls=0;
+  try{
+    const scout=await readScoutReceipt(env,image);calls++;scout.inference_calls=calls;candidates.push(scout);
+    if(scout.accepted&&!shouldRepair(scout)){scout.models_used=[VISION_RESCUE_MODEL];return scout}
+  }catch(e){console.warn('forensic-scout',e)}
+  try{
+    const obj=await runStructuredLlama(env,image);calls++;
+    if(obj){
+      const checked=checkedFromStructuredJson(obj);checked.primary_engine='forensic-structured-json';checked.inference_calls=calls;checked.models_used=[STRUCTURED_MODEL];checked.transcript_preview=JSON.stringify(obj).slice(0,2600);candidates.push(checked);
+      if(checked.accepted&&!shouldRepair(checked))return checked
+    }
+  }catch(e){console.warn('forensic-structured',e)}
+  const best=chooseBestChecked(candidates);
+  if(!best)throw new Error('Forensic receipt reader returned no usable extraction');
+  best.inference_calls=calls;best.models_used=[VISION_RESCUE_MODEL,STRUCTURED_MODEL];return best
+}
+
 async function readReceipt(env,image,mode='legacy'){
+  if(mode==='forensic')return await readForensicReceipt(env,image);
   if(mode==='universal'||mode==='structured')return await readUniversalReceipt(env,image);
   return await readLegacyReceipt(env,image)
 }
