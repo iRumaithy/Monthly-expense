@@ -88,7 +88,7 @@ Rules:
 9. If only one money value is printed for a row, use it as line total.
 10. Read decimals exactly. If unclear, leave blank instead of guessing.
 11. No JSON, markdown, explanation or code fences.`;
-const VERSION='5.8.2';
+const VERSION='5.8.3';
 
 const PROMPT = `Read the COMPLETE receipt/tax invoice image literally. The receipt may be thermal paper, POS, pharmacy, laundry, restaurant, screenshot, digital job order, Arabic/English, narrow, wide, long, or short.
 
@@ -1311,7 +1311,12 @@ MANDATORY METHOD:
 7. Item prices may be VAT-INCLUSIVE. Copy SUBTOTAL, VAT and TOTAL from their printed labels independently. Labels such as “Total before VAT” are SUBTOTAL, “VAT incl.” followed by a money amount is the VAT money amount, and “Grand Total” is TOTAL. It is valid for sum(ITEM line totals)=TOTAL while SUBTOTAL+VAT=TOTAL.
 8. Currency symbols can resemble digits in OCR. Read the monetary number itself character-by-character; do not prepend a fake 8/3 from the currency glyph.
 9. If only one amount column is printed, put that value in line total and leave unit price blank. If unreadable, leave blank rather than guessing.
-10. Preserve the printed date order and literal product names. No JSON, markdown or commentary.`;
+10. Preserve the printed date order and literal product names. No JSON, markdown or commentary.
+11. MERCHANT: use the brand/outlet name from the logo or top header only. Do NOT append mall, city, address, phone, bill/check/token numbers, or duplicated OCR words. If the header says “Shabab Qerayeh Restaurant”, return exactly that.
+12. MONEY DIGIT AUDIT: read every summary amount twice from the pixels, digit-by-digit. Never silently change 124.00 to 104.00, 23.00 to 21.00, etc. Before returning, verify the printed SUBTOTAL + VAT = TOTAL whenever the receipt labels support that relationship.
+13. MODIFIERS: when a base product has a printed base amount and indented paid modifier(s), the purchased line total is the visible final amount for that grouped product. Example: base AED 32 + modifier AED 10 displayed as ICED V60 AED 42 means the item line total is 42, not 32.
+14. QUANTITY COLUMN: never infer quantity from a money amount. For a row “DELIVERY   1   5.00”, quantity=1 and line total=5.00; do not swap them.
+15. Before final output, independently re-check merchant, every quantity, every item line total, SUBTOTAL, VAT, and TOTAL against the image. If uncertain, leave a field blank rather than inventing a value.`;
   const result=await env.AI.run(VISION_RESCUE_MODEL,{prompt,image,max_tokens:1900,temperature:0,top_p:.03,stream:false});
   const raw=responseText(result);if(!raw)throw new Error('Llama 4 Vision rescue returned no text');
   const checked=validate(parseProtocol(raw));checked.transcript_lines=raw.split(/\n+/).filter(Boolean).length;checked.transcript_preview=raw.slice(0,2600);checked.primary_engine='llama4-vision-layout-adjudicator';checked.inference_calls=1;checked.models_used=[VISION_RESCUE_MODEL];return checked
@@ -1466,17 +1471,31 @@ async function readForensicReceipt(env,image){
   const candidates=[];let calls=0;
   try{
     const scout=await readScoutReceipt(env,image);calls++;scout.inference_calls=calls;candidates.push(scout);
-    if(scout.accepted&&!shouldRepair(scout)){scout.models_used=[VISION_RESCUE_MODEL];return scout}
+    // v5.8.3: never trust a single vision pass. Always cross-check with the structured reader.
   }catch(e){console.warn('forensic-scout',e)}
   try{
     const obj=await runStructuredLlama(env,image);calls++;
     if(obj){
       const checked=checkedFromStructuredJson(obj);checked.primary_engine='forensic-structured-json';checked.inference_calls=calls;checked.models_used=[STRUCTURED_MODEL];checked.transcript_preview=JSON.stringify(obj).slice(0,2600);candidates.push(checked);
-      if(checked.accepted&&!shouldRepair(checked))return checked
+      // v5.8.3: keep both candidates and adjudicate below.
     }
   }catch(e){console.warn('forensic-structured',e)}
-  const best=chooseBestChecked(candidates);
+  // v5.8.3: two-pass consensus. A receipt that merely looks arithmetically consistent
+  // can still contain a visually misread digit, so disagreement itself triggers caution.
+  let best=chooseBestChecked(candidates);
   if(!best)throw new Error('Forensic receipt reader returned no usable extraction');
+  if(candidates.length>1){
+    const a=candidates[0]?.receipt||{},b=candidates[1]?.receipt||{};
+    const moneyDiff=(x,y)=>Number.isFinite(Number(x))&&Number.isFinite(Number(y))&&Math.abs(Number(x)-Number(y))>Math.max(.06,Math.max(Math.abs(Number(x)),Math.abs(Number(y)))*.004);
+    const disagree=moneyDiff(a.total,b.total)||moneyDiff(a.subtotal,b.subtotal)||moneyDiff(a.tax,b.tax)||(Array.isArray(a.items)&&Array.isArray(b.items)&&a.items.length!==b.items.length);
+    if(disagree){
+      try{
+        const adjudPrompt=`You are the FINAL visual adjudicator for a UAE receipt. Two independent readers disagreed. Read the ORIGINAL receipt image yourself; do not vote or average. Return ONLY protocol lines STORE|, DATE_RAW|, COUNT|, PIECES|, VAT_RATE|, SUBTOTAL|, VAT|, TOTAL| and ITEM|English|Arabic|qty|unit price|line total. Merchant must be only the customer-facing brand/header, never address/location. Re-read every money digit twice. Respect printed Qty columns. Group paid modifiers into the product line when the receipt visibly prints a final grouped amount. Candidate A: ${JSON.stringify(a).slice(0,4500)} Candidate B: ${JSON.stringify(b).slice(0,4500)}`;
+        const rr=await env.AI.run(VISION_RESCUE_MODEL,{prompt:adjudPrompt,image,max_tokens:1900,temperature:0,top_p:.02,stream:false});calls++;
+        const raw=responseText(rr);if(raw){const c=validate(parseProtocol(raw));c.primary_engine='forensic-consensus-adjudicator';c.inference_calls=calls;c.models_used=[VISION_RESCUE_MODEL,STRUCTURED_MODEL];c.transcript_preview=raw.slice(0,2600);candidates.push(c);best=chooseBestChecked(candidates)}
+      }catch(e){console.warn('forensic-adjudicator',e)}
+    }
+  }
   best.inference_calls=calls;best.models_used=[VISION_RESCUE_MODEL,STRUCTURED_MODEL];
   if(shouldRepair(best)){best.accepted=false;best.complete=false;best.receipt={...(best.receipt||{}),warnings:[...new Set([...(best.receipt?.warnings||[]),'Forensic extraction did not pass final validation'])]}}
   return best
