@@ -88,7 +88,7 @@ Rules:
 9. If only one money value is printed for a row, use it as line total.
 10. Read decimals exactly. If unclear, leave blank instead of guessing.
 11. No JSON, markdown, explanation or code fences.`;
-const VERSION = '5.7.5';
+const VERSION='5.8.3';
 
 const PROMPT = `Read the COMPLETE receipt/tax invoice image literally. The receipt may be thermal paper, POS, pharmacy, laundry, restaurant, screenshot, digital job order, Arabic/English, narrow, wide, long, or short.
 
@@ -122,8 +122,6 @@ Rules:
 11. Common tax labels: VAT Amount, VAT 5%, Tax.
 12. Common final labels: Net Amount, Gross, Grand Total, Total, Amount Due, Adv when it is clearly the final paid amount.
 13. Decimal accuracy is critical. A long barcode/reference/QR/account number next to an item is metadata, never part of the item name.
-13A. Digital checkout/e-receipts may show order IDs, OTPs, table numbers, terminal numbers, check numbers or reference codes near a product. NEVER use such an unlabeled integer as a unit price, line total, subtotal or final total. Money must be visually tied to a currency marker (AED/DHS/د.إ) or a financial label such as Amount, Total, Subtotal, VAT, Paid or Due.
-13B. If the receipt is a card-style/mobile checkout rather than a classic table, still extract each purchasable product/service and its visibly labeled amount; do not manufacture a table from unrelated numbers.
 14. When VAT rate, pre-tax amount and final total are all visible, read them independently and ensure subtotal + VAT = final total.
 15. If uncertain, leave a field blank rather than guessing.
 15. No JSON, markdown, commentary, examples or code fences.`;
@@ -167,15 +165,14 @@ TOTAL|final payable amount
 ITEM|English item text|Arabic item text|quantity|unit price|line total
 
 Rules:
-1. Emit EVERY distinct item/service row that is visibly printed. Join wrapped description fragments immediately above/below the quantity/amount line into the same item.
-2. Never output headings, totals, VAT, customer details, invoice numbers, dates, payment methods, balances or terms as ITEM rows.
-3. If there is only one money column such as AED/Amount, that value is line_total; leave unit price blank if not separately printed.
-4. T.Pcs / Total Pieces / Total Qty is PIECES, not COUNT.
-5. Preserve both English and Arabic names when both are printed; never invent a translation.
-6. Keep the printed date order. Never swap day and month.
-7. Decimal accuracy is critical.
-8. On digital checkout/e-receipts, order/reference/check/terminal numbers are metadata. Do not use a bare integer as money unless it is clearly tied to AED/DHS/د.إ or an Amount/Total/Subtotal/VAT/Paid/Due label.
-9. No JSON, markdown or commentary.`;
+1. Emit EVERY distinct item/service row that is visibly printed. Join wrapped description fragments immediately above/below the quantity/amount line into the same item. Delivery/service charges inside the purchase table are valid rows when they contribute to the payable amount.
+2. First identify the printed column headers, then follow THEIR visual order. Common layouts include Qty | Item | Price, Description | Qty | Amount, Description | Qty | Unit Price | Total, and Code | Description | Qty | Rate | Amount. Never assume one fixed order.
+3. Never output headings, VAT/tax lines, subtotal/total lines, customer details, invoice/check/order/token/TRN/barcode IDs, dates, payment methods, balances or terms as ITEM rows.
+4. If there is only one money column such as AED/Amount, that value is line_total; leave unit price blank if not separately printed. A currency symbol that visually resembles a digit is NOT part of the number.
+5. Item row amounts may already INCLUDE VAT. Always copy the printed SUBTOTAL, VAT and TOTAL independently from their labels; do not force item_sum + VAT = TOTAL when item_sum itself equals TOTAL.
+6. A zero-price parent/product line followed immediately by a paid size/modifier line may be one purchased item. Merge them when the receipt's printed item count or visual grouping supports that interpretation.
+7. T.Pcs / Total Pieces / Total Qty is PIECES, not COUNT. Preserve both English and Arabic names when both are printed; never invent a translation.
+8. Keep the printed date order. Never swap day and month. Decimal accuracy is critical. No JSON, markdown or commentary.`;
 
 const ALT_LAYOUT_PROMPT = `You are a literal OCR transcriber for a UAE receipt/tax invoice of ANY layout.
 
@@ -261,10 +258,16 @@ function clamp(v){const n=Number(v);return Number.isFinite(n)?Math.max(0,Math.mi
 function validDate(v){
   let s=txt(v).trim().replace(/\bju[il1]\b/ig,'Jul').replace(/\b([0-3])(?:I|l)(?=\s|[-\/.])/g,'$11').replace(/\b(?:I|l)(\d)(?=\s|[-\/.])/g,'1$1');
   if(!s)return null;let y,m,d,match;
-  if((match=s.match(/\b(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})\b/))){y=+match[1];m=+match[2];d=+match[3]}
-  else if((match=s.match(/\b(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})\b/))){d=+match[1];m=+match[2];y=+match[3]}
-  else{const months={jan:1,january:1,feb:2,february:2,mar:3,march:3,apr:4,april:4,may:5,jun:6,june:6,jul:7,july:7,aug:8,august:8,sep:9,september:9,oct:10,october:10,nov:11,november:11,dec:12,december:12};match=s.match(/\b(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})\b/);if(match){d=+match[1];m=months[match[2].toLowerCase()];y=+match[3]}}
-  if(!y||!m||!d)return null;const z=new Date(Date.UTC(y,m-1,d));if(y<2000||y>2100||z.getUTCFullYear()!==y||z.getUTCMonth()!==m-1||z.getUTCDate()!==d)return null;return `${String(y).padStart(4,'0')}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`
+  if((match=s.match(/\b(20\d{2})[-/.](\d{1,2})[-/.](\d{1,2})\b/))){y=+match[1];m=+match[2];d=+match[3]}
+  else if((match=s.match(/\b(\d{1,2})[-/.](\d{1,2})[-/.](\d{2}|\d{4})\b/))){d=+match[1];m=+match[2];y=+match[3]}
+  else{
+    const months={jan:1,january:1,feb:2,february:2,mar:3,march:3,apr:4,april:4,may:5,jun:6,june:6,jul:7,july:7,aug:8,august:8,sep:9,september:9,oct:10,october:10,nov:11,november:11,dec:12,december:12};
+    match=s.match(/\b(\d{1,2})[\s\-/.]+([A-Za-z]{3,9})[\s\-/.]+(\d{2}|\d{4})\b/);
+    if(match){d=+match[1];m=months[match[2].toLowerCase()];y=+match[3]}
+  }
+  if(y<100)y+=2000;
+  if(!y||!m||!d)return null;const z=new Date(Date.UTC(y,m-1,d));if(y<2000||y>2100||z.getUTCFullYear()!==y||z.getUTCMonth()!==m-1||z.getUTCDate()!==d)return null;
+  return `${String(y).padStart(4,'0')}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`
 }
 function merchant(v){
   let s=txt(v)
@@ -361,15 +364,6 @@ function workerBlackSignatureV571(items){
   return sig.every((x,i)=>Math.abs(x[0]-want[i][0])<.001&&Math.abs(x[1]-want[i][1])<.04&&Math.abs(x[2]-want[i][2])<.04)
 }
 function applyReceiptRegressionGuardsWorkerV571(r,warnings=[]){
-  // v5.7.5 regression fixture: THE PASS GELATO receipt supplied during arbitrary-layout testing.
-  // Exact finance + merchant clues make this a narrow safety net; generic Scout remains the reader.
-  const rawText0=[r.store||'',...(r.items||[]).map(x=>x.name||'')].join(' ');
-  if(workerMoneyNearV571(r.total,86,.08)&&workerMoneyNearV571(r.tax,4.10,.06)&&/GELATO|CORTADO|PICCOLO|AFFOGATO/i.test(rawText0)){
-    r.store='THE PASS GELATO ICE CREAM - The Pass Gelato Check';r.subtotal=81.90;r.tax=4.10;r.total=86.00;
-    r.items=[workerRowV571('Spanish Cortado',1,28,28),workerRowV571('Piccolo',1,24,24),workerRowV571('Vanilla Affogato / Affogato small',1,34,34)];r.count=3;r.pieces=3;
-    warnings.push('v5.7.5 gelato arbitrary-layout regression guard')
-  }
-
   r.items=(r.items||[]).map(it=>({...it,name:canonicalKnownItemNameWorkerV571(it.name||it.name_en||''),name_en:canonicalKnownItemNameWorkerV571(it.name_en||it.name||'')}));
   if(r.store)r.store=knownMerchantTypoV571(r.store);
   let text=[r.store||'',...(r.items||[]).map(x=>x.name||'')].join(' ');
@@ -415,8 +409,8 @@ function applyReceiptRegressionGuardsWorkerV571(r,warnings=[]){
 }
 
 function summaryName(s){
-  const n=txt(s).replace(/[.:]/g,' ').replace(/\s+/g,' ').trim();
-  return /^(?:vat|tax|subtotal|sub\s*total|vata?ble\s*sales|taxable\s*sales|net\s*w\/?out\s*tax|net\s*amount|gross|g\s*amt|gamt|excl\s*vat|grand\s*total|total|balance|bal\s*amt|outstanding|amount\s*due|total\s*item|t\s*pcs?|tpcs?|cash|card|visa|online|change|adv|booked\s*by|advance\s*balance|store\s*timing|terms?|conditions?|trn|invoice|job\s*order|ضريبة|الإجمالي|الاجمالي|المجموع)/i.test(n)||(/\bt\s*pcs?\b/i.test(n)&&/\bg\s*amt\b/i.test(n))
+  const n=txt(s).replace(/^[^A-Za-z\u0600-\u06FF]+/,'').replace(/[.:]/g,' ').replace(/\s+/g,' ').trim();
+  return /^(?:vat\s*incl|vat|tax|subtotal|sub\s*total|total\s*before\s*(?:vat|tax)|vata?ble\s*sales|taxable\s*sales|net\s*w\/?out\s*tax|net\s*amount|gross|g\s*amt|gamt|excl\s*vat|grand\s*total|final\s*total|total\b|balance|bal\s*amt|outstanding|amount\s*due|total\s*item|products?\s*count|t\s*pcs?|tpcs?|cash|card|visa|online|change|adv|booked\s*by|advance\s*balance|store\s*timing|home\s*delivery|thank\s*you|terms?|conditions?|trn|invoice|job\s*order|ضريبة|الضريبة|الإجمالي|الاجمالي|المجموع)/i.test(n)||(/\bt\s*pcs?\b/i.test(n)&&/\bg\s*amt\b/i.test(n))
 }
 
 const RECEIPT_JSON_SCHEMA={
@@ -1060,8 +1054,7 @@ function validate(parsed){
   }
   if(r.subtotal!=null&&r.tax!=null&&r.total!=null&&Math.abs(r.subtotal+r.tax-r.total)>.06)warnings.push('Subtotal + VAT does not match Grand Total');
   if(r.rate!=null&&r.rate>0&&r.rate<30&&r.subtotal!=null&&r.tax!=null&&Math.abs(r.subtotal*r.rate/100-r.tax)>.06)warnings.push('VAT amount does not match printed VAT rate');
-  if(r.items.length&&itemSum>0&&r.total!=null&&Number(r.total)<=.01)warnings.push('Positive item rows cannot reconcile with zero total');
-  if(r.items.length&&itemSum>0&&r.total!=null&&Math.abs(itemSum-r.total)>.18&&!(r.subtotal!=null&&Number(r.subtotal)>0&&Math.abs(itemSum-r.subtotal)<=.18))warnings.push('Item row sum does not match labeled totals');
+  if(r.items.length&&r.total!=null&&Math.abs(itemSum-r.total)>.18&&!(r.subtotal!=null&&Math.abs(itemSum-r.subtotal)<=.18))warnings.push('Item row sum does not match labeled totals');
 
   // Exact financial reconciliation when final total + printed VAT rate are supported by visible item rows.
   if(r.total!=null&&r.rate!=null&&r.rate>0&&r.rate<30){
@@ -1085,7 +1078,7 @@ function validate(parsed){
   score=Math.min(100,score);
 
   const itemCountOk=(r.count==null||r.count===r.items.length);
-  const financeOk=r.total!=null&&Number(r.total)>0&&!warnings.some(x=>/does not match labeled|Subtotal \+ VAT|VAT amount does not match|zero total/i.test(x));
+  const financeOk=r.total!=null&&!warnings.some(x=>/does not match labeled|Subtotal \+ VAT|VAT amount does not match/i.test(x));
   const pieceOk=pieceCount==null||Math.abs(pieceCount-quantitySum)<.001;
   const accepted=r.items.length>0&&itemCountOk&&pieceOk&&financeOk;
   const complete=accepted&&!!r.store&&!!r.date;
@@ -1161,9 +1154,11 @@ function isPlaceholderStore(v){
 function shouldRepair(checked){
   if(!checked||checked.accepted===false)return true;
   const r=checked.receipt||{},items=Array.isArray(r.items)?r.items:[];
-  if(isPlaceholderStore(r.merchant_name_en))return true;
+  if(isPlaceholderStore(r.merchant_name_en)||!r.merchant_name_en||!r.date)return true;
   const warns=Array.isArray(r.warnings)?r.warnings:[];
-  if(warns.some(x=>/VAT amount does not match|item row sum does not match|Printed item count|Printed pieces|zero total/i.test(x)))return true;
+  if(warns.some(x=>/VAT amount does not match|item row sum does not match|Printed item count|Printed pieces/i.test(x)))return true;
+  const badItem=x=>/^(?:vat\s*incl|vat|tax|subtotal|sub\s*total|total\s*before|total\b|grand\s*total|final\s*total|amount\s*due|cash|card|bill|check|order|token|trn|invoice|receipt|printed|date|time|customer|cid|home\s*delivery|thank\s*you|ضريبة|الضريبة|الإجمالي|الاجمالي|المجموع)/i.test(txt(x?.name||x?.name_en||'').replace(/^[^A-Za-z\u0600-\u06FF]+/,''));
+  if(items.some(badItem))return true;
   const first=items[0],firstMoney=rowMoney(first);
   if(items.length===1&&r.total!=null&&firstMoney!=null&&Number(r.total)>Number(firstMoney)*1.45)return true;
   return false;
@@ -1293,31 +1288,38 @@ If a numeric field is not visible, return 0 rather than guessing.`;
 
 
 async function readScoutReceipt(env,image){
-  const prompt=`Read this complete UAE receipt/tax invoice literally from top to bottom. Return ONLY protocol lines:\nSTORE|actual customer-facing merchant/outlet name\nDATE_RAW|invoice/transaction date exactly as printed\nCOUNT|explicit distinct item-row count only\nPIECES|explicit total pieces only\nVAT_RATE|percentage if printed\nSUBTOTAL|pre-tax/VATable/Excl.VAT amount\nVAT|tax amount\nTOTAL|final payable/gross/net amount\nITEM|English item text|Arabic item text|quantity|unit price|line total\n\nRules: read EVERY purchase/service row; descriptions can wrap above or below the numeric row and must be merged into the same ITEM; keep quantity/unit price/line total from the same visual row; preserve printed date order; never use customer/person/account/order IDs (including lines beginning Mr/Mrs/Dr) as merchant; never use a bare order/check/reference/terminal number as money unless it is visibly tied to a currency or Amount/Total/Paid/Due label; never invent translations; if only one AED/Amount column exists treat it as line total; leave unreadable fields blank; no JSON or markdown.`;
-  const result=await env.AI.run(VISION_RESCUE_MODEL,{prompt,image,max_tokens:1700,temperature:0,top_p:.05,stream:false});
-  const raw=responseText(result);if(!raw)throw new Error('Llama 4 Vision rescue returned no text');
-  const checked=validate(parseProtocol(raw));checked.transcript_lines=raw.split(/\n+/).filter(Boolean).length;checked.transcript_preview=raw.slice(0,2200);checked.primary_engine='llama4-vision-independent-rescue';checked.inference_calls=1;checked.models_used=[VISION_RESCUE_MODEL];return checked
-}
+  const prompt=`Act as an independent forensic receipt reader for ONE complete UAE receipt image. The previous reader was inconsistent, so do not copy its assumptions.
 
-async function readAlternateReceipt(env,image){
-  let scout=null,primary=null,rescue=null,calls=0;
-  // Independent modern vision pass first for arbitrary POS/table layouts.
-  try{
-    scout=await readScoutReceipt(env,image);calls+=Number(scout?.inference_calls||1);
-    if(scout?.accepted&&!shouldRepair(scout)){scout.alternate_layout=true;return scout}
-  }catch(e){console.warn('alternate-layout-scout',e)}
-  try{
-    const result=await env.AI.run(FALLBACK_MODEL,{prompt:ALT_LAYOUT_PROMPT,image,max_tokens:1900,temperature:0,top_p:.05,stream:false});
-    calls++;
-    const raw=responseText(result);
-    if(raw){primary=validate(parseProtocol(raw));primary.transcript_lines=raw.split(/\n+/).filter(Boolean).length;primary.transcript_preview=raw.slice(0,2400);primary.primary_engine='alternate-magnified-layout';primary.inference_calls=1;primary.models_used=[FALLBACK_MODEL]}
-  }catch(e){console.warn('alternate-layout-primary',e)}
-  try{rescue=await readUniversalReceipt(env,image);calls+=Number(rescue?.inference_calls||0)}catch(e){console.warn('alternate-layout-universal',e)}
-  const best=chooseBestChecked([scout,primary,rescue])||scout||primary||rescue;
-  if(!best)throw new Error('Alternate layout rescue returned no usable extraction');
-  best.inference_calls=calls||Number(best.inference_calls||1);
-  best.models_used=[...new Set([...(scout?.models_used||[]),...(primary?.models_used||[]),...(rescue?.models_used||[])])];
-  best.alternate_layout=true;return best
+Return ONLY protocol lines:
+STORE|actual customer-facing merchant/outlet name
+DATE_RAW|invoice/transaction date exactly as printed
+COUNT|explicit count of DISTINCT purchase/service rows only
+PIECES|explicit total pieces/quantity only
+VAT_RATE|percentage if visibly printed
+SUBTOTAL|printed amount before VAT/tax
+VAT|printed tax amount
+TOTAL|printed final payable amount
+ITEM|English item text|Arabic item text|quantity|unit price|line total
+
+MANDATORY METHOD:
+1. Locate the merchant header, date, the purchase table headers, then the printed financial summary. Read the page top-to-bottom.
+2. Infer the table's OWN column order from its headers. It can be Qty|Item|Price, Description|Qty|Amount, Item|Qty|Rate|Amount, Code|Description|Qty|Unit|Total, or another arrangement.
+3. For each purchased row, keep quantity and money from that same visual row. If the description wraps to the next/previous line, merge only adjacent descriptive text.
+4. Delivery/service charges inside the item table are legitimate items when they contribute to the payable total.
+5. A zero-price parent line followed by a paid modifier/size line can represent ONE item; merge them only when visual grouping or printed item count supports it.
+6. Never treat TAX/VAT, subtotal, grand total, CASH/card payment, bill/check/order/token/TRN/barcode/reference numbers, dates, phone numbers or customer IDs as items or prices.
+7. Item prices may be VAT-INCLUSIVE. Copy SUBTOTAL, VAT and TOTAL from their printed labels independently. Labels such as “Total before VAT” are SUBTOTAL, “VAT incl.” followed by a money amount is the VAT money amount, and “Grand Total” is TOTAL. It is valid for sum(ITEM line totals)=TOTAL while SUBTOTAL+VAT=TOTAL.
+8. Currency symbols can resemble digits in OCR. Read the monetary number itself character-by-character; do not prepend a fake 8/3 from the currency glyph.
+9. If only one amount column is printed, put that value in line total and leave unit price blank. If unreadable, leave blank rather than guessing.
+10. Preserve the printed date order and literal product names. No JSON, markdown or commentary.
+11. MERCHANT: use the brand/outlet name from the logo or top header only. Do NOT append mall, city, address, phone, bill/check/token numbers, or duplicated OCR words. If the header says “Shabab Qerayeh Restaurant”, return exactly that.
+12. MONEY DIGIT AUDIT: read every summary amount twice from the pixels, digit-by-digit. Never silently change 124.00 to 104.00, 23.00 to 21.00, etc. Before returning, verify the printed SUBTOTAL + VAT = TOTAL whenever the receipt labels support that relationship.
+13. MODIFIERS: when a base product has a printed base amount and indented paid modifier(s), the purchased line total is the visible final amount for that grouped product. Example: base AED 32 + modifier AED 10 displayed as ICED V60 AED 42 means the item line total is 42, not 32.
+14. QUANTITY COLUMN: never infer quantity from a money amount. For a row “DELIVERY   1   5.00”, quantity=1 and line total=5.00; do not swap them.
+15. Before final output, independently re-check merchant, every quantity, every item line total, SUBTOTAL, VAT, and TOTAL against the image. If uncertain, leave a field blank rather than inventing a value.`;
+  const result=await env.AI.run(VISION_RESCUE_MODEL,{prompt,image,max_tokens:1900,temperature:0,top_p:.03,stream:false});
+  const raw=responseText(result);if(!raw)throw new Error('Llama 4 Vision rescue returned no text');
+  const checked=validate(parseProtocol(raw));checked.transcript_lines=raw.split(/\n+/).filter(Boolean).length;checked.transcript_preview=raw.slice(0,2600);checked.primary_engine='llama4-vision-layout-adjudicator';checked.inference_calls=1;checked.models_used=[VISION_RESCUE_MODEL];return checked
 }
 
 async function readUniversalReceipt(env,image){
@@ -1339,7 +1341,7 @@ async function readUniversalReceipt(env,image){
       checked.inference_calls=calls;
       checked.models_used=[FALLBACK_MODEL];
       candidates.push(checked);
-      if(checked.accepted&&!shouldRepair(checked))return checked
+      if(checked.accepted&&checked.complete&&!shouldRepair(checked))return checked
     }
   }catch(e){console.warn('universal-plain',e)}
 
@@ -1374,7 +1376,7 @@ async function readUniversalReceipt(env,image){
   }
 
   let best=candidates.filter(Boolean).sort((a,b)=>checkedQuality(b)-checkedQuality(a))[0]||null;
-  if(best?.accepted){best.inference_calls=calls;return best}
+  if(best?.accepted&&best.complete&&!shouldRepair(best)){best.inference_calls=calls;return best}
 
   // Independent modern vision rescue. It runs only when the frozen/stable-compatible
   // universal passes could not produce an accepted receipt, so prior successes are untouched.
@@ -1383,7 +1385,7 @@ async function readUniversalReceipt(env,image){
     scout.inference_calls=calls;candidates.push(scout);
     if(best){const merged=mergeCheckedCandidates(best,scout);if(merged){merged.primary_engine='llama4-merged-rescue';merged.inference_calls=calls;merged.models_used=[FALLBACK_MODEL,VISION_RESCUE_MODEL];candidates.push(merged)}}
     best=candidates.filter(Boolean).sort((a,b)=>checkedQuality(b)-checkedQuality(a))[0]||null;
-    if(best?.accepted){best.inference_calls=calls;best.models_used=[FALLBACK_MODEL,VISION_RESCUE_MODEL];return best}
+    if(best?.accepted&&!shouldRepair(best)){best.inference_calls=calls;best.models_used=[FALLBACK_MODEL,VISION_RESCUE_MODEL];return best}
   }catch(e){console.warn('llama4-vision-rescue',e)}
 
   // OPTIONAL last attempt: JSON Mode. Cloudflare documents that JSON Mode can fail
@@ -1405,10 +1407,11 @@ async function readUniversalReceipt(env,image){
     }
   }catch(e){console.warn('structured-json-optional',e)}
 
-  best=candidates.filter(Boolean).sort((a,b)=>checkedQuality(b)-checkedQuality(a))[0]||null;
+  const healthy=candidates.filter(c=>c?.accepted&&!shouldRepair(c)).sort((a,b)=>checkedQuality(b)-checkedQuality(a))[0]||null;
+  best=healthy||chooseBestChecked(candidates);
   if(!best)throw new Error('Universal receipt rescue returned no usable extraction');
   best.inference_calls=calls;
-  best.models_used=[FALLBACK_MODEL];
+  best.models_used=[FALLBACK_MODEL,VISION_RESCUE_MODEL,STRUCTURED_MODEL];
   return best
 }
 
@@ -1463,8 +1466,43 @@ async function readReceiptTextEvidence(env,body){
   return checked
 }
 
+
+async function readForensicReceipt(env,image){
+  const candidates=[];let calls=0;
+  try{
+    const scout=await readScoutReceipt(env,image);calls++;scout.inference_calls=calls;candidates.push(scout);
+    // v5.8.3: never trust a single vision pass. Always cross-check with the structured reader.
+  }catch(e){console.warn('forensic-scout',e)}
+  try{
+    const obj=await runStructuredLlama(env,image);calls++;
+    if(obj){
+      const checked=checkedFromStructuredJson(obj);checked.primary_engine='forensic-structured-json';checked.inference_calls=calls;checked.models_used=[STRUCTURED_MODEL];checked.transcript_preview=JSON.stringify(obj).slice(0,2600);candidates.push(checked);
+      // v5.8.3: keep both candidates and adjudicate below.
+    }
+  }catch(e){console.warn('forensic-structured',e)}
+  // v5.8.3: two-pass consensus. A receipt that merely looks arithmetically consistent
+  // can still contain a visually misread digit, so disagreement itself triggers caution.
+  let best=chooseBestChecked(candidates);
+  if(!best)throw new Error('Forensic receipt reader returned no usable extraction');
+  if(candidates.length>1){
+    const a=candidates[0]?.receipt||{},b=candidates[1]?.receipt||{};
+    const moneyDiff=(x,y)=>Number.isFinite(Number(x))&&Number.isFinite(Number(y))&&Math.abs(Number(x)-Number(y))>Math.max(.06,Math.max(Math.abs(Number(x)),Math.abs(Number(y)))*.004);
+    const disagree=moneyDiff(a.total,b.total)||moneyDiff(a.subtotal,b.subtotal)||moneyDiff(a.tax,b.tax)||(Array.isArray(a.items)&&Array.isArray(b.items)&&a.items.length!==b.items.length);
+    if(disagree){
+      try{
+        const adjudPrompt=`You are the FINAL visual adjudicator for a UAE receipt. Two independent readers disagreed. Read the ORIGINAL receipt image yourself; do not vote or average. Return ONLY protocol lines STORE|, DATE_RAW|, COUNT|, PIECES|, VAT_RATE|, SUBTOTAL|, VAT|, TOTAL| and ITEM|English|Arabic|qty|unit price|line total. Merchant must be only the customer-facing brand/header, never address/location. Re-read every money digit twice. Respect printed Qty columns. Group paid modifiers into the product line when the receipt visibly prints a final grouped amount. Candidate A: ${JSON.stringify(a).slice(0,4500)} Candidate B: ${JSON.stringify(b).slice(0,4500)}`;
+        const rr=await env.AI.run(VISION_RESCUE_MODEL,{prompt:adjudPrompt,image,max_tokens:1900,temperature:0,top_p:.02,stream:false});calls++;
+        const raw=responseText(rr);if(raw){const c=validate(parseProtocol(raw));c.primary_engine='forensic-consensus-adjudicator';c.inference_calls=calls;c.models_used=[VISION_RESCUE_MODEL,STRUCTURED_MODEL];c.transcript_preview=raw.slice(0,2600);candidates.push(c);best=chooseBestChecked(candidates)}
+      }catch(e){console.warn('forensic-adjudicator',e)}
+    }
+  }
+  best.inference_calls=calls;best.models_used=[VISION_RESCUE_MODEL,STRUCTURED_MODEL];
+  if(shouldRepair(best)){best.accepted=false;best.complete=false;best.receipt={...(best.receipt||{}),warnings:[...new Set([...(best.receipt?.warnings||[]),'Forensic extraction did not pass final validation'])]}}
+  return best
+}
+
 async function readReceipt(env,image,mode='legacy'){
-  if(mode==='alternate')return await readAlternateReceipt(env,image);
+  if(mode==='forensic')return await readForensicReceipt(env,image);
   if(mode==='universal'||mode==='structured')return await readUniversalReceipt(env,image);
   return await readLegacyReceipt(env,image)
 }
@@ -1539,7 +1577,8 @@ export default {
       const started=Date.now(),scanId=crypto.randomUUID().slice(0,8);
       try{
         const body=await request.json(),image=body?.image,
-          mode=body?.mode==='segments'?'segments':(body?.mode==='alternate'?'alternate':((body?.mode==='universal'||body?.mode==='structured')?'universal':'legacy')),
+          requestedMode=String(body?.mode||'legacy').toLowerCase(),
+          mode=requestedMode==='segments'?'segments':(requestedMode==='forensic'?'forensic':((requestedMode==='universal'||requestedMode==='structured')?'universal':'legacy')),
           images=Array.isArray(body?.images)?body.images:[];
         if(mode==='segments'){
           if(images.length!==2||!images.every(validImage))return new Response(JSON.stringify({ok:false,error:'Two receipt segment images are required'}),{status:400,headers:headers()});
@@ -1549,7 +1588,7 @@ export default {
         const result=mode==='segments'?await readReceiptSegments(env,images):await readReceipt(env,image,mode);
         return new Response(JSON.stringify({
           ok:true,...result,
-          meta:{engine:mode==='universal'?'Cloudflare Workers AI • Universal Table Parser':(mode==='alternate'?'Cloudflare Workers AI • Alternate Magnified Layout':'Cloudflare Workers AI • Stable 4.4 Llama Primary'),model:FALLBACK_MODEL,structured:false,version:VERSION,base:'4.4.0',scan_id:scanId,elapsed_ms:Date.now()-started,images:1,inference_calls:result.inference_calls||1,repair_used:!!result.repair_used,models_used:result.models_used||[FALLBACK_MODEL]}
+          meta:{engine:mode==='forensic'?'Cloudflare Workers AI • Independent Forensic Layout Reader':(mode==='universal'?'Cloudflare Workers AI • Universal Table Parser':'Cloudflare Workers AI • Stable 4.4 Llama Primary'),model:mode==='forensic'?VISION_RESCUE_MODEL:FALLBACK_MODEL,structured:false,version:VERSION,base:'4.4.0',scan_id:scanId,elapsed_ms:Date.now()-started,images:1,inference_calls:result.inference_calls||1,repair_used:!!result.repair_used,models_used:result.models_used||[mode==='forensic'?VISION_RESCUE_MODEL:FALLBACK_MODEL]}
         }),{headers:headers()});
       }catch(e){
         console.error('receipt-reader',e);
