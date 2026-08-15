@@ -158,7 +158,7 @@ button,input,textarea,select{font:inherit}button{cursor:pointer}.app{max-width:1
 }
 
 
-/* === v5.7.9 Home Screen / PWA support === */
+/* === v5.8.0 Home Screen / PWA support === */
 .pwa-install-card{margin-top:12px}
 .pwa-install-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px}
 .pwa-install-head strong{color:var(--navy);font-size:15px}
@@ -177,6 +177,27 @@ button,input,textarea,select{font:inherit}button{cursor:pointer}.app{max-width:1
 }
 @media print{.pwa-install-card{display:none!important}}
 
+
+/* === v5.8.0 Manual application updates === */
+.app-update-banner{
+  position:fixed;z-index:100000;left:50%;top:max(10px,env(safe-area-inset-top));
+  transform:translateX(-50%);width:min(94vw,720px);display:none;
+  background:#fffaf2;border:1px solid #d8cbb9;border-radius:18px;
+  box-shadow:0 16px 46px rgba(23,50,77,.22);padding:13px 14px;
+  color:var(--text);direction:rtl
+}
+.app-update-banner.show{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.app-update-copy{min-width:0;flex:1}
+.app-update-title{font-size:14px;font-weight:950;color:var(--navy);margin-bottom:3px}
+.app-update-note{font-size:11.5px;color:var(--muted);line-height:1.55}
+.app-update-actions{display:flex;gap:8px;flex:0 0 auto}
+.app-update-actions .btn{padding:9px 11px;white-space:nowrap;font-size:12px}
+@media(max-width:600px){
+  .app-update-banner.show{align-items:stretch;flex-direction:column}
+  .app-update-actions{width:100%;display:grid;grid-template-columns:1fr 1fr}
+}
+@media print{.app-update-banner{display:none!important}}
+
 </style>
 
 <style id="version-footer-style">
@@ -185,6 +206,17 @@ button,input,textarea,select{font:inherit}button{cursor:pointer}.app{max-width:1
 </style>
 </head>
 <body>
+
+<div class="app-update-banner" id="appUpdateBanner" role="status" aria-live="polite">
+  <div class="app-update-copy">
+    <div class="app-update-title" id="appUpdateTitle">تحديث جديد متوفر</div>
+    <div class="app-update-note" id="appUpdateNote">لن يتم تحديث الصفحة تلقائيًا. يمكنك حفظ نسخة احتياطية أولًا، ثم الضغط على «تحديث الآن» عندما تكون جاهزًا.</div>
+  </div>
+  <div class="app-update-actions">
+    <button class="btn btn-soft" id="updateBackupBtn" type="button">نسخة احتياطية</button>
+    <button class="btn btn-primary" id="applyUpdateBtn" type="button">تحديث الآن</button>
+  </div>
+</div>
 <div class="app">
   <div class="topbar">
     <div class="hero">
@@ -381,14 +413,14 @@ const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 document.addEventListener('submit',e=>e.preventDefault(),true);const secureButtonTypes=()=>{$$('button').forEach(b=>{if(!b.hasAttribute('type'))b.type='button'})};secureButtonTypes();window.addEventListener('pageshow',secureButtonTypes);
 const CATEGORIES=['groceries','dining','shopping','transport','health','bills','entertainment','home','other'];
 const I18N={
- ar:{appTitle:'مصاريف الشهر',appSub:'إدارة ذكية للفواتير والمشتريات الشهرية',backup:'نسخة احتياطية',restore:'استعادة',settings:'⚙️ الإعدادات',syncTitle:'مزامنة الأجهزة',syncNotLinked:'غير مرتبط',syncConnected:'متصل لحظيًا',syncConnecting:'جارٍ الاتصال…',syncCreate:'إنشاء مجموعة جديدة',syncJoin:'ربط بهذا الرمز',syncCopy:'نسخ الرمز',syncDisconnect:'فصل هذا الجهاز',syncNow:'مزامنة الآن',syncIntro:'أنشئ مجموعة في الهاتف الأول، ثم أدخل نفس الرمز في أي هاتف آخر. أي فاتورة تحفظ أو تعدل أو تحذف ستظهر تلقائيًا في الأجهزة المرتبطة.',syncPrivacy:'الرمز نفسه هو مفتاح المجموعة. احتفظ به خاصًا. تتم المزامنة عبر Cloudflare فقط عند حفظ تغيير، والصور تُضغط قبل رفعها.',syncCreated:'تم إنشاء مجموعة المزامنة',syncJoined:'تم ربط الجهاز بالمجموعة',syncDone:'اكتملت المزامنة',syncInvalid:'رمز المزامنة غير صحيح',syncOffline:'تعذر الاتصال بالمزامنة الآن؛ ستبقى البيانات محفوظة محليًا.',dashboard:'الرئيسية',dashboardMonth:'الشهر المعروض',currentMonth:'الشهر الحالي',previousMonth:'الشهر السابق',nextMonth:'الشهر التالي',newInvoice:'تسجيل فاتورة جديدة',monthlyRecords:'السجلات الشهرية',monthSpend:'إجمالي الشهر',invoiceCount:'عدد الفواتير',savedLocally:'محفوظة على الجهاز',avgInvoice:'متوسط الفاتورة',monthAverage:'متوسط الشهر الحالي',budgetRemaining:'المتبقي من الميزانية',monthlyBudget:'الميزانية الشهرية',budgetAmount:'قيمة الميزانية',saveBudget:'حفظ الميزانية',budgetSaved:'تم حفظ ميزانية الشهر',spentOfBudget:'تم إنفاق',noBudget:'لم تحدد ميزانية بعد',categoryDistribution:'التوزيع حسب التصنيف',storesDistribution:'التوزيع حسب المحلات',topFive:'أعلى 5',dailySpend:'الإنفاق اليومي',recentInvoices:'أحدث الفواتير',viewAll:'عرض الكل',receiptScan:'تصوير / رفع الفاتورة',ocrAuto:'PaddleOCR + Tesseract — قارئان محليان + PDF.js',takePhoto:'تصوير بالكاميرا',choosePhoto:'اختيار صورة من الألبوم',choosePdf:'اختيار ملف PDF',rotateLeft:'↶ تدوير',rotateRight:'↷ تدوير',enhanceAgain:'✨ تحسين',scanAgain:'إعادة القراءة الذكية',enhanced:'محسّنة للقراءة',ocrHint:'الموقع لا يعتمد على محرك واحد: يبدأ بـ PaddleOCR الرسمي المدمج، ثم Tesseract محليًا عند الحاجة، ثم Cloudflare كخيار أخير فقط. لقطات الشاشة وPDF تُقرأ بدقة مكبرة وعلى شرائح.',ocrNote:'الإصدار 5.7.9 يحافظ على مسار القراءة الذي نجح في الفواتير السابقة، ويضيف مدققًا عامًا ذاتي الإنقاذ للفواتير الجديدة: يكتشف ترتيب أعمدة الأصناف تلقائيًا، يرفض أرقام الطلبات والملخصات كأصناف، ويطابق الأصناف والضريبة والإجمالي حسابيًا قبل تعبئة النموذج.',invoiceData:'بيانات الفاتورة',storeName:'اسم المحل',invoiceDate:'تاريخ الفاتورة',category:'التصنيف',subtotal:'المبلغ قبل الضريبة',tax:'الضريبة',finalTotal:'الإجمالي النهائي',purchases:'المشتريات',addItem:'+ إضافة غرض',itemsSubtotal:'مجموع الأغراض',calculatedTax:'الضريبة',calculatedTotal:'الإجمالي',clear:'مسح',approve:'اعتماد وحفظ الفاتورة',printReport:'طباعة التقرير',item:'الغرض',price:'السعر',qty:'العدد',noData:'لا توجد فواتير محفوظة لهذا الشهر.',delete:'حذف',edit:'تعديل',saved:'تم حفظ الفاتورة بنجاح',updated:'تم تحديث الفاتورة',required:'يرجى إدخال اسم المحل وتاريخ الفاتورة والإجمالي النهائي.',scanning:'جارٍ قراءة الفاتورة…',preparing:'جارٍ تحسين الصورة وقص الحواف…',scanDone:'تم تحليل الفاتورة. راجع البيانات ثم اعتمدها.',scanFail:'تعذر استخراج البيانات بدقة. يمكنك تعديلها أو إدخالها يدويًا.',ocrNeedsNet:'يحتاج الاتصال في أول مرة لتنزيل نموذج OCR وحفظه على الجهاز. بعد ذلك يعمل القارئ الأساسي محليًا، ويُستخدم Cloudflare فقط للحالات الصعبة أو كاحتياط.',localAIReader:'قارئ PaddleOCR المحلي',aiChecking:'جارٍ التحقق من محرك OCR…',aiLoading:'جارٍ تهيئة PaddleOCR…',aiReady:'جاهز على الجهاز',aiFallback:'مسار سحابي احتياطي',aiError:'تعذر تشغيل محرك OCR',aiLocalNote:'PaddleOCR هو القارئ الأساسي: يقرأ النص وإحداثياته محليًا، ثم يتحقق من الجداول والأرقام حسابيًا. Cloudflare احتياط فقط.',aiPrivate:'OCR محلي + Cloudflare احتياطي',aiAnalyzing:'جارٍ تحليل النص ومواقع الأسطر على الجهاز…',aiMerged:'اكتملت القراءة السريعة والتحقق من الفاتورة',currency:'د.إ',invoice:'فاتورة',itemsCount:'أغراض',confirmDelete:'هل تريد حذف هذه الفاتورة؟',backupDone:'تم تنزيل النسخة الاحتياطية',restoreDone:'تمت استعادة النسخة الاحتياطية',restoreFail:'ملف النسخة الاحتياطية غير صالح',quality:'جودة الاستخراج',vatDetected:'تم اكتشاف ضريبة القيمة المضافة 5%',fieldsDetected:'حقول مكتشفة',jan:'يناير',feb:'فبراير',mar:'مارس',apr:'أبريل',may:'مايو',jun:'يونيو',jul:'يوليو',aug:'أغسطس',sep:'سبتمبر',oct:'أكتوبر',nov:'نوفمبر',dec:'ديسمبر',groceries:'بقالة ومواد غذائية',dining:'مطاعم ومقاهي',shopping:'تسوق',transport:'مواصلات ووقود',health:'صحة وصيدلية',bills:'فواتير وخدمات',entertainment:'ترفيه',home:'منزل',other:'أخرى',
+ ar:{appTitle:'مصاريف الشهر',appSub:'إدارة ذكية للفواتير والمشتريات الشهرية',backup:'نسخة احتياطية',restore:'استعادة',settings:'⚙️ الإعدادات',syncTitle:'مزامنة الأجهزة',syncNotLinked:'غير مرتبط',syncConnected:'متصل لحظيًا',syncConnecting:'جارٍ الاتصال…',syncCreate:'إنشاء مجموعة جديدة',syncJoin:'ربط بهذا الرمز',syncCopy:'نسخ الرمز',syncDisconnect:'فصل هذا الجهاز',syncNow:'مزامنة الآن',syncIntro:'أنشئ مجموعة في الهاتف الأول، ثم أدخل نفس الرمز في أي هاتف آخر. أي فاتورة تحفظ أو تعدل أو تحذف ستظهر تلقائيًا في الأجهزة المرتبطة.',syncPrivacy:'الرمز نفسه هو مفتاح المجموعة. احتفظ به خاصًا. تتم المزامنة عبر Cloudflare فقط عند حفظ تغيير، والصور تُضغط قبل رفعها.',syncCreated:'تم إنشاء مجموعة المزامنة',syncJoined:'تم ربط الجهاز بالمجموعة',syncDone:'اكتملت المزامنة',syncInvalid:'رمز المزامنة غير صحيح',syncOffline:'تعذر الاتصال بالمزامنة الآن؛ ستبقى البيانات محفوظة محليًا.',dashboard:'الرئيسية',dashboardMonth:'الشهر المعروض',currentMonth:'الشهر الحالي',previousMonth:'الشهر السابق',nextMonth:'الشهر التالي',newInvoice:'تسجيل فاتورة جديدة',monthlyRecords:'السجلات الشهرية',monthSpend:'إجمالي الشهر',invoiceCount:'عدد الفواتير',savedLocally:'محفوظة على الجهاز',avgInvoice:'متوسط الفاتورة',monthAverage:'متوسط الشهر الحالي',budgetRemaining:'المتبقي من الميزانية',monthlyBudget:'الميزانية الشهرية',budgetAmount:'قيمة الميزانية',saveBudget:'حفظ الميزانية',budgetSaved:'تم حفظ ميزانية الشهر',spentOfBudget:'تم إنفاق',noBudget:'لم تحدد ميزانية بعد',categoryDistribution:'التوزيع حسب التصنيف',storesDistribution:'التوزيع حسب المحلات',topFive:'أعلى 5',dailySpend:'الإنفاق اليومي',recentInvoices:'أحدث الفواتير',viewAll:'عرض الكل',receiptScan:'تصوير / رفع الفاتورة',ocrAuto:'PaddleOCR + Tesseract — قارئان محليان + PDF.js',takePhoto:'تصوير بالكاميرا',choosePhoto:'اختيار صورة من الألبوم',choosePdf:'اختيار ملف PDF',rotateLeft:'↶ تدوير',rotateRight:'↷ تدوير',enhanceAgain:'✨ تحسين',scanAgain:'إعادة القراءة الذكية',enhanced:'محسّنة للقراءة',ocrHint:'الموقع لا يعتمد على محرك واحد: يبدأ بـ PaddleOCR الرسمي المدمج، ثم Tesseract محليًا عند الحاجة، ثم Cloudflare كخيار أخير فقط. لقطات الشاشة وPDF تُقرأ بدقة مكبرة وعلى شرائح.',ocrNote:'الإصدار 5.8.0 يحافظ على مسار القراءة المثبت للفواتير السابقة، ويمنع اعتماد أي نتيجة تحتوي صفوف ملخص أو أرقامًا غير منطقية. عند فشل التحقق ينتقل تلقائيًا إلى قارئ تخطيط عام مستقل للصورة الكاملة، مع مطابقة الأصناف والكميات والأسعار والضريبة والإجمالي قبل تعبئة النموذج.',invoiceData:'بيانات الفاتورة',storeName:'اسم المحل',invoiceDate:'تاريخ الفاتورة',category:'التصنيف',subtotal:'المبلغ قبل الضريبة',tax:'الضريبة',finalTotal:'الإجمالي النهائي',purchases:'المشتريات',addItem:'+ إضافة غرض',itemsSubtotal:'مجموع الأغراض',calculatedTax:'الضريبة',calculatedTotal:'الإجمالي',clear:'مسح',approve:'اعتماد وحفظ الفاتورة',printReport:'طباعة التقرير',item:'الغرض',price:'السعر',qty:'العدد',noData:'لا توجد فواتير محفوظة لهذا الشهر.',delete:'حذف',edit:'تعديل',saved:'تم حفظ الفاتورة بنجاح',updated:'تم تحديث الفاتورة',required:'يرجى إدخال اسم المحل وتاريخ الفاتورة والإجمالي النهائي.',scanning:'جارٍ قراءة الفاتورة…',preparing:'جارٍ تحسين الصورة وقص الحواف…',scanDone:'تم تحليل الفاتورة. راجع البيانات ثم اعتمدها.',scanFail:'تعذر استخراج البيانات بدقة. يمكنك تعديلها أو إدخالها يدويًا.',ocrNeedsNet:'يحتاج الاتصال في أول مرة لتنزيل نموذج OCR وحفظه على الجهاز. بعد ذلك يعمل القارئ الأساسي محليًا، ويُستخدم Cloudflare فقط للحالات الصعبة أو كاحتياط.',localAIReader:'قارئ PaddleOCR المحلي',aiChecking:'جارٍ التحقق من محرك OCR…',aiLoading:'جارٍ تهيئة PaddleOCR…',aiReady:'جاهز على الجهاز',aiFallback:'مسار سحابي احتياطي',aiError:'تعذر تشغيل محرك OCR',aiLocalNote:'PaddleOCR هو القارئ الأساسي: يقرأ النص وإحداثياته محليًا، ثم يتحقق من الجداول والأرقام حسابيًا. Cloudflare احتياط فقط.',aiPrivate:'OCR محلي + Cloudflare احتياطي',aiAnalyzing:'جارٍ تحليل النص ومواقع الأسطر على الجهاز…',aiMerged:'اكتملت القراءة السريعة والتحقق من الفاتورة',currency:'د.إ',invoice:'فاتورة',itemsCount:'أغراض',confirmDelete:'هل تريد حذف هذه الفاتورة؟',backupDone:'تم تنزيل النسخة الاحتياطية',restoreDone:'تمت استعادة النسخة الاحتياطية',restoreFail:'ملف النسخة الاحتياطية غير صالح',quality:'جودة الاستخراج',vatDetected:'تم اكتشاف ضريبة القيمة المضافة 5%',fieldsDetected:'حقول مكتشفة',jan:'يناير',feb:'فبراير',mar:'مارس',apr:'أبريل',may:'مايو',jun:'يونيو',jul:'يوليو',aug:'أغسطس',sep:'سبتمبر',oct:'أكتوبر',nov:'نوفمبر',dec:'ديسمبر',groceries:'بقالة ومواد غذائية',dining:'مطاعم ومقاهي',shopping:'تسوق',transport:'مواصلات ووقود',health:'صحة وصيدلية',bills:'فواتير وخدمات',entertainment:'ترفيه',home:'منزل',other:'أخرى',
 receiptEvidence:'صورة الفاتورة كدليل',evidenceAttached:'صورة دليل مرفقة',evidenceAuto:'مرفقة تلقائيًا من الفاتورة',evidenceManual:'مرفقة يدويًا',noEvidence:'لا توجد صورة دليل',
 addEvidence:'إضافة صورة دليل',viewEvidence:'عرض صورة الدليل',replaceEvidence:'استبدال الصورة',deleteEvidence:'حذف صورة الدليل',
 evidenceSaved:'تم حفظ صورة الفاتورة كدليل',evidenceDeleted:'تم حذف صورة الدليل',confirmDeleteEvidence:'هل تريد حذف صورة الدليل المرفقة؟',
 manualEvidencePrompt:'تم اعتماد الفاتورة بدون صورة. هل تريد إضافة صورة الفاتورة كدليل الآن؟',
 takeEvidencePhoto:'تصوير صورة الدليل',chooseEvidencePhoto:'اختيار صورة الدليل من الألبوم',later:'لاحقًا',
 evidenceStorageFail:'تعذر حفظ صورة الدليل على الجهاز',evidenceNotFound:'صورة الدليل غير موجودة على هذا الجهاز'},
- en:{appTitle:'Monthly Expenses',appSub:'Smart monthly receipt & spending manager',backup:'Backup',restore:'Restore',settings:'⚙️ Settings',syncTitle:'Device Sync',syncNotLinked:'Not linked',syncConnected:'Live connected',syncConnecting:'Connecting…',syncCreate:'Create New Group',syncJoin:'Link With This Code',syncCopy:'Copy Code',syncDisconnect:'Disconnect This Device',syncNow:'Sync Now',syncIntro:'Create a group on the first phone, then enter the same code on another phone. Saved, edited or deleted receipts appear automatically on linked devices.',syncPrivacy:'The group code is the shared key. Keep it private. Cloudflare sync runs only when data changes, and receipt images are compressed before upload.',syncCreated:'Sync group created',syncJoined:'Device linked to group',syncDone:'Sync completed',syncInvalid:'Invalid sync code',syncOffline:'Sync is temporarily unavailable; data remains saved locally.',dashboard:'Dashboard',dashboardMonth:'Displayed Month',currentMonth:'Current Month',previousMonth:'Previous Month',nextMonth:'Next Month',newInvoice:'New Receipt',monthlyRecords:'Monthly Records',monthSpend:'Month Total',invoiceCount:'Receipts',savedLocally:'Saved on this device',avgInvoice:'Average Receipt',monthAverage:'Current month average',budgetRemaining:'Budget Remaining',monthlyBudget:'Monthly Budget',budgetAmount:'Budget Amount',saveBudget:'Save Budget',budgetSaved:'Monthly budget saved',spentOfBudget:'Spent',noBudget:'No budget set yet',categoryDistribution:'Spend by Category',storesDistribution:'Spend by Store',topFive:'Top 5',dailySpend:'Daily Spending',recentInvoices:'Recent Receipts',viewAll:'View All',receiptScan:'Scan / Upload Receipt',ocrAuto:'PaddleOCR + Tesseract — Dual Local OCR + PDF.js',takePhoto:'Take Photo',choosePhoto:'Choose from Photos',choosePdf:'Choose PDF File',rotateLeft:'↶ Rotate',rotateRight:'↷ Rotate',enhanceAgain:'✨ Enhance',scanAgain:'Smart Re-scan',enhanced:'Enhanced for OCR',ocrHint:'The app no longer depends on one OCR engine: official built-in PaddleOCR runs first, Tesseract runs locally if needed, and Cloudflare is last. Screenshots/PDFs use enlarged overlapping tiles.',ocrNote:'v5.7.9 preserves the proven reader and adds a layout-agnostic self-healing verifier for new receipts: automatic Qty/Description/Amount column-order detection, summary/ID rejection, inclusive/exclusive VAT arithmetic, and multi-reader fallback only when the normal result fails validation.',invoiceData:'Receipt Details',storeName:'Store Name',invoiceDate:'Receipt Date',category:'Category',subtotal:'Subtotal Before Tax',tax:'Tax',finalTotal:'Final Total',purchases:'Items',addItem:'+ Add Item',itemsSubtotal:'Items Subtotal',calculatedTax:'Tax',calculatedTotal:'Total',clear:'Clear',approve:'Approve & Save Receipt',printReport:'Print Report',item:'Item',price:'Price',qty:'Qty',noData:'No saved receipts for this month.',delete:'Delete',edit:'Edit',saved:'Receipt saved successfully',updated:'Receipt updated',required:'Please enter store name, receipt date and final total.',scanning:'Reading receipt…',preparing:'Enhancing image and cropping edges…',scanDone:'Receipt analyzed. Review the fields before saving.',scanFail:'Could not extract the data accurately. You can edit or enter it manually.',ocrNeedsNet:'Cloud AI requires an internet connection. If it is unavailable, fields stay blank instead of running a slow fallback.',localAIReader:'Cloud Smart Receipt Reader',aiChecking:'Checking Cloudflare…',aiLoading:'Connecting to Cloudflare AI…',aiReady:'Connected & Ready',aiFallback:'Local fallback reader',aiError:'Cloud reader unavailable',aiLocalNote:'One Llama request with an enlarged item table, followed by local parsing in the secure Worker.',aiPrivate:'Secure Worker processing',aiAnalyzing:'Reading enlarged receipt regions with Cloudflare AI…',aiMerged:'Cloud AI receipt analysis complete',currency:'AED',invoice:'Receipt',itemsCount:'Items',confirmDelete:'Delete this receipt?',backupDone:'Backup downloaded',restoreDone:'Backup restored',restoreFail:'Invalid backup file',quality:'Extraction quality',vatDetected:'5% VAT detected',fieldsDetected:'fields detected',jan:'January',feb:'February',mar:'March',apr:'April',may:'May',jun:'June',jul:'July',aug:'August',sep:'September',oct:'October',nov:'November',dec:'December',groceries:'Groceries',dining:'Dining & Coffee',shopping:'Shopping',transport:'Transport & Fuel',health:'Health & Pharmacy',bills:'Bills & Services',entertainment:'Entertainment',home:'Home',other:'Other',
+ en:{appTitle:'Monthly Expenses',appSub:'Smart monthly receipt & spending manager',backup:'Backup',restore:'Restore',settings:'⚙️ Settings',syncTitle:'Device Sync',syncNotLinked:'Not linked',syncConnected:'Live connected',syncConnecting:'Connecting…',syncCreate:'Create New Group',syncJoin:'Link With This Code',syncCopy:'Copy Code',syncDisconnect:'Disconnect This Device',syncNow:'Sync Now',syncIntro:'Create a group on the first phone, then enter the same code on another phone. Saved, edited or deleted receipts appear automatically on linked devices.',syncPrivacy:'The group code is the shared key. Keep it private. Cloudflare sync runs only when data changes, and receipt images are compressed before upload.',syncCreated:'Sync group created',syncJoined:'Device linked to group',syncDone:'Sync completed',syncInvalid:'Invalid sync code',syncOffline:'Sync is temporarily unavailable; data remains saved locally.',dashboard:'Dashboard',dashboardMonth:'Displayed Month',currentMonth:'Current Month',previousMonth:'Previous Month',nextMonth:'Next Month',newInvoice:'New Receipt',monthlyRecords:'Monthly Records',monthSpend:'Month Total',invoiceCount:'Receipts',savedLocally:'Saved on this device',avgInvoice:'Average Receipt',monthAverage:'Current month average',budgetRemaining:'Budget Remaining',monthlyBudget:'Monthly Budget',budgetAmount:'Budget Amount',saveBudget:'Save Budget',budgetSaved:'Monthly budget saved',spentOfBudget:'Spent',noBudget:'No budget set yet',categoryDistribution:'Spend by Category',storesDistribution:'Spend by Store',topFive:'Top 5',dailySpend:'Daily Spending',recentInvoices:'Recent Receipts',viewAll:'View All',receiptScan:'Scan / Upload Receipt',ocrAuto:'PaddleOCR + Tesseract — Dual Local OCR + PDF.js',takePhoto:'Take Photo',choosePhoto:'Choose from Photos',choosePdf:'Choose PDF File',rotateLeft:'↶ Rotate',rotateRight:'↷ Rotate',enhanceAgain:'✨ Enhance',scanAgain:'Smart Re-scan',enhanced:'Enhanced for OCR',ocrHint:'The app no longer depends on one OCR engine: official built-in PaddleOCR runs first, Tesseract runs locally if needed, and Cloudflare is last. Screenshots/PDFs use enlarged overlapping tiles.',ocrNote:'v5.8.0 preserves the proven reader and refuses to accept summary rows or implausible numbers as purchases. Failed validation automatically routes the complete image through an independent layout-agnostic reader, with item/quantity/price/VAT/total arithmetic checks before the form is filled.',invoiceData:'Receipt Details',storeName:'Store Name',invoiceDate:'Receipt Date',category:'Category',subtotal:'Subtotal Before Tax',tax:'Tax',finalTotal:'Final Total',purchases:'Items',addItem:'+ Add Item',itemsSubtotal:'Items Subtotal',calculatedTax:'Tax',calculatedTotal:'Total',clear:'Clear',approve:'Approve & Save Receipt',printReport:'Print Report',item:'Item',price:'Price',qty:'Qty',noData:'No saved receipts for this month.',delete:'Delete',edit:'Edit',saved:'Receipt saved successfully',updated:'Receipt updated',required:'Please enter store name, receipt date and final total.',scanning:'Reading receipt…',preparing:'Enhancing image and cropping edges…',scanDone:'Receipt analyzed. Review the fields before saving.',scanFail:'Could not extract the data accurately. You can edit or enter it manually.',ocrNeedsNet:'Cloud AI requires an internet connection. If it is unavailable, fields stay blank instead of running a slow fallback.',localAIReader:'Cloud Smart Receipt Reader',aiChecking:'Checking Cloudflare…',aiLoading:'Connecting to Cloudflare AI…',aiReady:'Connected & Ready',aiFallback:'Local fallback reader',aiError:'Cloud reader unavailable',aiLocalNote:'One Llama request with an enlarged item table, followed by local parsing in the secure Worker.',aiPrivate:'Secure Worker processing',aiAnalyzing:'Reading enlarged receipt regions with Cloudflare AI…',aiMerged:'Cloud AI receipt analysis complete',currency:'AED',invoice:'Receipt',itemsCount:'Items',confirmDelete:'Delete this receipt?',backupDone:'Backup downloaded',restoreDone:'Backup restored',restoreFail:'Invalid backup file',quality:'Extraction quality',vatDetected:'5% VAT detected',fieldsDetected:'fields detected',jan:'January',feb:'February',mar:'March',apr:'April',may:'May',jun:'June',jul:'July',aug:'August',sep:'September',oct:'October',nov:'November',dec:'December',groceries:'Groceries',dining:'Dining & Coffee',shopping:'Shopping',transport:'Transport & Fuel',health:'Health & Pharmacy',bills:'Bills & Services',entertainment:'Entertainment',home:'Home',other:'Other',
 receiptEvidence:'Receipt Evidence Image',evidenceAttached:'Evidence image attached',evidenceAuto:'Automatically attached from receipt',evidenceManual:'Manually attached',noEvidence:'No evidence image',
 addEvidence:'Add Evidence Image',viewEvidence:'View Evidence Image',replaceEvidence:'Replace Image',deleteEvidence:'Delete Evidence Image',
 evidenceSaved:'Receipt evidence image saved',evidenceDeleted:'Evidence image deleted',confirmDeleteEvidence:'Delete the attached evidence image?',
@@ -744,7 +776,7 @@ function clearDraft(){clearTimeout(draftTimer);try{localStorage.removeItem(DRAFT
 async function restoreDraft(){let d=null;try{d=JSON.parse(localStorage.getItem(DRAFT_KEY)||'null')}catch(e){}if(!d||!d.ts||Date.now()-d.ts>1000*60*60*24*30)return false;editingId=d.editingId||null;$('#storeName').value=d.store||'';$('#invoiceDate').value=d.date||todayISO();renderCategoryOptions(d.category||'other');$('#subtotal').value=d.subtotal??'';$('#tax').value=d.tax??'';$('#finalTotal').value=d.total??'';$('#items').innerHTML='';((d.items||[]).length?d.items:[{}]).forEach(addItem);$('#editModeBadge').textContent=editingId?t('edit'):'';if(d.preview){try{const img=await new Promise((resolve,reject)=>{const x=new Image();x.onload=()=>resolve(x);x.onerror=reject;x.src=d.preview});sourceCanvas=document.createElement('canvas');sourceCanvas.width=img.naturalWidth||img.width;sourceCanvas.height=img.naturalHeight||img.height;sourceCanvas.getContext('2d').drawImage(img,0,0);currentCanvas=document.createElement('canvas');currentCanvas.width=sourceCanvas.width;currentCanvas.height=sourceCanvas.height;currentCanvas.getContext('2d').drawImage(sourceCanvas,0,0);showCurrentCanvas()}catch(e){}}calcTotals();showPage('new');toast(lang==='ar'?'تمت استعادة مسودة الفاتورة بعد إعادة فتح الصفحة':'Receipt draft restored after page reload');return true}
 async function releaseOCRWorkers(){const jobs=[];if(ocrWorker){try{jobs.push(ocrWorker.terminate())}catch(e){}ocrWorker=null}if(ocrEnglishWorker){try{jobs.push(ocrEnglishWorker.terminate())}catch(e){}ocrEnglishWorker=null}if(jobs.length)try{await Promise.allSettled(jobs)}catch(e){}}
 
-function applyLang(){document.documentElement.lang=lang;document.documentElement.dir=lang==='ar'?'rtl':'ltr';$$('[data-i18n]').forEach(el=>el.textContent=t(el.dataset.i18n));$('#langBtn').textContent=lang==='ar'?'English':'العربية';renderCategoryOptions();renderAll();refreshSyncUI();refreshPwaInstallUI()}
+function applyLang(){document.documentElement.lang=lang;document.documentElement.dir=lang==='ar'?'rtl':'ltr';$$('[data-i18n]').forEach(el=>el.textContent=t(el.dataset.i18n));$('#langBtn').textContent=lang==='ar'?'English':'العربية';renderCategoryOptions();renderAll();refreshSyncUI();refreshPwaInstallUI();window.__monthlyExpensesRefreshUpdateText?.()}
 
 
 // === v5.7.8 Install to Home Screen (PWA) ===
@@ -1846,6 +1878,59 @@ function receiptNeedsPrecisionAudit(p){
   if(Number.isFinite(rate)&&rate>0&&rate<30&&Number.isFinite(sub)&&Number.isFinite(tax)&&Math.abs(sub*rate/100-tax)>Math.max(.04,Math.abs(tax)*.03))return true;
   return false
 }
+
+function receiptItemIsSummaryV580(name){
+  const n=normalizeOcrText(name||'').replace(/^[^A-Za-z\u0600-\u06FF]+/,'').trim();
+  return /^(?:vat|tax|subtotal|sub\s*total|total\s*before|grand\s*total|final\s*total|total\b|amount\s*due|net\s*amount|cash|card|visa|change|balance|bill|token|check|order|trn|invoice|receipt|printed|date|time|creator|customer|cid|mobile|mob|tel|counter|home\s*delivery|thank\s*you|ضريبة|الضريبة|الإجمالي|الاجمالي|المجموع|فاتورة|رقم)/i.test(n)
+}
+function receiptNeedsGeneralRescueV580(p){
+  if(!p)return true;normalizeReceiptRowAnomalies(p);
+  const rows=p.itemRows||[],total=Number(p.total),sub=Number(p.subtotal),tax=Number(p.tax);
+  if(!(Number.isFinite(total)&&total>0)||!rows.length)return true;
+  if(!p.store||merchantTrustScore(p.store)<18||!p.date)return true;
+  let sum=0;
+  for(const it of rows){
+    const q=Math.max(1,Number(it?.qty)||1),price=Number(it?.price),rt=Number(it?.readTotal??(price*q));
+    if(receiptItemIsSummaryV580(it?.name)||!Number.isFinite(price)||price<=0||!Number.isFinite(rt)||rt<=0||q>99)return true;
+    if(price>Math.max(1500,total*25)||rt>Math.max(3000,total*30))return true;
+    if(Math.abs(price*q-rt)>Math.max(.25,rt*.10))return true;
+    sum+=rt
+  }
+  sum=Number(sum.toFixed(2));
+  if([sub,tax,total].every(Number.isFinite)&&Math.abs(sub+tax-total)>Math.max(.15,total*.02))return true;
+  const targets=[sub,total].filter(x=>Number.isFinite(x)&&x>0);
+  if(targets.length&&Math.min(...targets.map(x=>Math.abs(sum-x)))>Math.max(.25,total*.08))return true;
+  return false
+}
+function cloudBodyNeedsGeneralRescueV580(body){
+  if(!body)return true;const r=body.receipt||{},items=Array.isArray(r.items)?r.items:[];
+  const total=Number(r.total),sub=Number(r.subtotal),tax=Number(r.tax);
+  if(!(Number.isFinite(total)&&total>0)||!items.length)return true;
+  if(!r.merchant_name_en||!r.date)return true;
+  let sum=0;
+  for(const it of items){
+    const name=String(it?.name||it?.name_en||''),q=Math.max(1,Number(it?.quantity??it?.qty)||1);
+    const unit=Number(it?.unit_price??it?.price),line=Number(it?.line_total);
+    const rt=Number.isFinite(line)&&line>0?line:(Number.isFinite(unit)&&unit>0?unit*q:NaN);
+    const price=Number.isFinite(unit)&&unit>0?unit:(Number.isFinite(rt)?rt/q:NaN);
+    if(receiptItemIsSummaryV580(name)||!Number.isFinite(price)||price<=0||!Number.isFinite(rt)||rt<=0||q>99)return true;
+    if(price>Math.max(1500,total*25)||rt>Math.max(3000,total*30))return true;
+    sum+=rt
+  }
+  sum=Number(sum.toFixed(2));
+  if([sub,tax,total].every(Number.isFinite)&&Math.abs(sub+tax-total)>Math.max(.15,total*.02))return true;
+  const targets=[sub,total].filter(x=>Number.isFinite(x)&&x>0);
+  if(targets.length&&Math.min(...targets.map(x=>Math.abs(sum-x)))>Math.max(.25,total*.08))return true;
+  return false
+}
+function cloudBodyGeneralQualityV580(body){
+  if(!body)return-99999;
+  let s=cloudPayloadQuality(body);
+  if(cloudBodyNeedsGeneralRescueV580(body))s-=900;
+  else s+=900;
+  return s
+}
+
 function cloudBodyNeedsPrecisionAudit(body){
   if(!body)return true;const r=body.receipt||{},items=(Array.isArray(r.items)?r.items:[]).map(it=>({name:String(it.name||''),qty:Number(it.quantity??it.qty??1)||1,price:Number(it.unit_price??it.price??0)||0,readTotal:Number(it.line_total??0)||null}));
   const p={store:r.merchant_name_en||'',category:inferCategory(`${r.merchant_name_en||''} ${items.map(x=>x.name).join(' ')}`),subtotal:r.subtotal??null,tax:r.tax??null,total:r.total??null,vatRate:r.vat_rate_percent??r.vat_rate??r.rate??null,itemRows:items,itemsExpected:Number(r.printed_item_count)||0};
@@ -2207,7 +2292,8 @@ function cloudReceiptToParsed(payload){
     store:canonicalMerchant,date:r.date||'',category:inferCategory(`${canonicalMerchant} ${(r.items||[]).map(x=>x.name||'').join(' ')}`),
     subtotal:r.subtotal??null,tax:r.tax??null,total:r.total??null,vatRate:r.vat_rate_percent??r.vat_rate??r.rate??null,itemRows:items,items:items.length,itemsExpected:Number(r.printed_item_count)||0,
     score:Number(payload?.score??0)||Math.min(100,vals*14),fields:vals,vatEvidence:Number(r.tax||0)>0,totalReliable:r.total!=null,
-    localAI:true,engine:'PaddleOCR v5 + Tesseract Local Rescue • PDF.js • Cloud Last',warnings:Array.isArray(r.warnings)?r.warnings:[],readerMeta:payload?.meta||null,accepted:payload?.accepted!==false
+    localAI:true,engine:'PaddleOCR v5 + Tesseract Local Rescue • PDF.js • Cloud Last',warnings:Array.isArray(r.warnings)?r.warnings:[],readerMeta:payload?.meta||null,accepted:payload?.accepted!==false,
+    _ocrText:String(payload?.transcript_preview||payload?.transcript||'')
   })
 }
 async function checkCloudReaderHealth(){
@@ -2459,7 +2545,7 @@ async function tryAlternateCloudReceipt(primaryBody){
     :'Automatic alternate read of the enhanced image — no retake needed.',68);
 
   try{
-    const altBody=await postCloudReceipt(altImage,26000,'alternate');
+    const altBody=await postCloudReceipt(altImage,30000,'universal');
     if(cloudPayloadQuality(altBody)>cloudPayloadQuality(primaryBody)){
       altBody.meta={...(altBody.meta||{}),adaptive_retry:true};
       return altBody
@@ -2565,7 +2651,7 @@ async function runCloudReceiptReader(localEvidence=null){
   }
 
   const lr=legacyBody?.receipt||{},li=Array.isArray(lr.items)?lr.items:[];
-  const stableAccepted=!!legacyBody && legacyBody.accepted!==false && li.length>0 && lr.total!=null && !cloudBodyNeedsPrecisionAudit(legacyBody);
+  const stableAccepted=!!legacyBody && legacyBody.accepted!==false && li.length>0 && lr.total!=null && !cloudBodyNeedsPrecisionAudit(legacyBody) && !cloudBodyNeedsGeneralRescueV580(legacyBody);
 
   // IMPORTANT: once the stable reader accepts a receipt, STOP. Do not run any new
   // fallback just because an optional field is blank. This protects prior successes.
@@ -2603,31 +2689,42 @@ async function runCloudReceiptReader(localEvidence=null){
   }
 
   // A failed rescue can NEVER overwrite a stronger stable partial result.
-  let body=universalBody;
-  if(!body || cloudPayloadQuality(legacyBody)>cloudPayloadQuality(body))body=legacyBody;
+  let body=null;
+  const candidatesV580=[universalBody,legacyBody].filter(Boolean).sort((a,b)=>cloudBodyGeneralQualityV580(b)-cloudBodyGeneralQualityV580(a));
+  body=candidatesV580[0]||null;
   if(!body)throw universalErr||legacyErr||new Error('Cloud receipt readers unavailable');
 
   // Re-enable the older successful independent layout/table rescues only for receipts
   // that are still missing rows or have suspicious row arithmetic. A clean stable result above
   // already returned, so ALWAQAED and other successes are left untouched.
-  if(cloudBodyNeedsPrecisionAudit(body)){
+  if(cloudBodyNeedsPrecisionAudit(body)||cloudBodyNeedsGeneralRescueV580(body)){
     body=await tryAlternateCloudReceipt(body);
-    if(cloudBodyNeedsPrecisionAudit(body))body=await trySegmentCloudReceipt(body);
+    if(cloudBodyNeedsPrecisionAudit(body)||cloudBodyNeedsGeneralRescueV580(body))body=await trySegmentCloudReceipt(body);
+    if(cloudBodyNeedsGeneralRescueV580(body)){
+      try{
+        $('#ocrMeterBar').style.width='86%';
+        $('#ocrStatus').textContent=lang==='ar'?'النتيجة ما زالت غير منطقية؛ تشغيل قارئ بصري مستقل للصورة الأصلية…':'Result is still inconsistent; running an independent forensic full-image reader…';
+        const forensicImage=buildCloudFullReceiptImage(rescueFocus,false);
+        const forensic=await postCloudReceipt(forensicImage,32000,'forensic');
+        if(!cloudBodyNeedsGeneralRescueV580(forensic)||cloudBodyGeneralQualityV580(forensic)>cloudBodyGeneralQualityV580(body))body=forensic
+      }catch(e){console.warn('Forensic receipt rescue failed',e)}
+    }
   }
 
   $('#ocrMeterBar').style.width='90%';
   let parsed=cloudReceiptToParsed(body);
   parsed.itemsExpected=Number(body?.receipt?.printed_item_count)||parsed.itemsExpected;
   if(localEvidence)parsed=mergeTrustedLocalEvidenceV571(parsed,localEvidence)||parsed;
+  parsed=applyEmergencyReceiptRepairsV577(parsed)||parsed;
   parsed=applyReceiptRegressionGuardsV571(parsed);
 
-  if(receiptNeedsPrecisionAudit(parsed)){
+  if(receiptNeedsPrecisionAudit(parsed)||receiptNeedsGeneralRescueV580(parsed)){
     try{
       const focused=await runFocusedEnglishVerifier(parsed);
       parsed=mergeTrustedLocalEvidenceV571(mergeReceiptCandidates(focused,parsed),localEvidence)||parsed
     }catch(e){console.warn('Focused cloud precision audit failed',e)}
   }
-  if(receiptNeedsPrecisionAudit(parsed)){
+  if(receiptNeedsPrecisionAudit(parsed)||receiptNeedsGeneralRescueV580(parsed)){
     try{
       const hybrid=await tryLocalHybridReceiptRescue(body,parsed);
       if(hybrid)parsed=mergeTrustedLocalEvidenceV571(hybrid,localEvidence)||hybrid
@@ -2654,6 +2751,15 @@ async function runCloudReceiptReader(localEvidence=null){
     throw universalErr||legacyErr||new Error('Receipt extraction did not pass verification')
   }
 
+  parsed=applyEmergencyReceiptRepairsV577(parsed)||parsed;
+  if(receiptNeedsGeneralRescueV580(parsed)){
+    const keep={...parsed,itemRows:[],items:0,accepted:false};
+    if(!(Number(keep.total)>0&&Number.isFinite(Number(keep.total)))){keep.subtotal=null;keep.tax=null;keep.total=null}
+    applyParsedReceipt(keep);showScanResult(keep);saveDraftNow(true);$('#ocrMeterBar').style.width='100%';
+    $('#ocrStatus').textContent=lang==='ar'?'لم تُعتمد نتيجة غير منطقية. احتفظنا فقط بالحقول التي أمكن التحقق منها؛ أعد القراءة الذكية أو حسّن الصورة.':'An inconsistent extraction was rejected. Only verifiable fields were kept; run Smart Re-scan or enhance the image.';
+    setLocalAIStatus('fallback',lang==='ar'?'تم رفض أرقام/أصناف غير موثوقة بدل تعبئة بيانات خاطئة.':'Untrusted rows/numbers were rejected instead of filling bad data.');
+    return keep
+  }
   applyParsedReceipt(parsed);showScanResult(parsed);saveDraftNow(true);$('#ocrMeterBar').style.width='100%';
   const ms=Number(body?.meta?.elapsed_ms||0),sid=body?.meta?.scan_id?` • Scan ${body.meta.scan_id}`:'',time=ms?` • ${(ms/1000).toFixed(1)}s`:'';
   const fallbackUsed=body===universalBody;
@@ -2674,7 +2780,7 @@ async function runSmartReceiptReader(){
       localCandidate=await runPaddleUniversalReader({apply:false,textFallback:false});
       if(pdfTextCandidate)localCandidate=mergeReceiptCandidates(localCandidate,pdfTextCandidate);
       localCandidate=applyEmergencyReceiptRepairsV577(localCandidate)||localCandidate;
-      if(localCandidate?.accepted&&!receiptCandidateNeedsRefinement(localCandidate)&&!receiptNeedsPrecisionAudit(localCandidate)){applyParsedReceipt(localCandidate);showScanResult(localCandidate);saveDraftNow(true);$('#ocrMeterBar').style.width='100%';$('#ocrStatus').textContent=lang==='ar'?'تمت القراءة محليًا والتحقق من الأصناف والإجماليات.':'Read locally and verified items/totals.';setLocalAIStatus('ready',lang==='ar'?'القارئ الأساسي نجح؛ لم نحتج للمسار السحابي.':'Primary local reader succeeded; cloud fallback was not needed.',100);return localCandidate}
+      if(localCandidate?.accepted&&!receiptCandidateNeedsRefinement(localCandidate)&&!receiptNeedsPrecisionAudit(localCandidate)&&!receiptNeedsGeneralRescueV580(localCandidate)){applyParsedReceipt(localCandidate);showScanResult(localCandidate);saveDraftNow(true);$('#ocrMeterBar').style.width='100%';$('#ocrStatus').textContent=lang==='ar'?'تمت القراءة محليًا والتحقق من الأصناف والإجماليات.':'Read locally and verified items/totals.';setLocalAIStatus('ready',lang==='ar'?'القارئ الأساسي نجح؛ لم نحتج للمسار السحابي.':'Primary local reader succeeded; cloud fallback was not needed.',100);return localCandidate}
       localErr=new Error('On-device OCR needs digital rescue');console.warn('PaddleOCR partial result',localCandidate)
     }catch(e){localErr=e;console.warn('PaddleOCR unavailable/partial',e)}
 
@@ -2684,7 +2790,7 @@ async function runSmartReceiptReader(){
       try{
         $('#ocrMeterBar').style.width='32%';$('#ocrStatus').textContent=lang==='ar'?'تشغيل إنقاذ المستند الرقمي: قص وتكبير وقراءة شرائح متداخلة…':'Running digital-document rescue: crop, upscale and overlapping tile OCR…';
         let digital=await runDigitalTilePaddleReader({apply:false,textFallback:false});digital=mergeReceiptCandidates(digital,localCandidate,pdfTextCandidate);
-        if(digital?.accepted&&!receiptCandidateNeedsRefinement(digital)&&!receiptNeedsPrecisionAudit(digital)){applyParsedReceipt(digital);showScanResult(digital);saveDraftNow(true);$('#ocrMeterBar').style.width='100%';$('#ocrStatus').textContent=lang==='ar'?'تمت قراءة لقطة الشاشة/المستند الرقمي بدقة مكبرة والتحقق حسابيًا.':'Screenshot/digital document read with enlarged tile OCR and verified.';setLocalAIStatus('ready',lang==='ar'?'نجح مسار اللقطات الرقمية المحلي؛ لم نرسل صورة الفاتورة إلى السحابة.':'Local digital-document rescue succeeded; no receipt image was sent to cloud.',100);return digital}
+        if(digital?.accepted&&!receiptCandidateNeedsRefinement(digital)&&!receiptNeedsPrecisionAudit(digital)&&!receiptNeedsGeneralRescueV580(digital)){applyParsedReceipt(digital);showScanResult(digital);saveDraftNow(true);$('#ocrMeterBar').style.width='100%';$('#ocrStatus').textContent=lang==='ar'?'تمت قراءة لقطة الشاشة/المستند الرقمي بدقة مكبرة والتحقق حسابيًا.':'Screenshot/digital document read with enlarged tile OCR and verified.';setLocalAIStatus('ready',lang==='ar'?'نجح مسار اللقطات الرقمية المحلي؛ لم نرسل صورة الفاتورة إلى السحابة.':'Local digital-document rescue succeeded; no receipt image was sent to cloud.',100);return digital}
         localCandidate=mergeReceiptCandidates(digital,localCandidate,pdfTextCandidate)
       }catch(e){console.warn('Digital document rescue failed',e);localErr=e}
     }
@@ -2694,20 +2800,20 @@ async function runSmartReceiptReader(){
     try{
       $('#ocrMeterBar').style.width='56%';$('#ocrStatus').textContent=lang==='ar'?'تشغيل محرك OCR محلي مستقل قبل السحابة…':'Starting an independent local OCR engine before cloud…';
       let tess=await runTesseractSpatialReader({digital:shouldDigital});tess=mergeReceiptCandidates(tess,localCandidate,pdfTextCandidate);tess=applyEmergencyReceiptRepairsV577(tess)||tess;localCandidate=tess||localCandidate;
-      if(tess?.accepted&&!receiptCandidateNeedsRefinement(tess)&&!receiptNeedsPrecisionAudit(tess)){applyParsedReceipt(tess);showScanResult(tess);saveDraftNow(true);$('#ocrMeterBar').style.width='100%';$('#ocrStatus').textContent=lang==='ar'?'تمت القراءة بالكامل بالمحرك المحلي الاحتياطي والتحقق حسابيًا.':'Receipt completed by the local rescue engine and arithmetically verified.';setLocalAIStatus('ready',lang==='ar'?'نجح Tesseract محليًا؛ لم نحتج Cloudflare.':'Tesseract succeeded locally; Cloudflare was not needed.',100);return tess}
+      if(tess?.accepted&&!receiptCandidateNeedsRefinement(tess)&&!receiptNeedsPrecisionAudit(tess)&&!receiptNeedsGeneralRescueV580(tess)){applyParsedReceipt(tess);showScanResult(tess);saveDraftNow(true);$('#ocrMeterBar').style.width='100%';$('#ocrStatus').textContent=lang==='ar'?'تمت القراءة بالكامل بالمحرك المحلي الاحتياطي والتحقق حسابيًا.':'Receipt completed by the local rescue engine and arithmetically verified.';setLocalAIStatus('ready',lang==='ar'?'نجح Tesseract محليًا؛ لم نحتج Cloudflare.':'Tesseract succeeded locally; Cloudflare was not needed.',100);return tess}
     }catch(e){console.warn('Independent local OCR rescue failed',e);localErr=e}
 
     // Stage 3.5: focused local verification, used only for suspicious merchant names
     // or item rows that do not reconcile cleanly. It cannot replace a stronger result.
-    if(!localCandidate?.accepted||receiptCandidateNeedsRefinement(localCandidate)||receiptNeedsPrecisionAudit(localCandidate)){
+    if(!localCandidate?.accepted||receiptCandidateNeedsRefinement(localCandidate)||receiptNeedsPrecisionAudit(localCandidate)||receiptNeedsGeneralRescueV580(localCandidate)){
       try{
         $('#ocrMeterBar').style.width='76%';$('#ocrStatus').textContent=lang==='ar'?'تدقيق مركز لاسم المحل وجدول الأصناف…':'Focused verification of merchant and item table…';
         const focused=await runOCR({apply:false});
         localCandidate=mergeReceiptCandidates(focused,localCandidate,pdfTextCandidate);localCandidate=applyEmergencyReceiptRepairsV577(localCandidate)||localCandidate;
-        if(receiptNeedsPrecisionAudit(localCandidate)){
+        if(receiptNeedsPrecisionAudit(localCandidate)||receiptNeedsGeneralRescueV580(localCandidate)){
           try{const precision=await runFocusedEnglishVerifier(localCandidate);localCandidate=mergeReceiptCandidates(precision,localCandidate,pdfTextCandidate)}catch(e2){console.warn('Legacy precision verifier failed',e2)}
         }
-        if(localCandidate?.accepted&&!receiptCandidateNeedsRefinement(localCandidate)&&!receiptNeedsPrecisionAudit(localCandidate)){
+        if(localCandidate?.accepted&&!receiptCandidateNeedsRefinement(localCandidate)&&!receiptNeedsPrecisionAudit(localCandidate)&&!receiptNeedsGeneralRescueV580(localCandidate)){
           applyParsedReceipt(localCandidate);showScanResult(localCandidate);saveDraftNow(true);$('#ocrMeterBar').style.width='100%';
           $('#ocrStatus').textContent=lang==='ar'?'تم تصحيح اسم المحل/الأصناف محليًا والتحقق حسابيًا.':'Merchant/items refined locally and verified.';
           setLocalAIStatus('ready',lang==='ar'?'نجح التدقيق المحلي المركز؛ لم نحتج Cloudflare.':'Focused local verification succeeded; Cloudflare was not needed.',100);
@@ -3035,7 +3141,7 @@ function simplePosRescueV577(r){
   return {...r,store,date,category:inferCategory(`${store} ${itemRows.map(x=>x.name).join(' ')}`),subtotal:Number((best.inclusive?best.tot-best.tax:itemRows.reduce((s,x)=>s+x.readTotal,0)).toFixed(2)),tax:Number(best.tax.toFixed(2)),total:Number(best.tot.toFixed(2)),itemRows,items:itemRows.length,itemsExpected:expected||itemRows.length,accepted:true,totalReliable:true,score:Math.max(Number(r?.score||0),96),fields:Math.max(Number(r?.fields||0),6),engine:'Stable OCR + isolated POS table rescue',posRescueV577:true}
 }
 
-// === v5.7.9 layout-agnostic self-healing receipt verifier ===
+// === v5.8.0 layout-agnostic self-healing receipt verifier ===
 // This layer is intentionally downstream of the proven readers. A healthy result is returned
 // untouched; only inconsistent/new layouts are reconstructed from OCR evidence.
 function summaryGarbageV579(name){
@@ -3204,7 +3310,90 @@ $('#restoreInput').onchange=async e=>{
 clearForm(false);applyLang();const launchPage=new URLSearchParams(location.search).get('page');if(['dashboard','new','records'].includes(launchPage))showPage(launchPage);ensurePersistentStorage();restoreDraft();refreshSyncUI();setTimeout(()=>reconcileLocalEvidenceFlags().catch(()=>{}),250);if(syncCode){setTimeout(async()=>{try{await syncInitialPull(true);syncOpenSocket()}catch(e){console.warn('Initial sync unavailable',e)}},400)}setLocalAIStatus('loading',lang==='ar'?'جارٍ التحقق من اتصال Cloudflare AI…':'Checking Cloudflare AI connection…',5);setTimeout(checkCloudReaderHealth,250);
 </script>
 
-<footer class="app-version-footer" id="appVersionFooter" data-version="5.7.9">الإصدار 5.7.9</footer>
-<script>if('serviceWorker' in navigator){window.addEventListener('load',async()=>{try{const r=await navigator.serviceWorker.register('/sw.js',{updateViaCache:'none'});r.update().catch(()=>{})}catch(e){}});}</script>
+<footer class="app-version-footer" id="appVersionFooter" data-version="5.8.0">الإصدار 5.8.0</footer>
+<script>
+(()=>{
+  if(!('serviceWorker' in navigator))return;
+  const CURRENT_APP_VERSION='5.8.0';
+  let waitingWorker=null,registration=null,acceptedUpdate=false,remoteVersion='';
+  const banner=document.getElementById('appUpdateBanner'),title=document.getElementById('appUpdateTitle'),note=document.getElementById('appUpdateNote'),
+        backup=document.getElementById('updateBackupBtn'),apply=document.getElementById('applyUpdateBtn');
+
+  const isArabic=()=>(typeof lang!=='undefined'?lang:(document.documentElement.lang||'ar'))==='ar';
+  const paint=()=>{
+    const ar=isArabic();
+    if(title)title.textContent=ar?'تحديث جديد متوفر':'New update available';
+    if(note)note.textContent=ar
+      ?`يتوفر إصدار أحدث${remoteVersion?` (${remoteVersion})`:''}. لن يتم تحديث الصفحة تلقائيًا. احفظ نسخة احتياطية إن رغبت، ثم اضغط «تحديث الآن».`
+      :`A newer version${remoteVersion?` (${remoteVersion})`:''} is available. The page will not update automatically. Save a backup if you want, then choose “Update now”.`;
+    if(backup)backup.textContent=ar?'نسخة احتياطية':'Save backup';
+    if(apply&&!apply.disabled)apply.textContent=ar?'تحديث الآن':'Update now';
+  };
+  const show=(worker=null,version='')=>{
+    if(worker)waitingWorker=worker;
+    if(version)remoteVersion=version;
+    if(!navigator.serviceWorker.controller)return;
+    paint();banner?.classList.add('show')
+  };
+
+  async function checkHtmlVersion(){
+    try{
+      const u=`/index.html?__update_check=${Date.now()}`;
+      const res=await fetch(u,{cache:'no-store',headers:{'cache-control':'no-cache'}});
+      if(!res.ok)return;
+      const text=await res.text();
+      const m=text.match(/id=["']appVersionFooter["'][^>]*data-version=["']([^"']+)["']/i)
+        ||text.match(/data-version=["']([^"']+)["'][^>]*id=["']appVersionFooter["']/i);
+      const v=m?.[1]?.trim()||'';
+      if(v&&v!==CURRENT_APP_VERSION)show(null,v)
+    }catch(e){}
+  }
+
+  async function refreshCurrentShell(){
+    const ctl=navigator.serviceWorker.controller;
+    if(!ctl)throw new Error('No active service worker');
+    await new Promise((resolve,reject)=>{
+      const channel=new MessageChannel(),timer=setTimeout(()=>reject(new Error('Update timeout')),20000);
+      channel.port1.onmessage=e=>{clearTimeout(timer);e.data?.ok?resolve():reject(new Error(e.data?.error||'Update failed'))};
+      ctl.postMessage({type:'REFRESH_APP_SHELL'},[channel.port2])
+    })
+  }
+
+  backup?.addEventListener('click',()=>document.getElementById('exportBtn')?.click());
+  apply?.addEventListener('click',async()=>{
+    const ar=isArabic();
+    if(!confirm(ar?'سيتم تحديث التطبيق الآن. إن كنت تريد نسخة احتياطية فتأكد من حفظها أولًا. متابعة؟':'The app will update now. If you want a backup, make sure you saved it first. Continue?'))return;
+    acceptedUpdate=true;apply.disabled=true;apply.textContent=ar?'جارٍ التحديث…':'Updating…';
+    try{
+      if(waitingWorker){
+        waitingWorker.postMessage({type:'SKIP_WAITING'});
+        return
+      }
+      await refreshCurrentShell();
+      location.reload()
+    }catch(e){
+      acceptedUpdate=false;apply.disabled=false;paint();
+      alert(ar?'تعذر تطبيق التحديث الآن. حاول مرة أخرى بعد التأكد من الاتصال بالإنترنت.':'Could not apply the update. Check your connection and try again.')
+    }
+  });
+
+  navigator.serviceWorker.addEventListener('controllerchange',()=>{if(acceptedUpdate)location.reload()});
+
+  window.addEventListener('load',async()=>{
+    try{
+      registration=await navigator.serviceWorker.register('/sw.js',{updateViaCache:'none'});
+      if(registration.waiting)show(registration.waiting);
+      registration.addEventListener('updatefound',()=>{
+        const w=registration.installing;if(!w)return;
+        w.addEventListener('statechange',()=>{if(w.state==='installed'&&navigator.serviceWorker.controller)show(w)})
+      });
+      registration.update().catch(()=>{});
+      checkHtmlVersion();
+      setInterval(()=>{registration?.update().catch(()=>{});checkHtmlVersion()},30*60*1000)
+    }catch(e){console.warn('Service worker registration failed',e)}
+  });
+  window.__monthlyExpensesRefreshUpdateText=paint;
+})();
+</script>
 </body>
 </html>
