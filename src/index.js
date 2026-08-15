@@ -88,7 +88,7 @@ Rules:
 9. If only one money value is printed for a row, use it as line total.
 10. Read decimals exactly. If unclear, leave blank instead of guessing.
 11. No JSON, markdown, explanation or code fences.`;
-const VERSION='5.8.1';
+const VERSION='5.8.2';
 
 const PROMPT = `Read the COMPLETE receipt/tax invoice image literally. The receipt may be thermal paper, POS, pharmacy, laundry, restaurant, screenshot, digital job order, Arabic/English, narrow, wide, long, or short.
 
@@ -1477,7 +1477,9 @@ async function readForensicReceipt(env,image){
   }catch(e){console.warn('forensic-structured',e)}
   const best=chooseBestChecked(candidates);
   if(!best)throw new Error('Forensic receipt reader returned no usable extraction');
-  best.inference_calls=calls;best.models_used=[VISION_RESCUE_MODEL,STRUCTURED_MODEL];return best
+  best.inference_calls=calls;best.models_used=[VISION_RESCUE_MODEL,STRUCTURED_MODEL];
+  if(shouldRepair(best)){best.accepted=false;best.complete=false;best.receipt={...(best.receipt||{}),warnings:[...new Set([...(best.receipt?.warnings||[]),'Forensic extraction did not pass final validation'])]}}
+  return best
 }
 
 async function readReceipt(env,image,mode='legacy'){
@@ -1556,7 +1558,8 @@ export default {
       const started=Date.now(),scanId=crypto.randomUUID().slice(0,8);
       try{
         const body=await request.json(),image=body?.image,
-          mode=body?.mode==='segments'?'segments':((body?.mode==='universal'||body?.mode==='structured')?'universal':'legacy'),
+          requestedMode=String(body?.mode||'legacy').toLowerCase(),
+          mode=requestedMode==='segments'?'segments':(requestedMode==='forensic'?'forensic':((requestedMode==='universal'||requestedMode==='structured')?'universal':'legacy')),
           images=Array.isArray(body?.images)?body.images:[];
         if(mode==='segments'){
           if(images.length!==2||!images.every(validImage))return new Response(JSON.stringify({ok:false,error:'Two receipt segment images are required'}),{status:400,headers:headers()});
@@ -1566,7 +1569,7 @@ export default {
         const result=mode==='segments'?await readReceiptSegments(env,images):await readReceipt(env,image,mode);
         return new Response(JSON.stringify({
           ok:true,...result,
-          meta:{engine:mode==='universal'?'Cloudflare Workers AI • Universal Table Parser':'Cloudflare Workers AI • Stable 4.4 Llama Primary',model:FALLBACK_MODEL,structured:false,version:VERSION,base:'4.4.0',scan_id:scanId,elapsed_ms:Date.now()-started,images:1,inference_calls:result.inference_calls||1,repair_used:!!result.repair_used,models_used:result.models_used||[FALLBACK_MODEL]}
+          meta:{engine:mode==='forensic'?'Cloudflare Workers AI • Independent Forensic Layout Reader':(mode==='universal'?'Cloudflare Workers AI • Universal Table Parser':'Cloudflare Workers AI • Stable 4.4 Llama Primary'),model:mode==='forensic'?VISION_RESCUE_MODEL:FALLBACK_MODEL,structured:false,version:VERSION,base:'4.4.0',scan_id:scanId,elapsed_ms:Date.now()-started,images:1,inference_calls:result.inference_calls||1,repair_used:!!result.repair_used,models_used:result.models_used||[mode==='forensic'?VISION_RESCUE_MODEL:FALLBACK_MODEL]}
         }),{headers:headers()});
       }catch(e){
         console.error('receipt-reader',e);
