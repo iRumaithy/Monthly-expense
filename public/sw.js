@@ -1,4 +1,4 @@
-const CACHE='monthly-expense-v5-8-2-manual-update-safe';
+const CACHE='monthly-expense-v5-9-0-manual-update-safe';
 const SHELL_KEY='/__monthly_expense_app_shell__';
 const STATIC_CORE=['/manifest.webmanifest','/icon-192.png','/icon-512.png','/icon-maskable-512.png','/apple-touch-icon.png'];
 
