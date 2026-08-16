@@ -94,7 +94,7 @@ Rules:
 9. If only one money value is printed for a row, use it as line total.
 10. Read decimals exactly. If unclear, leave blank instead of guessing.
 11. No JSON, markdown, explanation or code fences.`;
-const VERSION='5.9.2';
+const VERSION='5.9.3';
 
 const PROMPT = `${IMAGE_CONTENT_SAFETY_V592}
 
@@ -439,6 +439,7 @@ function instructionLikeWorkerV592(value){
 }
 function compactMerchantDuplicateWorkerV592(value){
   let s=txt(value).replace(/\s+/g,' ').trim();if(!s)return'';
+  s=s.replace(/\s+BR(?:ANCH)?\.?\s*[:#-]?\s*(?:\d+)?\s*$/i,'');
   s=s.replace(/\b(restaurant|caf[eé]|coffee|pharmacy|laundry|market|store|shop)\s+\d+\s*$/i,'$1');
   let words=s.split(/\s+/).filter(x=>x&&!/^[ix]$/i.test(x));
   const biz=words.findIndex(x=>/^(?:restaurant|caf[eé]|coffee|pharmacy|laundry|market|store|shop)$/i.test(x));
@@ -1077,6 +1078,21 @@ function normalizeWorkerItemsV592(r,warnings){
   }
   r.items=clean
 }
+function repairWorkerQuantityFromPiecesV593(r,warnings){
+  const rows=r.items||[],pieces=Number(r.pieces??r._pieceCount);if(!Number.isInteger(pieces)||pieces<=0||rows.length<2||rows.length>20)return;
+  const current=rows.reduce((s,x)=>s+Math.max(1,Number(x?.quantity)||1),0),deficit=pieces-current;if(!Number.isInteger(deficit)||deficit<=0||deficit>20)return;
+  const candidates=[];
+  for(let i=0;i<rows.length;i++){
+    const x=rows[i],q=Math.max(1,Number(x?.quantity)||1),line=Number(x?.line_total),unit=Number(x?.unit_price),nextQ=q+deficit;if(q!==1||nextQ>99||!(line>0))continue;
+    const nextUnit=r2(line/nextQ);if(!(nextUnit>0)||Math.abs(nextUnit*nextQ-line)>Math.max(.06,line*.008))continue;let score=0;
+    if(unit>0&&Math.abs(unit-nextUnit)<=Math.max(.04,nextUnit*.008))score+=48;
+    if(unit>0&&Math.abs(unit-line)<=.02)score+=10;
+    for(let j=0;j<rows.length;j++)if(j!==i){const other=rows[j],ou=Number(other?.unit_price);if(!(ou>0)||Math.abs(ou-nextUnit)>Math.max(.04,nextUnit*.008))continue;score+=Math.max(1,Number(other?.quantity)||1)>1?78:28}
+    candidates.push({i,nextQ,nextUnit,line,score})
+  }
+  candidates.sort((a,b)=>b.score-a.score);const best=candidates[0],second=candidates[1];if(!best||best.score<65||(second&&best.score-second.score<20))return;
+  rows[best.i]={...rows[best.i],quantity:best.nextQ,unit_price:best.nextUnit,line_total:r2(best.line),quantity_repaired_from_printed_pieces:true};r.items=rows;r._quantityRepairV593=true;warnings.push('Recovered one missing Qty cell from printed Total Quantity and repeated unit-price evidence')
+}
 
 function validate(parsed){
   const r=parsed.out, warnings=[...r.warnings];
@@ -1084,6 +1100,7 @@ function validate(parsed){
   if(instructionConflict){r.store=null;r.date=null;r.subtotal=null;r.tax=null;r.total=null;r.items=[];warnings.push('Rejected instruction/example text inside image; document is not a trustworthy receipt')}
   normalizeWorkerItemsV592(r,warnings);
   reconcileItemRows(r,warnings);
+  repairWorkerQuantityFromPiecesV593(r,warnings);
   applyReceiptRegressionGuardsWorkerV571(r,warnings);
 
   // Some VAT invoices legitimately have VAT Amount = 0.00 (zero-rated/exempt items),
