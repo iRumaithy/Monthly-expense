@@ -94,7 +94,7 @@ Rules:
 9. If only one money value is printed for a row, use it as line total.
 10. Read decimals exactly. If unclear, leave blank instead of guessing.
 11. No JSON, markdown, explanation or code fences.`;
-const VERSION='5.9.4';
+const VERSION='5.9.2';
 
 const PROMPT = `${IMAGE_CONTENT_SAFETY_V592}
 
@@ -183,7 +183,7 @@ Rules:
 4. If there is only one money column such as AED/Amount, that value is line_total; leave unit price blank if not separately printed. A currency symbol that visually resembles a digit is NOT part of the number.
 5. Item row amounts may already INCLUDE VAT. Always copy the printed SUBTOTAL, VAT and TOTAL independently from their labels; do not force item_sum + VAT = TOTAL when item_sum itself equals TOTAL.
 6. A zero-price parent/product line followed immediately by a paid size/modifier line may be one purchased item. Merge them when the receipt's printed item count or visual grouping supports that interpretation.
-7. T.Pcs / Total Pieces / Total Qty is PIECES, not COUNT. Never calculate or guess COUNT from the rows; omit it unless a count label is visibly printed. Preserve both English and Arabic names when both are printed; never invent a translation.
+7. T.Pcs / Total Pieces / Total Qty is PIECES, not COUNT. Preserve both English and Arabic names when both are printed; never invent a translation.
 8. Keep the printed date order. Never swap day and month. Decimal accuracy is critical. No JSON, markdown or commentary.`;
 
 const ALT_LAYOUT_PROMPT = `${IMAGE_CONTENT_SAFETY_V592}
@@ -213,7 +213,7 @@ RULES:
 2. STORE is the outlet the customer used. If a parent/management company and a pharmacy/laundry/shop/restaurant are both visible, choose the outlet.
 3. Preserve DATE_RAW exactly in printed order. Never swap day/month.
 4. Read EVERY DISTINCT purchase/service row from the whole receipt.
-5. T.Pcs / Total Qty / Total Pieces is PIECES, not COUNT. Never calculate or guess COUNT; leave it blank unless explicitly labeled.
+5. T.Pcs / Total Qty / Total Pieces is PIECES, not COUNT.
 6. Common pre-tax labels include VATable Sales, Taxable Sales, Excl.VAT, Subtotal, G.Amt, Net W/Out Tax.
 7. Common tax labels include VAT Amount, VAT 5%, Tax.
 8. Common final labels include Net Amount, Gross, Grand Total, Total, Amount Due, Adv when it is the final paid amount.
@@ -247,7 +247,7 @@ Rules:
 3. Do not invent rows that are cut off. If a row crosses the segment edge and is incomplete, omit it; the overlapping segment will capture it.
 4. Preserve item names literally; never translate or spell-correct.
 5. Quantity, unit price and line total must come from the SAME row.
-6. T.Pcs / Total Qty / Total Pieces is PIECES, not COUNT. Never calculate or guess COUNT; leave it blank unless explicitly labeled.
+6. T.Pcs / Total Qty / Total Pieces is PIECES, not COUNT.
 7. Exclude table headings, customer name, invoice/order numbers, payment method, balance, terms, VAT/totals and dates from ITEM.
 8. Common pre-tax labels: VATable Sales, Taxable Sales, Excl.VAT, G.Amt, Subtotal, Net W/Out Tax.
 9. Common tax labels: VAT Amount, VAT 5%, Tax.
@@ -439,7 +439,6 @@ function instructionLikeWorkerV592(value){
 }
 function compactMerchantDuplicateWorkerV592(value){
   let s=txt(value).replace(/\s+/g,' ').trim();if(!s)return'';
-  s=s.replace(/\s+BR(?:ANCH)?\.?\s*[:#-]?\s*(?:\d+)?\s*$/i,'');
   s=s.replace(/\b(restaurant|caf[eé]|coffee|pharmacy|laundry|market|store|shop)\s+\d+\s*$/i,'$1');
   let words=s.split(/\s+/).filter(x=>x&&!/^[ix]$/i.test(x));
   const biz=words.findIndex(x=>/^(?:restaurant|caf[eé]|coffee|pharmacy|laundry|market|store|shop)$/i.test(x));
@@ -1012,14 +1011,6 @@ function reconcileItemRows(r,warnings){
   if(r.total!=null&&r.tax!=null)targets.push(r2(r.total-r.tax));
   if(r.total!=null)targets.push(r.total);
 
-  // A fully reconciled table outranks a possibly hallucinated/differently-scoped
-  // printed count. Never delete valid purchase rows merely to force COUNT/PIECES.
-  const fullMoney=bestMoneyAssignment(original,targets),fullTol=targets.length?Math.max(.08,Math.min(.40,Math.max(...targets)*.007)):0;
-  if(fullMoney&&fullMoney.diff<=fullTol){
-    r.items=original.map((x,i)=>normalizeRowMoneyChoice(x,fullMoney.choices[i]));
-    return
-  }
-
   let quantitySum=Math.round(original.reduce((s,x)=>s+(Number(x.quantity)||0),0)*100)/100;
 
   // Explicit PIECES from a repair pass.
@@ -1086,45 +1077,13 @@ function normalizeWorkerItemsV592(r,warnings){
   }
   r.items=clean
 }
-function repairWorkerQuantitiesFromUnitLineV594(r,warnings){
-  const rows=r.items||[],pieces=Number(r.pieces??r._pieceCount);if(!Number.isInteger(pieces)||pieces<=0||rows.length<2||rows.length>20)return;
-  const current=rows.reduce((s,x)=>s+Math.max(1,Number(x?.quantity)||1),0),needed=pieces-current;if(!Number.isInteger(needed)||needed===0||Math.abs(needed)>40)return;
-  const candidates=[];
-  for(let i=0;i<rows.length;i++){
-    const x=rows[i],q=Math.max(1,Number(x?.quantity)||1),unit=Number(x?.unit_price),line=Number(x?.line_total);if(!(unit>0)||!(line>0))continue;
-    const ratio=Math.round(line/unit),tol=Math.max(.06,line*.008);if(ratio<1||ratio>99||ratio===q||Math.abs(unit*ratio-line)>tol)continue;
-    const score=(unit<line-.02?3:0)+(q===1?1:0);if(score<3)continue;candidates.push({i,q:ratio,delta:ratio-q,score})
-  }
-  if(!candidates.length)return;let states=new Map([[0,{score:0,picks:[]}]]);
-  for(const c of candidates){const next=new Map(states);for(const [delta,st] of states){const nd=delta+c.delta,ns={score:st.score+c.score,picks:[...st.picks,c]};if(!next.has(nd)||next.get(nd).score<ns.score)next.set(nd,ns)}states=next}
-  const chosen=states.get(needed);if(!chosen?.picks?.length)return;
-  for(const c of chosen.picks){const x=rows[c.i];rows[c.i]={...x,quantity:c.q,unit_price:r2(x.unit_price),line_total:r2(x.line_total),quantity_repaired_from_unit_line_v594:true}}
-  r.items=rows;r._quantityRatioRepairV594=true;warnings.push('Recovered missing Qty cells from printed unit prices, line totals and Total Quantity')
-}
-function repairWorkerQuantityFromPiecesV593(r,warnings){
-  const rows=r.items||[],pieces=Number(r.pieces??r._pieceCount);if(!Number.isInteger(pieces)||pieces<=0||rows.length<2||rows.length>20)return;
-  const current=rows.reduce((s,x)=>s+Math.max(1,Number(x?.quantity)||1),0),deficit=pieces-current;if(!Number.isInteger(deficit)||deficit<=0||deficit>20)return;
-  const candidates=[];
-  for(let i=0;i<rows.length;i++){
-    const x=rows[i],q=Math.max(1,Number(x?.quantity)||1),line=Number(x?.line_total),unit=Number(x?.unit_price),nextQ=q+deficit;if(q!==1||nextQ>99||!(line>0))continue;
-    const nextUnit=r2(line/nextQ);if(!(nextUnit>0)||Math.abs(nextUnit*nextQ-line)>Math.max(.06,line*.008))continue;let score=0;
-    if(unit>0&&Math.abs(unit-nextUnit)<=Math.max(.04,nextUnit*.008))score+=48;
-    if(unit>0&&Math.abs(unit-line)<=.02)score+=10;
-    for(let j=0;j<rows.length;j++)if(j!==i){const other=rows[j],ou=Number(other?.unit_price);if(!(ou>0)||Math.abs(ou-nextUnit)>Math.max(.04,nextUnit*.008))continue;score+=Math.max(1,Number(other?.quantity)||1)>1?78:28}
-    candidates.push({i,nextQ,nextUnit,line,score})
-  }
-  candidates.sort((a,b)=>b.score-a.score);const best=candidates[0],second=candidates[1];if(!best||best.score<65||(second&&best.score-second.score<20))return;
-  rows[best.i]={...rows[best.i],quantity:best.nextQ,unit_price:best.nextUnit,line_total:r2(best.line),quantity_repaired_from_printed_pieces:true};r.items=rows;r._quantityRepairV593=true;warnings.push('Recovered one missing Qty cell from printed Total Quantity and repeated unit-price evidence')
-}
 
 function validate(parsed){
   const r=parsed.out, warnings=[...r.warnings];
   const instructionConflict=instructionLikeWorkerV592(parsed.raw)||instructionLikeWorkerV592(r.store)||instructionLikeWorkerV592((r.items||[]).map(x=>x?.name||'').join('\n'));
   if(instructionConflict){r.store=null;r.date=null;r.subtotal=null;r.tax=null;r.total=null;r.items=[];warnings.push('Rejected instruction/example text inside image; document is not a trustworthy receipt')}
   normalizeWorkerItemsV592(r,warnings);
-  repairWorkerQuantitiesFromUnitLineV594(r,warnings);
   reconcileItemRows(r,warnings);
-  repairWorkerQuantityFromPiecesV593(r,warnings);
   applyReceiptRegressionGuardsWorkerV571(r,warnings);
 
   // Some VAT invoices legitimately have VAT Amount = 0.00 (zero-rated/exempt items),
@@ -1155,7 +1114,6 @@ function validate(parsed){
       warnings.push(`Printed item count is ${r.count}, but ${r.items.length} rows were extracted`);
     }
   }
-  if(pieceCount!=null&&Math.abs(pieceCount-quantitySum)>.001)warnings.push(`Printed pieces are ${pieceCount}, while extracted quantities total ${quantitySum}; count kept as advisory because row amounts are validated independently`);
   if(r.subtotal!=null&&r.tax!=null&&r.total!=null&&Math.abs(r.subtotal+r.tax-r.total)>.06)warnings.push('Subtotal + VAT does not match Grand Total');
   if(r.rate!=null&&r.rate>0&&r.rate<30&&r.subtotal!=null&&r.tax!=null&&Math.abs(r.subtotal*r.rate/100-r.tax)>.06)warnings.push('VAT amount does not match printed VAT rate');
   if(r.items.length&&r.total!=null&&Math.abs(itemSum-r.total)>.18&&!(r.subtotal!=null&&Math.abs(itemSum-r.subtotal)<=.18))warnings.push('Item row sum does not match labeled totals');
@@ -1176,7 +1134,7 @@ function validate(parsed){
   const itemSumMatches=r.items.length>0&&r.total!=null&&(Math.abs(itemSum-r.total)<=Math.max(.18,Math.abs(r.total)*.018)||(r.subtotal!=null&&Math.abs(itemSum-r.subtotal)<=Math.max(.18,Math.abs(r.subtotal)*.018)));
   const financeOk=r.total!=null&&itemSumMatches&&!warnings.some(x=>/does not match labeled|Subtotal \+ VAT|VAT amount does not match/i.test(x));
   const pieceOk=pieceCount==null||Math.abs(pieceCount-quantitySum)<.001;
-  const accepted=!instructionConflict&&!r._ambiguousQuantityV592&&r.items.length>0&&financeOk&&!!r.store&&!!r.date;
+  const accepted=!instructionConflict&&!r._ambiguousQuantityV592&&r.items.length>0&&itemCountOk&&pieceOk&&financeOk&&!!r.store&&!!r.date;
   const complete=accepted;
   if(!r.store)warnings.push('Merchant name needs manual review');
   if(!r.date)warnings.push('Invoice date needs manual review');
@@ -1211,7 +1169,7 @@ function checkedQuality(c){
   if(r.date)s+=8;
   if(r.total!=null)s+=8;
   const warns=Array.isArray(r.warnings)?r.warnings:[];
-  s-=warns.filter(x=>/does not match|needs manual/i.test(x)).length*12;
+  s-=warns.filter(x=>/does not match|needs manual|Printed item count|Printed pieces/i.test(x)).length*12;
   return s;
 }
 
@@ -1257,7 +1215,7 @@ function shouldRepair(checked){
   const r=checked.receipt||{},items=Array.isArray(r.items)?r.items:[];
   if(isPlaceholderStore(r.merchant_name_en)||!r.merchant_name_en||!r.date)return true;
   const warns=Array.isArray(r.warnings)?r.warnings:[];
-  if(warns.some(x=>/VAT amount does not match|item row sum does not match/i.test(x)))return true;
+  if(warns.some(x=>/VAT amount does not match|item row sum does not match|Printed item count|Printed pieces/i.test(x)))return true;
   const badItem=x=>/^(?:vat\s*incl|vat|tax|subtotal|sub\s*total|total\s*before|total\b|grand\s*total|final\s*total|amount\s*due|cash|card|bill|check|order|token|trn|invoice|receipt|printed|date|time|customer|cid|home\s*delivery|thank\s*you|ضريبة|الضريبة|الإجمالي|الاجمالي|المجموع)/i.test(txt(x?.name||x?.name_en||'').replace(/^[^A-Za-z\u0600-\u06FF]+/,''));
   if(items.some(badItem))return true;
   const first=items[0],firstMoney=rowMoney(first);
@@ -1361,7 +1319,7 @@ Extract the COMPLETE receipt/tax invoice into the provided JSON schema.
 Read every visible purchase/service row from the entire image.
 merchant_name must be the actual customer-facing business name only. If the business name is not visible, return an empty string. NEVER use an item/product/service name as merchant_name.
 date_raw must be the transaction/invoice/order date exactly as printed, not delivery date or print time.
-printed_item_count is the count of distinct purchase rows only when explicitly printed; otherwise 0. Never calculate or guess it from the extracted rows.
+printed_item_count is the count of distinct purchase rows only when explicitly printed; otherwise 0.
 printed_piece_count is T.Pcs / total pieces / total quantity only when explicitly printed; otherwise 0.
 For each item preserve English and Arabic names when printed. If one language is absent, use an empty string for it.
 quantity, unit_price and line_total must belong to the same row.
