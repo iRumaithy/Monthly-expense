@@ -198,7 +198,7 @@ button,input,textarea,select{font:inherit}button{cursor:pointer}.app{max-width:1
 }
 @media print{.app-update-banner{display:none!important}}
 
-/* === v6.0.1 Release history === */
+/* === Release history modal === */
 .changelog-modal{position:fixed;inset:0;z-index:10030;background:rgba(10,25,40,.62);display:none;align-items:center;justify-content:center;padding:18px}
 .changelog-modal.open{display:flex}
 .changelog-dialog{width:min(720px,100%);max-height:88vh;overflow:auto;background:#fffaf2;border:1px solid var(--line);border-radius:24px;padding:18px;box-shadow:0 24px 70px rgba(0,0,0,.30)}
@@ -214,6 +214,13 @@ button,input,textarea,select{font:inherit}button{cursor:pointer}.app{max-width:1
 .changelog-summary{color:var(--text);font-size:13px;line-height:1.75}
 .changelog-current-label{display:inline-block;margin-inline-start:6px;color:var(--success);font-size:11px;font-weight:900}
 @media(max-width:560px){.changelog-dialog{padding:14px;border-radius:20px}.changelog-entry{grid-template-columns:1fr}.changelog-version{justify-self:start}.changelog-summary{font-size:12.5px}}
+
+
+/* === v7.0.0 Optional Accounts / Permissions === */
+.account-btn.logged{background:#dcefe7!important;color:#17324d!important;border-color:#b9d9cb!important}.account-btn.viewer{background:#fff0cf!important;color:#6b4a12!important}
+.auth-modal{position:fixed;inset:0;z-index:10070;background:rgba(10,25,40,.64);display:none;align-items:center;justify-content:center;padding:16px}.auth-modal.open{display:flex}.auth-dialog{width:min(620px,100%);max-height:92vh;overflow:auto;background:#fffaf2;border:1px solid var(--line);border-radius:24px;padding:18px;box-shadow:0 26px 80px rgba(0,0,0,.34)}.auth-head{display:flex;align-items:center;justify-content:space-between;gap:12px}.auth-head h3{margin:0;color:var(--navy);font-size:22px}.auth-close{width:40px;height:40px;border:0;border-radius:12px;background:#f2e5d3;color:var(--navy);font-size:22px;font-weight:900}.auth-tabs{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0}.auth-tabs button{flex:1 1 120px}.auth-pane{display:none}.auth-pane.active{display:block}.auth-form{display:grid;gap:11px}.auth-note{font-size:12px;line-height:1.75;color:var(--muted);margin:8px 0}.auth-message{display:none;margin:10px 0;padding:10px 12px;border-radius:12px;background:#f1e7d8;color:var(--navy);font-size:12px;line-height:1.6}.auth-message.show{display:block}.auth-message.error{background:#ffe5e2;color:#8b3934}.auth-user-card{padding:14px;border:1px solid var(--line);border-radius:16px;background:#fffdf8}.auth-user-row{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}.auth-badge{display:inline-flex;padding:5px 9px;border-radius:999px;background:#dcefe7;color:#23664f;font-size:11px;font-weight:900}.auth-badge.viewer{background:#fff0cf;color:#815913}.auth-badge.admin{background:#e4e8f5;color:#2e4771}.auth-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.auth-actions .btn{flex:1 1 145px}.account-sync-card{display:none}.account-sync-card.show{display:block}.device-list{display:grid;gap:8px;margin-top:10px}.device-row{border:1px solid var(--line);border-radius:13px;padding:10px 11px;background:#fffdf8;display:flex;justify-content:space-between;gap:10px;align-items:center}.device-row small{display:block;color:var(--muted);margin-top:3px}.link-code{font:900 25px ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:2px;text-align:center;color:var(--navy);background:#f5ead9;border-radius:14px;padding:12px;margin:10px 0}.migration-choice{display:grid;gap:10px;margin-top:14px}.migration-choice .btn{justify-content:flex-start;text-align:start;padding:14px}.migration-choice small{display:block;font-weight:500;opacity:.8;line-height:1.5}.admin-page .admin-summary{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}.admin-users{display:grid;gap:10px;margin-top:14px}.admin-user{border:1px solid var(--line);border-radius:16px;background:#fffdf8;padding:13px}.admin-user-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap}.admin-user h3{margin:0;color:var(--navy);font-size:16px}.admin-user-meta{font-size:12px;color:var(--muted);line-height:1.8;margin-top:5px}.admin-user-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.admin-user-actions .btn{padding:8px 11px;font-size:12px}.nav.has-admin{grid-template-columns:repeat(4,1fr)}
+body.account-viewer [data-page="new"],body.account-viewer #saveBudgetBtn,body.account-viewer #restoreBtn,body.account-viewer #addItemBtn,body.account-viewer #toggleItemsBtn,body.account-viewer #saveBtn,body.account-viewer #clearBtn,body.account-viewer .evidence-actions,body.account-viewer #cameraBtn,body.account-viewer #galleryBtn{display:none!important}body.account-viewer #budgetInput{pointer-events:none;opacity:.75}body.account-viewer .purchase-body>.actions,body.account-viewer .evidence-modal-actions{display:none!important}
+@media(max-width:760px){.nav.has-admin{grid-template-columns:repeat(2,1fr)}}
 
 </style>
 
@@ -240,12 +247,13 @@ button,input,textarea,select{font:inherit}button{cursor:pointer}.app{max-width:1
   <div class="topbar">
     <div class="hero">
       <div><h1 data-i18n="appTitle">مصاريف الشهر</h1><p data-i18n="appSub">إدارة الفواتير والمشتريات الشهرية</p></div>
-      <div class="hero-actions"><button class="btn btn-ghost" id="settingsBtn" type="button" data-i18n="settings">⚙️ الإعدادات</button><button class="btn btn-ghost" id="langBtn">English</button><button class="btn btn-ghost" id="restoreBtn" data-i18n="restore">استعادة</button><button class="btn btn-ghost" id="exportBtn" data-i18n="backup">نسخة احتياطية</button></div>
+      <div class="hero-actions"><button class="btn btn-ghost account-btn" id="accountBtn" type="button">👤 تسجيل الدخول</button><button class="btn btn-ghost" id="settingsBtn" type="button" data-i18n="settings">⚙️ الإعدادات</button><button class="btn btn-ghost" id="langBtn">English</button><button class="btn btn-ghost" id="restoreBtn" data-i18n="restore">استعادة</button><button class="btn btn-ghost" id="exportBtn" data-i18n="backup">نسخة احتياطية</button></div>
     </div>
     <div class="nav">
       <button class="active" data-page="dashboard" data-i18n="dashboard">الرئيسية</button>
       <button data-page="new" data-i18n="newInvoice">تسجيل فاتورة جديدة</button>
       <button data-page="records" data-i18n="monthlyRecords">السجلات الشهرية</button>
+      <button data-page="admin" id="adminNavBtn" style="display:none">إدارة المستخدمين</button>
     </div>
   </div>
 
@@ -330,9 +338,17 @@ button,input,textarea,select{font:inherit}button{cursor:pointer}.app{max-width:1
       <div class="purchase-list" id="recordsList"></div>
     </div>
   </section>
+
+  <section id="admin" class="page admin-page">
+    <div class="card">
+      <div class="admin-summary"><div><h2 style="margin:0;color:var(--navy)">إدارة المستخدمين</h2><small id="adminSummaryText" style="color:var(--muted)">خاص بمالك الصفحة فقط</small></div><button class="btn btn-primary" id="adminRefreshBtn" type="button">تحديث القائمة</button></div>
+      <div class="auth-note">هذا التبويب لا يظهر إلا لحساب مالك الصفحة، كما أن جميع عملياته محمية من الخادم بصلاحية <b>super_admin</b>.</div>
+      <div class="admin-users" id="adminUsersList"></div>
+    </div>
+  </section>
 </div>
-<footer class="app-version-footer" id="appVersionFooter" data-version="6.0.1">
-  <span data-i18n="versionFooter">الإصدار 6.0.1 — حساب تلقائي + صورة دليل</span>
+<footer class="app-version-footer" id="appVersionFooter" data-version="7.0.0">
+  <span data-i18n="versionFooter">الإصدار 7.0.0 — حسابات اختيارية + صلاحيات أجهزة</span>
   <button class="changelog-btn" id="changelogBtn" type="button" data-i18n="changelogButton" aria-haspopup="dialog" aria-controls="changelogModal">سجل التحديثات</button>
 </footer>
 <div id="printReportRoot" aria-hidden="true"></div>
@@ -345,11 +361,12 @@ button,input,textarea,select{font:inherit}button{cursor:pointer}.app{max-width:1
 <div class="sync-modal" id="syncModal" role="dialog" aria-modal="true">
   <div class="sync-dialog">
     <div class="sync-head"><h3 data-i18n="syncTitle">مزامنة الأجهزة</h3><button class="sync-close" id="syncCloseBtn" type="button">×</button></div>
-    <div class="sync-card">
+    <div class="sync-card" id="legacySyncCard">
       <div class="sync-status"><span class="sync-dot" id="syncStatusText" data-i18n="syncNotLinked">غير مرتبط</span><span class="sync-badge" id="syncLiveBadge">Offline</span></div>
       <div id="syncLinkedArea" style="display:none">
         <div class="sync-code" id="syncCodeDisplay">—</div>
         <div class="sync-device" id="syncDeviceText"></div>
+        <div class="sync-help" data-i18n="syncRetentionNote">يبقى هذا الجهاز مرتبطًا تلقائيًا بعد تحديث الصفحة أو إعادة فتحها. عند فصله ستبقى الفواتير والصور محفوظة عليه.</div>
         <div class="sync-actions"><button class="btn btn-soft" id="syncCopyBtn" type="button" data-i18n="syncCopy">نسخ الرمز</button><button class="btn btn-danger" id="syncDisconnectBtn" type="button" data-i18n="syncDisconnect">فصل هذا الجهاز</button><button class="btn btn-primary full" id="syncNowBtn" type="button" data-i18n="syncNow">مزامنة الآن</button></div>
       </div>
       <div id="syncUnlinkedArea">
@@ -360,6 +377,19 @@ button,input,textarea,select{font:inherit}button{cursor:pointer}.app{max-width:1
       </div>
       <div class="sync-help" id="syncMessage" data-i18n="syncPrivacy">الرمز نفسه هو مفتاح المجموعة. احتفظ به خاصًا. تتم المزامنة عبر Cloudflare فقط عند حفظ تغيير، والصور تُضغط قبل رفعها.</div>
     </div>
+    <div class="sync-card account-sync-card" id="accountSyncCard">
+      <div class="auth-user-row"><div><strong id="accountSyncTitle">الحساب</strong><div class="sync-help" id="accountSyncSubtitle"></div></div><span class="auth-badge" id="accountAccessBadge">—</span></div>
+      <div class="sync-actions"><button class="btn btn-primary full" id="accountSyncNowBtn" type="button">مزامنة الحساب الآن</button></div>
+      <div id="accountOwnerTools" style="display:none;margin-top:12px">
+        <div class="sync-help"><b>ربط جهاز إضافي بصلاحية محددة</b><br>اختر «عرض فقط» للأجهزة التي يجب أن ترى البيانات والتقارير وتطبعها دون أي تعديل.</div>
+        <select class="input" id="accountInvitePermission"><option value="viewer">عرض فقط</option><option value="editor">محرر</option></select>
+        <input class="input" id="accountInviteLabel" style="margin-top:8px" placeholder="اسم الجهاز (اختياري)" />
+        <div class="sync-actions"><button class="btn btn-soft full" id="accountCreateInviteBtn" type="button">إنشاء رمز ربط</button></div>
+        <div class="link-code" id="accountInviteCode" style="display:none">—</div>
+        <div class="device-list" id="accountDevicesList"></div>
+      </div>
+      <div class="sync-actions" style="margin-top:12px"><button class="btn btn-danger full" id="accountLogoutBtn" type="button">تسجيل الخروج من هذا الجهاز</button></div>
+    </div>
     <div class="sync-card pwa-install-card" id="pwaInstallCard">
       <div class="pwa-install-head"><strong id="pwaInstallTitle">إضافة للشاشة الرئيسية</strong><span class="pwa-install-badge" id="pwaInstallBadge">جاهز</span></div>
       <p class="pwa-install-text" id="pwaInstallText">ثبّت مصاريف الشهر على شاشة الهاتف لفتحه مثل التطبيق مباشرةً بدون البحث عن الرابط.</p>
@@ -367,6 +397,30 @@ button,input,textarea,select{font:inherit}button{cursor:pointer}.app{max-width:1
       <div class="pwa-install-steps" id="pwaInstallSteps"></div>
     </div>
   </div>
+</div>
+
+
+<div class="auth-modal" id="authModal" role="dialog" aria-modal="true">
+  <div class="auth-dialog">
+    <div class="auth-head"><h3 id="authModalTitle">الحساب</h3><button class="auth-close" id="authCloseBtn" type="button">×</button></div>
+    <div class="auth-message" id="authMessage"></div>
+    <div id="authLoggedOutView">
+      <div class="auth-tabs"><button class="btn btn-primary" id="authLoginTab" type="button">تسجيل الدخول</button><button class="btn btn-soft" id="authRegisterTab" type="button">إنشاء حساب</button><button class="btn btn-soft" id="authLinkTab" type="button">ربط جهاز</button></div>
+      <div class="auth-pane active" id="authLoginPane"><div class="auth-form"><input class="input" id="authLoginId" autocomplete="username" placeholder="اسم المستخدم أو البريد الإلكتروني"><input class="input" id="authLoginPassword" type="password" autocomplete="current-password" placeholder="كلمة المرور"><button class="btn btn-primary" id="authLoginBtn" type="button">تسجيل الدخول</button><button class="btn btn-soft" id="authForgotBtn" type="button">نسيت كلمة المرور</button></div></div>
+      <div class="auth-pane" id="authRegisterPane"><div class="auth-form"><input class="input" id="authRegisterUsername" autocomplete="username" placeholder="اسم مستخدم فريد"><input class="input" id="authRegisterEmail" type="email" autocomplete="email" placeholder="البريد الإلكتروني"><input class="input" id="authRegisterPassword" type="password" autocomplete="new-password" placeholder="كلمة المرور (10 أحرف على الأقل + رقم)"><input class="input" id="authRegisterPassword2" type="password" autocomplete="new-password" placeholder="تأكيد كلمة المرور"><button class="btn btn-primary" id="authRegisterBtn" type="button">إنشاء الحساب</button></div></div>
+      <div class="auth-pane" id="authLinkPane"><div class="auth-note">استخدم رمز الربط الذي أنشأه مالك الحساب. إذا كانت الصلاحية «عرض فقط» فلن يسمح الخادم لهذا الجهاز بإضافة أو تعديل أو حذف أي بيانات.</div><div class="auth-form"><input class="input" id="authLinkCode" autocomplete="one-time-code" placeholder="رمز الربط"><input class="input" id="authLinkDeviceLabel" placeholder="اسم هذا الجهاز (اختياري)"><button class="btn btn-primary" id="authLinkDeviceBtn" type="button">ربط الجهاز</button></div></div>
+      <div class="auth-pane" id="authForgotPane"><div class="auth-note">أدخل اسم المستخدم أو البريد. سيظهر طلب الاستعادة لمالك الصفحة فقط في تبويب «إدارة المستخدمين». لا يمكن لأي شخص مشاهدة كلمة مرورك الأصلية.</div><div class="auth-form"><input class="input" id="authForgotLogin" placeholder="اسم المستخدم أو البريد الإلكتروني"><button class="btn btn-primary" id="authForgotSubmitBtn" type="button">إرسال طلب الاستعادة</button><button class="btn btn-soft" id="authForgotBackBtn" type="button">رجوع</button></div></div>
+      <div class="auth-pane" id="authBootstrapPane"><div class="auth-note"><b>تهيئة مالك الصفحة لأول مرة فقط.</b> أدخل رمز التهيئة السري الذي ستضعه في Cloudflare ثم أنشئ حسابك. بعد نجاح العملية لا يمكن إنشاء مالك ثانٍ من هذه الشاشة.</div><div class="auth-form"><input class="input" id="authBootstrapToken" type="password" placeholder="رمز تهيئة المالك"><input class="input" id="authBootstrapUsername" placeholder="اسم مستخدم المالك"><input class="input" id="authBootstrapEmail" type="email" placeholder="البريد الإلكتروني"><input class="input" id="authBootstrapPassword" type="password" placeholder="كلمة المرور"><button class="btn btn-primary" id="authBootstrapBtn" type="button">إنشاء حساب مالك الصفحة</button></div></div>
+    </div>
+    <div id="authLoggedInView" style="display:none">
+      <div class="auth-user-card"><div class="auth-user-row"><div><strong id="authCurrentName">—</strong><div class="auth-note" id="authCurrentEmail"></div></div><span class="auth-badge" id="authCurrentBadge">—</span></div><div class="auth-actions"><button class="btn btn-soft" id="authOpenSettingsBtn" type="button">إدارة الأجهزة والمزامنة</button><button class="btn btn-danger" id="authLogoutBtn" type="button">تسجيل الخروج</button></div></div>
+      <div class="auth-user-card" id="authChangePasswordCard" style="margin-top:12px"><strong>تغيير كلمة المرور</strong><div class="auth-form" style="margin-top:10px"><input class="input" id="authCurrentPassword" type="password" autocomplete="current-password" placeholder="كلمة المرور الحالية"><input class="input" id="authNewPassword" type="password" autocomplete="new-password" placeholder="كلمة المرور الجديدة"><input class="input" id="authNewPassword2" type="password" autocomplete="new-password" placeholder="تأكيد كلمة المرور الجديدة"><button class="btn btn-primary" id="authChangePasswordBtn" type="button">حفظ كلمة المرور الجديدة</button></div></div>
+    </div>
+  </div>
+</div>
+
+<div class="auth-modal" id="accountMigrationModal" role="dialog" aria-modal="true">
+  <div class="auth-dialog"><div class="auth-head"><h3>ربط بيانات هذا الجهاز بالحساب</h3></div><div class="auth-note">اختر ما تريد فعله ببيانات الجهاز الحالية. لن يتم استبدال بياناتك أو حذفها بصمت.</div><div class="migration-choice"><button class="btn btn-soft" id="migrationUploadBtn" type="button"><span><b>رفع بيانات هذا الجهاز إلى الحساب</b><small>يرفع البيانات المحلية إلى الحساب ويحتفظ بالأحدث إذا كانت الفاتورة نفسها موجودة.</small></span></button><button class="btn btn-soft" id="migrationDownloadBtn" type="button"><span><b>تنزيل بيانات الحساب إلى هذا الجهاز</b><small>يستبدل البيانات المحلية الحالية بنسخة الحساب. خذ نسخة احتياطية أولًا إذا احتجت.</small></span></button><button class="btn btn-primary" id="migrationMergeBtn" type="button"><span><b>دمج البيانات دون تكرار</b><small>يقارن رقم السجل ووقت آخر تعديل ويحتفظ بالأحدث من كل جانب.</small></span></button></div></div>
 </div>
 
 <div class="evidence-modal" id="evidenceModal" role="dialog" aria-modal="true">
@@ -447,11 +501,13 @@ manualEvidencePrompt:'This receipt was saved without an image. Would you like to
 takeEvidencePhoto:'Take Evidence Photo',chooseEvidencePhoto:'Choose Evidence Photo',later:'Later',
 evidenceStorageFail:'Could not save the evidence image on this device',evidenceNotFound:'Evidence image was not found on this device'}
 };
-Object.assign(I18N.ar,{appSub:'إدارة الفواتير والمشتريات الشهرية',receiptScan:'إرفاق صورة الفاتورة',ocrAuto:'الصورة دليل فقط — دون قراءة تلقائية',takePhoto:'تصوير الفاتورة',choosePhoto:'اختيار صورة من الألبوم',enhanced:'مرفقة كدليل',ocrHint:'أدخل بيانات الفاتورة يدويًا؛ لن تُقرأ الصورة أو تُرسل للتحليل.',ocrNote:'تُضغط الصورة محليًا وتُحفظ تلقائيًا مع السجل كإثبات، وتظهر في تفاصيل الفاتورة والتقرير الشهري.',purchases:'تفاصيل المشتريات (اختياري)',showItems:'إضافة تفاصيل المشتريات',hideItems:'إخفاء تفاصيل المشتريات',optionalItemsNote:'يمكن حفظ الفاتورة دون إدخال الأصناف.',optionalItemsSum:'مجموع تفاصيل المشتريات',itemsSubtotal:'مجموع الأغراض الاختيارية',totalsMatch:'✓ تم حساب الإجمالي تلقائيًا: المبلغ قبل الضريبة + الضريبة.',totalsMismatch:'لا يمكن الحفظ: المبلغ قبل الضريبة + الضريبة يجب أن يساوي الإجمالي النهائي.',evidenceDraftSaved:'تم تجهيز صورة الفاتورة وستُحفظ تلقائيًا مع السجل.',versionFooter:'الإصدار 6.0.1 — حساب تلقائي + صورة دليل',changelogButton:'سجل التحديثات',changelogTitle:'سجل التحديثات',changelogIntro:'الإصدارات الموثقة في سجل المشروع، من الأحدث إلى الأقدم.',currentVersion:'الإصدار الحالي'});
-Object.assign(I18N.en,{appSub:'Monthly receipt & spending manager',receiptScan:'Attach Receipt Image',ocrAuto:'Evidence only — no automatic reading',takePhoto:'Photograph Receipt',choosePhoto:'Choose from Photos',enhanced:'Attached as Evidence',ocrHint:'Enter receipt details manually; the image is not read or sent for analysis.',ocrNote:'The image is compressed locally, saved automatically as evidence, and shown in receipt details and the monthly report.',purchases:'Item Details (Optional)',showItems:'Add Item Details',hideItems:'Hide Item Details',optionalItemsNote:'The receipt can be saved without item rows.',optionalItemsSum:'Item details subtotal',itemsSubtotal:'Optional Items Subtotal',totalsMatch:'✓ Final total calculated automatically: subtotal plus tax.',totalsMismatch:'Cannot save: subtotal plus tax must equal the final total.',evidenceDraftSaved:'Receipt image is ready and will be saved automatically with the record.',versionFooter:'Version 6.0.1 — Automatic totals + receipt evidence',changelogButton:'Update Log',changelogTitle:'Update Log',changelogIntro:'Documented project releases, newest first.',currentVersion:'Current version'});
+Object.assign(I18N.ar,{appSub:'إدارة الفواتير والمشتريات الشهرية',receiptScan:'إرفاق صورة الفاتورة',ocrAuto:'الصورة دليل فقط — دون قراءة تلقائية',takePhoto:'تصوير الفاتورة',choosePhoto:'اختيار صورة من الألبوم',enhanced:'مرفقة كدليل',ocrHint:'أدخل بيانات الفاتورة يدويًا؛ لن تُقرأ الصورة أو تُرسل للتحليل.',ocrNote:'تُضغط الصورة محليًا وتُحفظ تلقائيًا مع السجل كإثبات، وتظهر في تفاصيل الفاتورة والتقرير الشهري.',purchases:'تفاصيل المشتريات (اختياري)',showItems:'إضافة تفاصيل المشتريات',hideItems:'إخفاء تفاصيل المشتريات',optionalItemsNote:'يمكن حفظ الفاتورة دون إدخال الأصناف.',optionalItemsSum:'مجموع تفاصيل المشتريات',itemsSubtotal:'مجموع الأغراض الاختيارية',totalsMatch:'✓ تم حساب الإجمالي تلقائيًا: المبلغ قبل الضريبة + الضريبة.',totalsMismatch:'لا يمكن الحفظ: المبلغ قبل الضريبة + الضريبة يجب أن يساوي الإجمالي النهائي.',evidenceDraftSaved:'تم تجهيز صورة الفاتورة وستُحفظ تلقائيًا مع السجل.',syncLinkedOffline:'مرتبط — بانتظار الاتصال',syncRetentionNote:'يبقى هذا الجهاز مرتبطًا تلقائيًا بعد تحديث الصفحة أو إعادة فتحها. عند فصله ستبقى الفواتير والصور محفوظة عليه.',syncDisconnectConfirm:'سيتم إيقاف المزامنة على هذا الجهاز فقط، وستبقى جميع الفواتير والصور المحفوظة عليه. هل تريد المتابعة؟',syncPreparingDisconnect:'جارٍ تثبيت البيانات والصور على هذا الجهاز قبل إيقاف المزامنة…',syncDisconnected:'تم إيقاف المزامنة. بقيت البيانات والصور محفوظة على هذا الجهاز.',versionFooter:'الإصدار 7.0.0 — حسابات اختيارية + صلاحيات أجهزة',changelogButton:'سجل التحديثات',changelogTitle:'سجل التحديثات',changelogIntro:'الإصدارات الموثقة في سجل المشروع، من الأحدث إلى الأقدم.',currentVersion:'الإصدار الحالي'});
+Object.assign(I18N.en,{appSub:'Monthly receipt & spending manager',receiptScan:'Attach Receipt Image',ocrAuto:'Evidence only — no automatic reading',takePhoto:'Photograph Receipt',choosePhoto:'Choose from Photos',enhanced:'Attached as Evidence',ocrHint:'Enter receipt details manually; the image is not read or sent for analysis.',ocrNote:'The image is compressed locally, saved automatically as evidence, and shown in receipt details and the monthly report.',purchases:'Item Details (Optional)',showItems:'Add Item Details',hideItems:'Hide Item Details',optionalItemsNote:'The receipt can be saved without item rows.',optionalItemsSum:'Item details subtotal',itemsSubtotal:'Optional Items Subtotal',totalsMatch:'✓ Final total calculated automatically: subtotal plus tax.',totalsMismatch:'Cannot save: subtotal plus tax must equal the final total.',evidenceDraftSaved:'Receipt image is ready and will be saved automatically with the record.',syncLinkedOffline:'Linked — waiting for connection',syncRetentionNote:'This device stays linked automatically after page updates or reopening. Disconnecting it keeps all receipts and images saved on the device.',syncDisconnectConfirm:'Sync will stop on this device only. All locally saved receipts and images will remain. Continue?',syncPreparingDisconnect:'Securing receipts and images on this device before stopping sync…',syncDisconnected:'Sync stopped. Receipts and images remain saved on this device.',versionFooter:'Version 7.0.0 — Optional accounts + device permissions',changelogButton:'Update Log',changelogTitle:'Update Log',changelogIntro:'Documented project releases, newest first.',currentVersion:'Current version'});
 function t(k){return I18N[lang][k]||k}function money(n){return `${Number(n||0).toFixed(2)} ${t('currency')}`}function escapeHtml(s){return String(s??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))}
-const APP_VERSION='6.0.1';
+const APP_VERSION='7.0.0';
 const CHANGELOG_ENTRIES=[
+  {version:'7.0.0',ar:'إضافة تسجيل دخول اختياري مرتبط بالبيانات، جلسات دائمة، مزامنة الحساب بين الأجهزة، أجهزة بصلاحية عرض فقط أو محرر، واستعادة كلمة المرور وإدارة المستخدمين المحمية لمالك الصفحة فقط.',en:'Added optional account-bound data, persistent sessions, account sync across devices, viewer/editor linked-device permissions, password recovery requests, and server-protected owner-only user administration.'},
+  {version:'6.0.2',ar:'تثبيت ربط المزامنة عبر تحديث الصفحة وإعادة فتح التطبيق، وإعادة الاتصال عند عودة الإنترنت، مع إبقاء جميع الفواتير والصور محفوظة محليًا بعد فصل الجهاز.',en:'Persisted sync linking across page updates and app reopen, restored connection when online, and retained all receipts and images locally after disconnecting a device.'},
   {version:'6.0.1',ar:'ربط ملخص المبلغ قبل الضريبة بالحقل مباشرة، وحساب الإجمالي النهائي تلقائيًا من المبلغ قبل الضريبة + الضريبة، وإضافة سجل التحديثات.',en:'Linked the subtotal summary directly to its field, calculated the final total automatically from subtotal + tax, and added the update log.'},
   {version:'6.0.0',ar:'إزالة قراءة OCR نهائيًا، واعتماد الإدخال اليدوي مع صورة الفاتورة كدليل، وجعل تفاصيل الأصناف اختيارية، مع إبقاء المزامنة وPWA والتقارير والنسخ الاحتياطي.',en:'Removed OCR, switched to manual entry with the receipt image as evidence, made item details optional, and preserved sync, PWA, reports, and backup.'},
   {version:'5.9.2',ar:'استعادة مسار قراءة الفواتير المستقر كمسار أول، ومنع مسارات الإنقاذ من استبدال نتيجة سليمة.',en:'Restored the stable receipt-reading path as the primary path and prevented rescue paths from replacing a valid result.'},
@@ -525,9 +581,64 @@ function buildDashboardMonthOptions(){
 function uid(){return (crypto?.randomUUID?.()||`r_${Date.now()}_${Math.random().toString(36).slice(2,10)}`)}
 function persist(){localStorage.setItem(STORAGE_KEY,JSON.stringify(data));localStorage.setItem(BUDGET_KEY,JSON.stringify(budgets))}
 
+
+// === v7.0.0 Optional accounts, persistent sessions and server-side permissions ===
+const ACCOUNT_MIGRATION_KEY='monthly_expense_account_migration_v1';
+let authState={available:true,authenticated:false,bootstrapRequired:false,user:null,session:null};
+function accountMode(){return !!authState.authenticated}
+function accountAccess(){return authState.session?.access||'owner'}
+function accountCanWrite(){return accountMode()&&accountAccess()!=='viewer'&&!authState.user?.mustChangePassword}
+function syncTransportActive(){return accountMode()||!!syncCode}
+function authDeviceLabel(){try{const standalone=pwaIsStandalone?.()?'App':'Browser';return `${navigator.platform||'Device'} • ${standalone}`.slice(0,80)}catch(e){return 'Device'}}
+async function appApi(path,opts={}){const headers=new Headers(opts.headers||{}),method=String(opts.method||'GET').toUpperCase();if(method!=='GET')headers.set('x-monthly-expense-app','1');if(opts.body&&!headers.has('content-type')&&typeof opts.body==='string')headers.set('content-type','application/json');const r=await fetch(path,{...opts,method,headers,credentials:'same-origin',cache:'no-store'});let b=null;try{b=await r.json()}catch(e){}if(!r.ok){const err=new Error(b?.error||`HTTP_${r.status}`);err.code=b?.error;err.status=r.status;throw err}return b||{ok:true}}
+function authErrorText(e){const c=e?.code||e?.message||'';const ar={INVALID_CREDENTIALS:'اسم المستخدم/البريد أو كلمة المرور غير صحيحة.',ACCOUNT_SUSPENDED:'هذا الحساب موقوف. تواصل مع مالك الصفحة.',TRY_LATER:'محاولات كثيرة. حاول مرة أخرى بعد عدة دقائق.',INVALID_USERNAME:'اسم المستخدم يجب أن يكون 3–32 حرفًا ويحتوي أحرفًا/أرقامًا أو . _ - فقط.',INVALID_EMAIL:'أدخل بريدًا إلكترونيًا صحيحًا.',WEAK_PASSWORD:'كلمة المرور يجب أن تكون 10 أحرف على الأقل وتحتوي حرفًا ورقمًا.',USERNAME_EXISTS:'اسم المستخدم مستخدم بالفعل.',EMAIL_EXISTS:'البريد الإلكتروني مستخدم بالفعل.',OWNER_SETUP_REQUIRED:'يجب تهيئة حساب مالك الصفحة أولًا.',INVALID_BOOTSTRAP_TOKEN:'رمز تهيئة المالك غير صحيح.',OWNER_BOOTSTRAP_TOKEN_NOT_CONFIGURED:'لم يتم ضبط رمز تهيئة المالك في Cloudflare.',INVALID_LINK_CODE:'رمز ربط الجهاز غير صالح أو انتهت صلاحيته.',READ_ONLY:'هذا الجهاز بصلاحية عرض فقط.',PASSWORD_CHANGE_REQUIRED:'يجب تغيير كلمة المرور المؤقتة أولًا.',AUTH_REQUIRED:'انتهت الجلسة أو تم إلغاء صلاحية هذا الجهاز. سجّل الدخول مجددًا.',FORBIDDEN:'ليست لديك صلاحية تنفيذ هذه العملية.'};return ar[c]||(lang==='ar'?'تعذر إكمال العملية. حاول مرة أخرى.':'Could not complete the operation.')}
+function authShowMessage(text,error=false){const el=$('#authMessage');if(!el)return;el.textContent=text||'';el.classList.toggle('show',!!text);el.classList.toggle('error',!!error)}
+function authSetPane(name){['Login','Register','Link','Forgot','Bootstrap'].forEach(x=>$('#auth'+x+'Pane')?.classList.toggle('active',x.toLowerCase()===name));authShowMessage('')}
+function openAuthModal(mode='login'){refreshAuthUI();$('#authModal').classList.add('open');if(!accountMode()){if(authState.bootstrapRequired)authSetPane('bootstrap');else authSetPane(mode)}}
+function closeAuthModal(){$('#authModal').classList.remove('open');authShowMessage('')}
+function refreshAuthUI(){
+  const btn=$('#accountBtn'),logged=accountMode();if(btn){btn.classList.toggle('logged',logged);btn.classList.toggle('viewer',logged&&accountAccess()==='viewer');btn.textContent=logged?`👤 ${authState.user?.username||(accountAccess()==='viewer'?'جهاز عرض':'جهاز مرتبط')}`:'👤 تسجيل الدخول'}
+  if(!$('#authLoggedOutView'))return;
+  $('#authLoggedOutView').style.display=logged?'none':'block';$('#authLoggedInView').style.display=logged?'block':'none';
+  if(!logged){$('#authRegisterTab').style.display=authState.bootstrapRequired?'none':'';const nav=$('#adminNavBtn');if(nav)nav.style.display='none';$('.nav')?.classList.remove('has-admin');document.body.classList.remove('account-viewer');return}
+  $('#authCurrentName').textContent=authState.user?.username||(authState.session?.deviceLabel||'جهاز مرتبط');$('#authCurrentEmail').textContent=authState.user?.email||'جلسة جهاز مرتبطة بالحساب';const badge=$('#authCurrentBadge');badge.textContent=authState.user?.role==='super_admin'?'مالك الصفحة':(accountAccess()==='viewer'?'عرض فقط':accountAccess()==='editor'?'محرر':'مالك الحساب');badge.className='auth-badge'+(accountAccess()==='viewer'?' viewer':'')+(authState.user?.role==='super_admin'?' admin':'');$('#authChangePasswordCard').style.display=authState.user?'block':'none';
+  const admin=authState.user?.role==='super_admin',nav=$('#adminNavBtn');if(nav){nav.style.display=admin?'':'none';$('.nav')?.classList.toggle('has-admin',admin)};document.body.classList.toggle('account-viewer',accountAccess()==='viewer');
+  if(authState.user?.mustChangePassword)setTimeout(()=>{openAuthModal();authShowMessage('تم تسجيل الدخول بكلمة مرور مؤقتة. غيّر كلمة المرور الآن قبل تعديل البيانات.',false)},20)
+}
+async function authRefresh(){try{const b=await appApi('/api/auth/me');authState={available:true,authenticated:!!b.authenticated,bootstrapRequired:!!b.bootstrapRequired,user:b.user||null,session:b.session||null};refreshAuthUI();refreshSyncUI();return authState}catch(e){authState={available:false,authenticated:false,bootstrapRequired:false,user:null,session:null};refreshAuthUI();return authState}}
+function accountMigrationStorageKey(){return `${ACCOUNT_MIGRATION_KEY}:${authState.session?.accountId||authState.user?.accountId||'none'}`}
+function accountHasLocalData(){return data.length>0||Object.values(budgets||{}).some(v=>Number(v)>0)}
+async function accountSnapshot(){return await appApi(`/api/account/state?_=${Date.now()}`)}
+async function accountHydrateEvidence(s){for(const ev of (s?.evidence||[])){try{if(!(await evidenceGet(ev.id)))await syncDownloadEvidence(ev.id)}catch(e){}}}
+async function accountReplaceFromSnapshot(s){data=[];budgets={};syncBudgetMeta={};localStorage.setItem(SYNC_BUDGET_META_KEY,'{}');await evidenceClearAll();persist();await syncApplySnapshot(s);await accountHydrateEvidence(s);persist();renderAll()}
+async function accountUploadLocalOnly(){const before=data.map(r=>({...r}));for(const r of before){if(!r.updatedAt)r.updatedAt=r.createdAt||new Date().toISOString();await syncSendReceipt(r)}for(const [m,v] of Object.entries(budgets)){syncBudgetMeta[m]=syncBudgetMeta[m]||new Date().toISOString();await syncSendBudget(m,v)}for(const r of before)if(r.hasEvidence)await syncUploadEvidence(r.id);const fresh=await accountSnapshot();await syncApplySnapshot(fresh);await accountHydrateEvidence(fresh);return fresh}
+async function accountFinishMigration(mode){try{$$('#accountMigrationModal button').forEach(b=>b.disabled=true);if(mode==='upload')await accountUploadLocalOnly();else if(mode==='download'){if(accountHasLocalData()&&!confirm('سيتم استبدال بيانات هذا الجهاز ببيانات الحساب. هل أخذت نسخة احتياطية إذا كنت تحتاجها؟'))return;await accountReplaceFromSnapshot(await accountSnapshot())}else await syncInitialPull(accountCanWrite(),{strict:accountCanWrite()});localStorage.setItem(accountMigrationStorageKey(),'done');$('#accountMigrationModal').classList.remove('open');syncOpenSocket();renderAll();toast('تم ربط بيانات الجهاز بالحساب')}catch(e){console.warn(e);toast(authErrorText(e))}finally{$$('#accountMigrationModal button').forEach(b=>b.disabled=false)}}
+async function prepareAccountAfterLogin(forceChoice=false){refreshAuthUI();refreshSyncUI();if(!accountMode())return;const marker=localStorage.getItem(accountMigrationStorageKey());const snap=await accountSnapshot().catch(()=>null);if(accountAccess()==='viewer'){if(snap)await accountReplaceFromSnapshot(snap);localStorage.setItem(accountMigrationStorageKey(),'done');syncOpenSocket();return}if(!marker&&(forceChoice||accountHasLocalData()||(snap?.receipts||[]).length)){if(!accountHasLocalData()&&snap){await accountReplaceFromSnapshot(snap);localStorage.setItem(accountMigrationStorageKey(),'done');syncOpenSocket();return}$('#accountMigrationModal').classList.add('open');return}try{await syncInitialPull(true);syncOpenSocket()}catch(e){console.warn('Account initial sync',e)}}
+async function authAfterSuccess(){closeAuthModal();await authRefresh();await prepareAccountAfterLogin(true)}
+async function authLogin(){try{await appApi('/api/auth/login',{method:'POST',body:JSON.stringify({login:$('#authLoginId').value,password:$('#authLoginPassword').value,deviceLabel:authDeviceLabel()})});await authAfterSuccess()}catch(e){authShowMessage(authErrorText(e),true)}}
+async function authRegister(){const p=$('#authRegisterPassword').value;if(p!==$('#authRegisterPassword2').value){authShowMessage('كلمتا المرور غير متطابقتين.',true);return}try{await appApi('/api/auth/register',{method:'POST',body:JSON.stringify({username:$('#authRegisterUsername').value,email:$('#authRegisterEmail').value,password:p,deviceLabel:authDeviceLabel()})});await authAfterSuccess()}catch(e){authShowMessage(authErrorText(e),true)}}
+async function authBootstrap(){try{await appApi('/api/auth/bootstrap-owner',{method:'POST',body:JSON.stringify({bootstrapToken:$('#authBootstrapToken').value,username:$('#authBootstrapUsername').value,email:$('#authBootstrapEmail').value,password:$('#authBootstrapPassword').value,deviceLabel:authDeviceLabel()})});await authAfterSuccess()}catch(e){authShowMessage(authErrorText(e),true)}}
+async function authForgot(){try{await appApi('/api/auth/forgot',{method:'POST',body:JSON.stringify({login:$('#authForgotLogin').value})});authShowMessage('تم تسجيل طلب الاستعادة. تواصل مع مالك الصفحة؛ سيستطيع إنشاء كلمة مرور مؤقتة لك.',false)}catch(e){authShowMessage(authErrorText(e),true)}}
+async function authLinkDevice(){try{await appApi('/api/auth/link-device',{method:'POST',body:JSON.stringify({code:$('#authLinkCode').value,deviceLabel:$('#authLinkDeviceLabel').value||authDeviceLabel()})});await authAfterSuccess()}catch(e){authShowMessage(authErrorText(e),true)}}
+async function authLogout(){try{await appApi('/api/auth/logout',{method:'POST',body:'{}'})}catch(e){}if(syncSocket){try{syncSocket.close()}catch(e){}}authState={available:true,authenticated:false,bootstrapRequired:false,user:null,session:null};refreshAuthUI();refreshSyncUI();closeAuthModal();toast('تم تسجيل الخروج')}
+async function authChangePassword(){const n=$('#authNewPassword').value;if(n!==$('#authNewPassword2').value){authShowMessage('كلمتا المرور الجديدتان غير متطابقتين.',true);return}try{await appApi('/api/auth/change-password',{method:'POST',body:JSON.stringify({currentPassword:$('#authCurrentPassword').value,newPassword:n})});authShowMessage('تم تغيير كلمة المرور بنجاح.');$('#authCurrentPassword').value=$('#authNewPassword').value=$('#authNewPassword2').value='';await authRefresh()}catch(e){authShowMessage(authErrorText(e),true)}}
+async function loadAccountDevices(){if(!accountMode()||accountAccess()!=='owner')return;try{const b=await appApi('/api/account/devices'),el=$('#accountDevicesList');el.innerHTML=(b.devices||[]).map(d=>`<div class="device-row"><div><b>${escapeHtml(d.deviceLabel||d.kind)}</b><small>${d.access==='viewer'?'عرض فقط':d.access==='editor'?'محرر':'مالك'} • ${new Date(d.lastSeenAt).toLocaleString()}</small></div>${d.current?'<span class="auth-badge">هذا الجهاز</span>':`<button class="btn btn-danger" type="button" onclick="revokeAccountDevice('${d.id}')">إلغاء</button>`}</div>`).join('')||'<div class="auth-note">لا توجد أجهزة أخرى.</div>'}catch(e){console.warn(e)}}
+window.revokeAccountDevice=async id=>{if(!confirm('إلغاء وصول هذا الجهاز؟'))return;try{await appApi('/api/account/revoke-device',{method:'POST',body:JSON.stringify({sessionId:id})});await loadAccountDevices()}catch(e){toast(authErrorText(e))}};
+async function createAccountInvite(){try{const b=await appApi('/api/account/invite',{method:'POST',body:JSON.stringify({permission:$('#accountInvitePermission').value,deviceLabel:$('#accountInviteLabel').value})});const el=$('#accountInviteCode');el.textContent=b.code;el.style.display='block';toast('تم إنشاء رمز ربط صالح لمدة 15 دقيقة')}catch(e){toast(authErrorText(e))}}
+function refreshAccountSyncUI(){const card=$('#accountSyncCard'),legacy=$('#legacySyncCard');if(!card||!legacy)return;card.classList.toggle('show',accountMode());legacy.style.display=accountMode()?'none':'';if(!accountMode())return;const name=authState.user?.username||(authState.session?.deviceLabel||'جهاز مرتبط');$('#accountSyncTitle').textContent=`الحساب: ${name}`;$('#accountSyncSubtitle').textContent=accountAccess()==='viewer'?'هذا الجهاز للعرض والطباعة فقط. الخادم يرفض أي تعديل.':'البيانات مرتبطة بالحساب وتُحدّث بين الأجهزة تلقائيًا.';const badge=$('#accountAccessBadge');badge.textContent=accountAccess()==='viewer'?'عرض فقط':accountAccess()==='editor'?'محرر':'مالك';badge.className='auth-badge'+(accountAccess()==='viewer'?' viewer':'');$('#accountOwnerTools').style.display=accountAccess()==='owner'?'block':'none';if(accountAccess()==='owner')loadAccountDevices()}
+async function renderAdminUsers(){if(authState.user?.role!=='super_admin')return;const el=$('#adminUsersList');el.innerHTML='<div class="auth-note">جارٍ تحميل المستخدمين…</div>';try{const b=await appApi('/api/admin/users'),users=b.users||[];$('#adminSummaryText').textContent=`${users.length} مستخدم مسجل`;el.innerHTML=users.map(u=>`<div class="admin-user"><div class="admin-user-head"><div><h3>${escapeHtml(u.username)} ${u.role==='super_admin'?'👑':''}</h3><div class="admin-user-meta">${escapeHtml(u.email)}<br>الحالة: ${u.status==='active'?'نشط':'موقوف'} • الأجهزة/الجلسات: ${u.activeSessions||0}${u.resetRequested?' • 🔑 طلب استعادة':''}<br>آخر دخول: ${u.lastLoginAt?new Date(u.lastLoginAt).toLocaleString():'—'}${(u.devices||[]).length?`<br>${(u.devices||[]).slice(0,8).map(d=>`📱 ${escapeHtml(d.deviceLabel||'جهاز')} — ${d.access==='viewer'?'عرض فقط':d.access==='editor'?'محرر':'مالك'} — ${new Date(d.lastSeenAt).toLocaleString()}`).join('<br>')}`:''}</div></div><span class="auth-badge ${u.role==='super_admin'?'admin':''}">${u.role==='super_admin'?'مالك الصفحة':'مستخدم'}</span></div>${u.role==='super_admin'?'':`<div class="admin-user-actions"><button class="btn btn-soft" onclick="adminResetPassword('${u.id}','${escapeHtml(u.username)}')">إعادة تعيين كلمة المرور</button><button class="btn btn-soft" onclick="adminLogoutAll('${u.id}','${escapeHtml(u.username)}')">تسجيل خروج كل الأجهزة</button><button class="btn ${u.status==='active'?'btn-danger':'btn-primary'}" onclick="adminSetStatus('${u.id}','${u.status==='active'?'suspended':'active'}')">${u.status==='active'?'إيقاف الحساب':'إعادة تفعيل الحساب'}</button></div>`}</div>`).join('')||'<div class="auth-note">لا يوجد مستخدمون.</div>'}catch(e){el.innerHTML=`<div class="auth-message show error">${escapeHtml(authErrorText(e))}</div>`}}
+window.adminResetPassword=async(id,name)=>{if(!confirm(`إنشاء كلمة مرور مؤقتة جديدة للمستخدم ${name}؟ سيتم تسجيل خروجه من جميع أجهزته.`))return;try{const b=await appApi('/api/admin/reset-password',{method:'POST',body:JSON.stringify({userId:id})});prompt('كلمة المرور المؤقتة — انسخها الآن، لن تظهر مرة أخرى:',b.temporaryPassword||'');await renderAdminUsers()}catch(e){toast(authErrorText(e))}};
+window.adminSetStatus=async(id,status)=>{try{await appApi('/api/admin/user-status',{method:'POST',body:JSON.stringify({userId:id,status})});await renderAdminUsers()}catch(e){toast(authErrorText(e))}};
+window.adminLogoutAll=async(id,name)=>{if(!confirm(`تسجيل خروج ${name} من جميع أجهزته المرتبطة؟`))return;try{await appApi('/api/admin/logout-user',{method:'POST',body:JSON.stringify({userId:id})});toast('تم تسجيل خروج جميع أجهزة المستخدم');await renderAdminUsers()}catch(e){toast(authErrorText(e))}};
+function enforceReadOnlyClick(e){if(!accountMode()||accountAccess()!=='viewer')return;const write=e.target.closest('#saveBudgetBtn,#restoreBtn,#addItemBtn,#toggleItemsBtn,#saveBtn,#clearBtn,#cameraBtn,#galleryBtn,.evidence-actions button,.purchase-body>.actions button');if(write){e.preventDefault();e.stopImmediatePropagation();toast('هذا الجهاز بصلاحية عرض فقط')}}
+document.addEventListener('click',enforceReadOnlyClick,true);
+
 // === v5.4 Real-time multi-device sync (Cloudflare Durable Objects) ===
 const SYNC_CODE_KEY='monthly_expense_sync_code_v1',SYNC_CLIENT_KEY='monthly_expense_sync_client_v1',SYNC_BUDGET_META_KEY='monthly_expense_sync_budget_meta_v1';
+const SYNC_PROFILE_DB_NAME='monthlyExpensesSyncProfile_v1',SYNC_PROFILE_STORE='settings',SYNC_PROFILE_RECORD='activeLink',SYNC_EXPLICIT_OFF_KEY='monthly_expense_sync_explicitly_off_v1';
 let syncCode=localStorage.getItem(SYNC_CODE_KEY)||'',syncClientId=localStorage.getItem(SYNC_CLIENT_KEY)||'',syncSocket=null,syncReconnectTimer=null,syncApplyingRemote=false,syncBudgetMeta=JSON.parse(localStorage.getItem(SYNC_BUDGET_META_KEY)||'{}');
+const syncClientWasStored=!!syncClientId;
+let syncProfileDBPromise=null,syncResumePromise=null;
 const SYNC_PENDING_DELETES_KEY='monthlyExpensesSyncPendingDeletesV1';
 let syncPendingDeletes=[];try{syncPendingDeletes=JSON.parse(localStorage.getItem(SYNC_PENDING_DELETES_KEY)||'[]')||[]}catch(e){syncPendingDeletes=[]}
 function persistPendingDeletes(){localStorage.setItem(SYNC_PENDING_DELETES_KEY,JSON.stringify(syncPendingDeletes.slice(-300)))}
@@ -535,21 +646,66 @@ function queuePendingDelete(id,updatedAt){if(!id)return;const old=syncPendingDel
 if(!syncClientId){syncClientId=uid();localStorage.setItem(SYNC_CLIENT_KEY,syncClientId)}
 function normalizeSyncCode(v){return String(v||'').toUpperCase().replace(/[^A-Z2-9]/g,'').slice(0,12)}
 function displaySyncCode(v){const s=normalizeSyncCode(v);return s.match(/.{1,4}/g)?.join('-')||s}
-function saveSyncCode(v){syncCode=normalizeSyncCode(v);if(syncCode)localStorage.setItem(SYNC_CODE_KEY,syncCode);else localStorage.removeItem(SYNC_CODE_KEY);refreshSyncUI()}
+function openSyncProfileDB(){
+  if(syncProfileDBPromise)return syncProfileDBPromise;
+  syncProfileDBPromise=new Promise((resolve,reject)=>{
+    try{
+      const req=indexedDB.open(SYNC_PROFILE_DB_NAME,1);
+      req.onupgradeneeded=()=>{const db=req.result;if(!db.objectStoreNames.contains(SYNC_PROFILE_STORE))db.createObjectStore(SYNC_PROFILE_STORE,{keyPath:'key'})};
+      req.onsuccess=()=>resolve(req.result);
+      req.onerror=()=>{syncProfileDBPromise=null;reject(req.error||new Error('Sync profile storage unavailable'))};
+      req.onblocked=()=>{syncProfileDBPromise=null;reject(new Error('Sync profile storage blocked'))}
+    }catch(e){syncProfileDBPromise=null;reject(e)}
+  });
+  return syncProfileDBPromise
+}
+async function readSyncProfile(){
+  try{const db=await openSyncProfileDB();return await new Promise((resolve,reject)=>{const tx=db.transaction(SYNC_PROFILE_STORE,'readonly'),req=tx.objectStore(SYNC_PROFILE_STORE).get(SYNC_PROFILE_RECORD);req.onsuccess=()=>resolve(req.result||null);req.onerror=()=>reject(req.error)})}catch(e){console.warn('Persistent sync profile read unavailable',e);return null}
+}
+async function writeSyncProfile(){
+  if(!syncCode)return false;
+  try{const db=await openSyncProfileDB();await new Promise((resolve,reject)=>{const tx=db.transaction(SYNC_PROFILE_STORE,'readwrite');tx.objectStore(SYNC_PROFILE_STORE).put({key:SYNC_PROFILE_RECORD,code:syncCode,clientId:syncClientId,updatedAt:new Date().toISOString()});tx.oncomplete=()=>resolve(true);tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error)});return true}catch(e){console.warn('Persistent sync profile write unavailable',e);return false}
+}
+async function clearSyncProfile(){
+  try{const db=await openSyncProfileDB();await new Promise((resolve,reject)=>{const tx=db.transaction(SYNC_PROFILE_STORE,'readwrite');tx.objectStore(SYNC_PROFILE_STORE).delete(SYNC_PROFILE_RECORD);tx.oncomplete=()=>resolve(true);tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error)});return true}catch(e){console.warn('Persistent sync profile clear unavailable',e);return false}
+}
+async function saveSyncCode(v,options={}){
+  syncCode=normalizeSyncCode(v);
+  if(syncCode){
+    localStorage.removeItem(SYNC_EXPLICIT_OFF_KEY);localStorage.setItem(SYNC_CODE_KEY,syncCode);localStorage.setItem(SYNC_CLIENT_KEY,syncClientId);await writeSyncProfile()
+  }else{
+    localStorage.removeItem(SYNC_CODE_KEY);if(options.explicitDisable)localStorage.setItem(SYNC_EXPLICIT_OFF_KEY,'1');await clearSyncProfile()
+  }
+  refreshSyncUI()
+}
+async function restorePersistentSyncLink(){
+  if(localStorage.getItem(SYNC_EXPLICIT_OFF_KEY)==='1'){
+    syncCode='';localStorage.removeItem(SYNC_CODE_KEY);await clearSyncProfile();refreshSyncUI();return false
+  }
+  const profile=await readSyncProfile();
+  if(!syncCode&&normalizeSyncCode(profile?.code).length===12){syncCode=normalizeSyncCode(profile.code);localStorage.setItem(SYNC_CODE_KEY,syncCode)}
+  if(!syncClientWasStored&&profile?.clientId){syncClientId=String(profile.clientId);localStorage.setItem(SYNC_CLIENT_KEY,syncClientId)}
+  if(syncCode)await writeSyncProfile();
+  refreshSyncUI();return !!syncCode
+}
 function syncSetMessage(msg){const el=$('#syncMessage');if(el)el.textContent=msg||t('syncPrivacy')}
 function refreshSyncUI(){
+  refreshAccountSyncUI();
+  if(accountMode())return;
   const linked=!!syncCode,$l=$('#syncLinkedArea'),$u=$('#syncUnlinkedArea');if(!$l||!$u)return;
   $l.style.display=linked?'block':'none';$u.style.display=linked?'none':'block';$('#syncCodeDisplay').textContent=linked?displaySyncCode(syncCode):'—';$('#syncDeviceText').textContent=linked?`${lang==='ar'?'معرّف هذا الجهاز':'This device'}: ${syncClientId.slice(0,8)}`:'';
   if(!linked){$('#syncStatusText').textContent=t('syncNotLinked');$('#syncStatusText').className='sync-dot';$('#syncLiveBadge').textContent='Offline';$('#syncLiveBadge').className='sync-badge'}
+  else if(!syncSocket||syncSocket.readyState!==WebSocket.OPEN)syncConnectionUI(false,false)
 }
-function syncConnectionUI(online,connecting=false){if(!$('#syncStatusText'))return;$('#syncStatusText').textContent=online?t('syncConnected'):(connecting?t('syncConnecting'):t('syncNotLinked'));$('#syncStatusText').className='sync-dot'+(online?' online':'');$('#syncLiveBadge').textContent=online?'Live':(connecting?'…':'Offline');$('#syncLiveBadge').className='sync-badge'+(online?' online':'')}
-function openSyncModal(){refreshSyncUI();$('#syncModal').classList.add('open');syncSetMessage('')}
+function syncConnectionUI(online,connecting=false){if(!$('#syncStatusText'))return;const label=online?t('syncConnected'):(connecting?t('syncConnecting'):(syncCode?t('syncLinkedOffline'):t('syncNotLinked')));$('#syncStatusText').textContent=label;$('#syncStatusText').className='sync-dot'+(online?' online':'');$('#syncLiveBadge').textContent=online?'Live':(connecting?'…':'Offline');$('#syncLiveBadge').className='sync-badge'+(online?' online':'')}
+function openSyncModal(){refreshSyncUI();$('#syncModal').classList.add('open');syncSetMessage('');if(accountMode()&&accountAccess()==='owner')loadAccountDevices()}
 function closeSyncModal(){$('#syncModal').classList.remove('open')}
 async function syncApi(path,opts={}){
-  const method=String(opts.method||'GET').toUpperCase(),parts=[];if(syncCode)parts.push(`code=${encodeURIComponent(syncCode)}`);if(method==='GET')parts.push(`_sync=${Date.now()}-${Math.random().toString(36).slice(2,8)}`);
+  const method=String(opts.method||'GET').toUpperCase();if(accountMode()&&path.startsWith('/api/sync/'))path=path.replace('/api/sync/','/api/account/');
+  const parts=[];if(!accountMode()&&syncCode)parts.push(`code=${encodeURIComponent(syncCode)}`);if(method==='GET')parts.push(`_sync=${Date.now()}-${Math.random().toString(36).slice(2,8)}`);
   const sep=path.includes('?')?'&':'?',url=parts.length?`${path}${sep}${parts.join('&')}`:path;
-  const headers=new Headers(opts.headers||{});if(method==='GET'){headers.set('cache-control','no-cache, no-store, must-revalidate');headers.set('pragma','no-cache')}
-  const r=await fetch(url,{...opts,method,headers,cache:'no-store'});let b=null;try{b=await r.json()}catch(e){}if(!r.ok)throw new Error(b?.error||`Sync ${r.status}`);return b
+  const headers=new Headers(opts.headers||{});if(method==='GET'){headers.set('cache-control','no-cache, no-store, must-revalidate');headers.set('pragma','no-cache')}else if(accountMode())headers.set('x-monthly-expense-app','1');
+  const r=await fetch(url,{...opts,method,headers,cache:'no-store',credentials:'same-origin'});let b=null;try{b=await r.json()}catch(e){}if(!r.ok){const er=new Error(b?.error||`Sync ${r.status}`);er.code=b?.error;throw er}return b
 }
 function isoNewer(a,b){return String(a||'')>String(b||'')}
 async function syncApplySnapshot(s){
@@ -564,19 +720,20 @@ async function syncApplySnapshot(s){
     const evidenceIds=new Set((s.evidence||[]).map(x=>x.id));for(const r of data){if(r.hasEvidence&&evidenceIds.has(r.id)){try{if(!(await evidenceGet(r.id)))await syncDownloadEvidence(r.id)}catch(e){}}}
   }finally{syncApplyingRemote=false}
 }
-async function syncDownloadEvidence(id){if(!syncCode)return false;const r=await fetch(`/api/sync/evidence/${encodeURIComponent(id)}?code=${encodeURIComponent(syncCode)}&_sync=${Date.now()}`,{cache:'no-store',headers:{'cache-control':'no-cache, no-store, must-revalidate','pragma':'no-cache'}});if(!r.ok)return false;const blob=await r.blob();if(blob.size){await evidencePut(id,blob);return true}return false}
+async function syncDownloadEvidence(id){if(!syncTransportActive())return false;const path=accountMode()?`/api/account/evidence/${encodeURIComponent(id)}?_sync=${Date.now()}`:`/api/sync/evidence/${encodeURIComponent(id)}?code=${encodeURIComponent(syncCode)}&_sync=${Date.now()}`;const r=await fetch(path,{cache:'no-store',credentials:'same-origin',headers:{'cache-control':'no-cache, no-store, must-revalidate','pragma':'no-cache'}});if(!r.ok)return false;const blob=await r.blob();if(blob.size)return await evidencePutVerified(id,blob);return false}
+async function hydrateAllSyncedEvidenceLocally(){let saved=0;for(const receipt of data){if(!receipt?.id||!receipt.hasEvidence)continue;try{if(await evidenceGet(receipt.id)){saved++;continue}if(await syncDownloadEvidence(receipt.id))saved++}catch(e){console.warn('Evidence local retention failed',receipt.id,e)}}return saved}
 async function evidenceBlobForSync(blob){
   if(!blob||blob.size<=1450000)return blob;const url=URL.createObjectURL(blob);try{const img=await new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=rej;i.src=url}),max=1200,scale=Math.min(1,max/Math.max(img.width,img.height)),c=document.createElement('canvas');c.width=Math.max(1,Math.round(img.width*scale));c.height=Math.max(1,Math.round(img.height*scale));c.getContext('2d').drawImage(img,0,0,c.width,c.height);return await new Promise(res=>c.toBlob(res,'image/jpeg',.70))}finally{URL.revokeObjectURL(url)}
 }
-async function syncUploadEvidenceBlob(id,blob){if(!syncCode||!blob)return false;try{blob=await evidenceBlobForSync(blob);if(!blob||blob.size>1800000)return false;const r=await fetch(`/api/sync/evidence/${encodeURIComponent(id)}?code=${encodeURIComponent(syncCode)}`,{method:'PUT',headers:{'content-type':blob.type||'image/jpeg'},body:blob});return r.ok}catch(e){console.warn('Evidence sync upload',e);return false}}
-async function syncUploadEvidence(id){if(!syncCode)return false;try{const blob=await evidenceGet(id);return blob?await syncUploadEvidenceBlob(id,blob):false}catch(e){console.warn('Evidence sync upload',e);return false}}
-async function syncDeleteEvidenceRemote(id){if(!syncCode)return;try{await fetch(`/api/sync/evidence/${encodeURIComponent(id)}?code=${encodeURIComponent(syncCode)}`,{method:'DELETE'})}catch(e){}}
-async function syncSendOp(op){if(!syncCode||syncApplyingRemote)return null;try{return await syncApi('/api/sync/op',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({...op,clientId:syncClientId})})}catch(e){console.warn('Sync operation queued locally',e);return null}}
-async function syncSendReceipt(rec){if(!rec||!syncCode||syncApplyingRemote)return false;if(!rec.updatedAt)rec.updatedAt=rec.createdAt||new Date().toISOString();const ack=await syncSendOp({type:'upsert',receipt:rec});if(!ack)return false;if(rec.hasEvidence)await syncUploadEvidence(rec.id);return true}
-async function syncSendDelete(id,updatedAt=new Date().toISOString()){if(syncApplyingRemote)return;if(!syncCode){queuePendingDelete(id,updatedAt);return}const r=await syncSendOp({type:'delete',id,updatedAt});if(!r){queuePendingDelete(id,updatedAt);return}syncPendingDeletes=syncPendingDeletes.filter(x=>x.id!==id);persistPendingDeletes()}
-async function syncSendBudget(month,value){if(!syncCode||syncApplyingRemote)return false;const updatedAt=syncBudgetMeta[month]||new Date().toISOString();const ack=await syncSendOp({type:'budget',month,value:Number(value)||0,updatedAt});return !!ack}
+async function syncUploadEvidenceBlob(id,blob){if(!syncTransportActive()||!blob||accountMode()&&!accountCanWrite())return false;try{blob=await evidenceBlobForSync(blob);if(!blob||blob.size>1800000)return false;const path=accountMode()?`/api/account/evidence/${encodeURIComponent(id)}`:`/api/sync/evidence/${encodeURIComponent(id)}?code=${encodeURIComponent(syncCode)}`;const headers={'content-type':blob.type||'image/jpeg'};if(accountMode())headers['x-monthly-expense-app']='1';const r=await fetch(path,{method:'PUT',headers,body:blob,credentials:'same-origin'});return r.ok}catch(e){console.warn('Evidence sync upload',e);return false}}
+async function syncUploadEvidence(id){if(!syncTransportActive())return false;try{const blob=await evidenceGet(id);return blob?await syncUploadEvidenceBlob(id,blob):false}catch(e){console.warn('Evidence sync upload',e);return false}}
+async function syncDeleteEvidenceRemote(id){if(!syncTransportActive()||accountMode()&&!accountCanWrite())return;try{const path=accountMode()?`/api/account/evidence/${encodeURIComponent(id)}`:`/api/sync/evidence/${encodeURIComponent(id)}?code=${encodeURIComponent(syncCode)}`;const headers=accountMode()?{'x-monthly-expense-app':'1'}:{};await fetch(path,{method:'DELETE',headers,credentials:'same-origin'})}catch(e){}}
+async function syncSendOp(op){if(!syncTransportActive()||syncApplyingRemote||accountMode()&&!accountCanWrite())return null;try{return await syncApi('/api/sync/op',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({...op,clientId:syncClientId})})}catch(e){console.warn('Sync operation queued locally',e);return null}}
+async function syncSendReceipt(rec){if(!rec||!syncTransportActive()||syncApplyingRemote||accountMode()&&!accountCanWrite())return false;if(!rec.updatedAt)rec.updatedAt=rec.createdAt||new Date().toISOString();const ack=await syncSendOp({type:'upsert',receipt:rec});if(!ack)return false;if(rec.hasEvidence)await syncUploadEvidence(rec.id);return true}
+async function syncSendDelete(id,updatedAt=new Date().toISOString()){if(syncApplyingRemote||accountMode()&&!accountCanWrite())return;if(!syncTransportActive()){queuePendingDelete(id,updatedAt);return}const r=await syncSendOp({type:'delete',id,updatedAt});if(!r){queuePendingDelete(id,updatedAt);return}syncPendingDeletes=syncPendingDeletes.filter(x=>x.id!==id);persistPendingDeletes()}
+async function syncSendBudget(month,value){if(!syncTransportActive()||syncApplyingRemote||accountMode()&&!accountCanWrite())return false;const updatedAt=syncBudgetMeta[month]||new Date().toISOString();const ack=await syncSendOp({type:'budget',month,value:Number(value)||0,updatedAt});return !!ack}
 async function syncInitialPull(pushLocal=true,options={}){
-  if(!syncCode)return null;const strict=!!options.strict;syncConnectionUI(false,true);let writeFailures=0;
+  if(!syncTransportActive())return null;if(accountMode()&&!accountCanWrite())pushLocal=false;const strict=!!options.strict;syncConnectionUI(false,true);let writeFailures=0;
   // Flush offline deletes first, otherwise an older cloud copy could reappear locally.
   if(syncPendingDeletes.length){const keep=[];for(const d of [...syncPendingDeletes]){const r=await syncSendOp({type:'delete',id:d.id,updatedAt:d.updatedAt});if(!r){keep.push(d);writeFailures++}}syncPendingDeletes=keep;persistPendingDeletes()}
   // Fetch a genuinely fresh server snapshot. syncApi adds a unique nonce and no-cache headers.
@@ -601,25 +758,48 @@ async function syncInitialPull(pushLocal=true,options={}){
   syncConnectionUI(true,false);return{...snap2,writeFailures,verificationFailures}
 }
 function syncOpenSocket(){
-  if(!syncCode)return;if(syncSocket){try{syncSocket.close()}catch(e){}}clearTimeout(syncReconnectTimer);if(window._monthlySyncPing){clearInterval(window._monthlySyncPing);window._monthlySyncPing=null}
-  const proto=location.protocol==='https:'?'wss:':'ws:',ws=new WebSocket(`${proto}//${location.host}/api/sync/ws?code=${encodeURIComponent(syncCode)}&client=${encodeURIComponent(syncClientId)}`);syncSocket=ws;syncConnectionUI(false,true);let lastPong=Date.now();
+  if(!syncTransportActive())return;if(syncSocket){try{syncSocket.close()}catch(e){}}clearTimeout(syncReconnectTimer);if(window._monthlySyncPing){clearInterval(window._monthlySyncPing);window._monthlySyncPing=null}
+  const proto=location.protocol==='https:'?'wss:':'ws:',wsPath=accountMode()?`/api/account/ws?client=${encodeURIComponent(syncClientId)}`:`/api/sync/ws?code=${encodeURIComponent(syncCode)}&client=${encodeURIComponent(syncClientId)}`,ws=new WebSocket(`${proto}//${location.host}${wsPath}`);syncSocket=ws;syncConnectionUI(false,true);let lastPong=Date.now();
   ws.onopen=()=>{lastPong=Date.now();syncConnectionUI(true,false);window._monthlySyncPing=setInterval(()=>{if(ws.readyState!==WebSocket.OPEN)return;try{if(Date.now()-lastPong>90000){ws.close();return}ws.send('ping')}catch(e){}},30000)};
-  ws.onclose=()=>{if(window._monthlySyncPing){clearInterval(window._monthlySyncPing);window._monthlySyncPing=null}if(syncSocket===ws)syncSocket=null;syncConnectionUI(false,false);if(syncCode)syncReconnectTimer=setTimeout(syncOpenSocket,2500)};ws.onerror=()=>{};
-  ws.onmessage=async ev=>{let m;try{m=JSON.parse(ev.data)}catch(e){return}if(m.type==='pong'){lastPong=Date.now();return}if(m.clientId===syncClientId)return;syncApplyingRemote=true;try{
-    if(m.type==='upsert'&&m.receipt){const i=data.findIndex(x=>x.id===m.receipt.id);if(i<0)data.push(m.receipt);else if(isoNewer(m.receipt.updatedAt,data[i].updatedAt))data[i]=m.receipt;persist();renderAll();if(m.receipt.hasEvidence)setTimeout(()=>syncDownloadEvidence(m.receipt.id),250)}
+  ws.onclose=()=>{if(window._monthlySyncPing){clearInterval(window._monthlySyncPing);window._monthlySyncPing=null}if(syncSocket===ws)syncSocket=null;syncConnectionUI(false,false);if(syncTransportActive())syncReconnectTimer=setTimeout(syncOpenSocket,2500)};ws.onerror=()=>{};
+  ws.onmessage=async ev=>{if(syncSocket!==ws||!syncTransportActive())return;let m;try{m=JSON.parse(ev.data)}catch(e){return}if(m.type==='pong'){lastPong=Date.now();return}if(m.clientId===syncClientId)return;syncApplyingRemote=true;try{
+    if(m.type==='upsert'&&m.receipt){const i=data.findIndex(x=>x.id===m.receipt.id);if(i<0)data.push(m.receipt);else if(isoNewer(m.receipt.updatedAt,data[i].updatedAt))data[i]=m.receipt;persist();renderAll();if(m.receipt.hasEvidence)try{await syncDownloadEvidence(m.receipt.id)}catch(e){console.warn('Live evidence retention failed',m.receipt.id,e)}}
     else if(m.type==='delete'&&m.id){data=data.filter(x=>x.id!==m.id);await evidenceDelete(m.id);persist();renderAll()}
     else if(m.type==='budget'&&m.month){if(Number(m.value)>0)budgets[m.month]=Number(m.value);else delete budgets[m.month];syncBudgetMeta[m.month]=m.updatedAt||new Date().toISOString();localStorage.setItem(SYNC_BUDGET_META_KEY,JSON.stringify(syncBudgetMeta));persist();renderDashboard()}
     else if(m.type==='evidence'&&m.id){await syncDownloadEvidence(m.id);const r=data.find(x=>x.id===m.id);if(r&&!r.hasEvidence){r.hasEvidence=true;r.evidenceOrigin=r.evidenceOrigin||'scan';persist();renderAll()}}
     else if(m.type==='evidence-delete'&&m.id){await evidenceDelete(m.id);const r=data.find(x=>x.id===m.id);if(r){r.hasEvidence=false;r.evidenceOrigin=null;persist();renderAll()}}
   }finally{syncApplyingRemote=false}}
 }
-async function syncCreateRoom(){try{syncConnectionUI(false,true);const r=await fetch('/api/sync/create',{method:'POST'}),b=await r.json();if(!r.ok)throw new Error(b.error||'Create failed');saveSyncCode(b.code);await syncInitialPull(true);syncOpenSocket();syncSetMessage(t('syncCreated'));toast(t('syncCreated'))}catch(e){syncSetMessage(t('syncOffline'));syncConnectionUI(false,false)}}
-async function syncJoinRoom(){const code=normalizeSyncCode($('#syncJoinCode').value);if(code.length!==12){toast(t('syncInvalid'));return}try{const r=await fetch('/api/sync/join',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({code})}),b=await r.json();if(!r.ok||!b.ok)throw new Error(b.error||'Join failed');saveSyncCode(code);await syncInitialPull(true);syncOpenSocket();syncSetMessage(t('syncJoined'));toast(t('syncJoined'))}catch(e){toast(t('syncInvalid'));syncSetMessage(t('syncInvalid'))}}
-async function syncDisconnect(){if(syncSocket){try{syncSocket.close()}catch(e){}}clearTimeout(syncReconnectTimer);saveSyncCode('');syncConnectionUI(false,false);syncSetMessage(t('syncPrivacy'))}
+async function resumePersistentSync(options={}){
+  if(syncResumePromise)return syncResumePromise;
+  syncResumePromise=(async()=>{
+    if(accountMode()){
+      const forcePull=!!options.forcePull;
+      if(!forcePull&&syncSocket&&(syncSocket.readyState===WebSocket.OPEN||syncSocket.readyState===WebSocket.CONNECTING)){syncConnectionUI(syncSocket.readyState===WebSocket.OPEN,syncSocket.readyState===WebSocket.CONNECTING);return true}
+      try{await syncInitialPull(accountCanWrite());syncOpenSocket();return true}catch(e){console.warn(`Account sync resume failed${options.reason?` (${options.reason})`:''}`,e);return false}
+    }
+    if(!await restorePersistentSyncLink())return false;
+    const forcePull=!!options.forcePull;
+    if(!forcePull&&syncSocket&&(syncSocket.readyState===WebSocket.OPEN||syncSocket.readyState===WebSocket.CONNECTING)){syncConnectionUI(syncSocket.readyState===WebSocket.OPEN,syncSocket.readyState===WebSocket.CONNECTING);return true}
+    try{await syncInitialPull(true);syncOpenSocket();return true}catch(e){console.warn(`Persistent sync resume failed${options.reason?` (${options.reason})`:''}`,e);syncConnectionUI(false,false);return false}
+  })();
+  try{return await syncResumePromise}finally{syncResumePromise=null}
+}
+async function syncCreateRoom(){try{syncConnectionUI(false,true);const r=await fetch('/api/sync/create',{method:'POST'}),b=await r.json();if(!r.ok)throw new Error(b.error||'Create failed');await saveSyncCode(b.code);await syncInitialPull(true);syncOpenSocket();syncSetMessage(t('syncCreated'));toast(t('syncCreated'))}catch(e){syncSetMessage(t('syncOffline'));syncConnectionUI(false,false)}}
+async function syncJoinRoom(){const code=normalizeSyncCode($('#syncJoinCode').value);if(code.length!==12){toast(t('syncInvalid'));return}try{const r=await fetch('/api/sync/join',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({code})}),b=await r.json();if(!r.ok||!b.ok)throw new Error(b.error||'Join failed');await saveSyncCode(code);await syncInitialPull(true);syncOpenSocket();syncSetMessage(t('syncJoined'));toast(t('syncJoined'))}catch(e){toast(t('syncInvalid'));syncSetMessage(t('syncInvalid'))}}
+async function syncDisconnect(){
+  if(!syncCode)return;
+  if(!confirm(t('syncDisconnectConfirm')))return;
+  persist();syncSetMessage(t('syncPreparingDisconnect'));
+  try{await hydrateAllSyncedEvidenceLocally()}catch(e){console.warn('Final evidence retention pass skipped',e)}
+  localStorage.setItem(SYNC_EXPLICIT_OFF_KEY,'1');
+  if(syncSocket){try{syncSocket.close()}catch(e){}}syncSocket=null;clearTimeout(syncReconnectTimer);if(window._monthlySyncPing){clearInterval(window._monthlySyncPing);window._monthlySyncPing=null}
+  await saveSyncCode('',{explicitDisable:true});syncConnectionUI(false,false);syncSetMessage(t('syncDisconnected'));toast(t('syncDisconnected'))
+}
 async function syncNow(options={}){
   try{
     syncSetMessage(lang==='ar'?'جارٍ رفع التغييرات وجلب أحدث نسخة فعلية…':'Uploading changes and fetching a verified fresh copy…');
-    const snap=await syncInitialPull(true,{strict:true});syncOpenSocket();renderAll();
+    const snap=await syncInitialPull(accountMode()?accountCanWrite():true,{strict:accountMode()?accountCanWrite():true});syncOpenSocket();renderAll();
     if(!options.silent){const count=(snap?.receipts||[]).length,msg=lang==='ar'?`اكتملت المزامنة فعليًا — ${count} فاتورة على الأجهزة المرتبطة`:`Sync verified — ${count} receipts on linked devices`;toast(t('syncDone'));syncSetMessage(msg)}
     return snap
   }catch(e){console.warn('Manual sync failed',e);if(!options.silent){const msg=lang==='ar'?'لم تكتمل المزامنة الفعلية. أعد المحاولة مع اتصال الإنترنت.':'Verified sync did not complete. Try again with an internet connection.';toast(t('syncOffline'));syncSetMessage(msg)}throw e}
@@ -776,6 +956,7 @@ window.pickReceiptEvidence=(id,source='gallery')=>{
   if(source==='camera')$('#evidenceCameraInput').click();else $('#evidenceGalleryInput').click()
 };
 async function handleEvidenceFile(file){
+  if(accountMode()&&!accountCanWrite()){toast('هذا الجهاز بصلاحية عرض فقط');return}
   const id=pendingEvidenceReceiptId;if(!file||!id)return;
   try{
     await ensurePersistentStorage();
@@ -790,7 +971,7 @@ $('#evidenceModal').onclick=e=>{if(e.target===$('#evidenceModal'))closeEvidenceM
 window.viewReceiptEvidence=async id=>{
   try{
     let blob=await evidenceGet(id);
-    if(!blob&&syncCode){try{await syncDownloadEvidence(id);blob=await evidenceGet(id)}catch(e){}}
+    if(!blob&&syncTransportActive()){try{await syncDownloadEvidence(id);blob=await evidenceGet(id)}catch(e){}}
     if(!blob){updateReceiptEvidenceFlag(id,false);renderAll();toast(t('evidenceNotFound'));return}
     if(evidenceObjectUrl)URL.revokeObjectURL(evidenceObjectUrl);
     evidenceObjectUrl=URL.createObjectURL(blob);
@@ -802,6 +983,7 @@ window.viewReceiptEvidence=async id=>{
   }catch(e){console.error(e);toast(t('evidenceNotFound'))}
 };
 window.deleteReceiptEvidence=async id=>{
+  if(accountMode()&&!accountCanWrite()){toast('هذا الجهاز بصلاحية عرض فقط');return}
   if(!confirm(t('confirmDeleteEvidence')))return;
   await evidenceDelete(id);updateReceiptEvidenceFlag(id,false);const rr=data.find(x=>x.id===id);if(rr)syncSendReceipt(rr);syncDeleteEvidenceRemote(id);closeEvidenceModal();renderAll();toast(t('evidenceDeleted'))
 };
@@ -821,7 +1003,7 @@ function scheduleDraftSave(includeImage=false){clearTimeout(draftTimer);draftTim
 function clearDraft(){clearTimeout(draftTimer);try{localStorage.removeItem(DRAFT_KEY)}catch(e){}}
 async function restoreDraft(){let d=null;try{d=JSON.parse(localStorage.getItem(DRAFT_KEY)||'null')}catch(e){}if(!d||!d.ts||Date.now()-d.ts>1000*60*60*24*30)return false;editingId=d.editingId||null;$('#storeName').value=d.store||'';$('#invoiceDate').value=d.date||todayISO();renderCategoryOptions(d.category||'other');$('#subtotal').value=d.subtotal??'';$('#tax').value=d.tax??'';$('#finalTotal').value=d.total??'';$('#items').innerHTML='';(d.items||[]).forEach(addItem);setItemsOpen(!!(d.items||[]).length);$('#editModeBadge').textContent=editingId?t('edit'):'';if(d.preview){try{const img=await new Promise((resolve,reject)=>{const x=new Image();x.onload=()=>resolve(x);x.onerror=reject;x.src=d.preview});sourceCanvas=document.createElement('canvas');sourceCanvas.width=img.naturalWidth||img.width;sourceCanvas.height=img.naturalHeight||img.height;sourceCanvas.getContext('2d').drawImage(img,0,0);currentCanvas=document.createElement('canvas');currentCanvas.width=sourceCanvas.width;currentCanvas.height=sourceCanvas.height;currentCanvas.getContext('2d').drawImage(sourceCanvas,0,0);showCurrentCanvas()}catch(e){}}syncFinalTotalFromInputs();calcTotals();showPage('new');toast(lang==='ar'?'تمت استعادة مسودة الفاتورة بعد إعادة فتح الصفحة':'Receipt draft restored after page reload');return true}
 
-function applyLang(){document.documentElement.lang=lang;document.documentElement.dir=lang==='ar'?'rtl':'ltr';$$('[data-i18n]').forEach(el=>el.textContent=t(el.dataset.i18n));$('#langBtn').textContent=lang==='ar'?'English':'العربية';$('#changelogCloseBtn')?.setAttribute('aria-label',lang==='ar'?'إغلاق':'Close');if($('#changelogModal')?.classList.contains('open'))renderChangelog();setItemsOpen($('#optionalItemsBody').classList.contains('open'));renderCategoryOptions();renderAll();refreshSyncUI();refreshPwaInstallUI();window.__monthlyExpensesRefreshUpdateText?.()}
+function applyLang(){document.documentElement.lang=lang;document.documentElement.dir=lang==='ar'?'rtl':'ltr';$$('[data-i18n]').forEach(el=>el.textContent=t(el.dataset.i18n));$('#langBtn').textContent=lang==='ar'?'English':'العربية';$('#changelogCloseBtn')?.setAttribute('aria-label',lang==='ar'?'إغلاق':'Close');if($('#changelogModal')?.classList.contains('open'))renderChangelog();setItemsOpen($('#optionalItemsBody').classList.contains('open'));renderCategoryOptions();renderAll();refreshAuthUI();refreshSyncUI();refreshPwaInstallUI();window.__monthlyExpensesRefreshUpdateText?.()}
 
 
 // === v5.7.8 Install to Home Screen (PWA) ===
@@ -880,11 +1062,19 @@ $('#pwaInstallBtn').onclick=async()=>{
 };
 refreshPwaInstallUI();
 
+$('#accountBtn').onclick=()=>openAuthModal('login');
+$('#authCloseBtn').onclick=closeAuthModal;$('#authModal').onclick=e=>{if(e.target===$('#authModal'))closeAuthModal()};
+$('#authLoginTab').onclick=()=>authSetPane('login');$('#authRegisterTab').onclick=()=>authSetPane('register');$('#authLinkTab').onclick=()=>authSetPane('link');
+$('#authForgotBtn').onclick=()=>authSetPane('forgot');$('#authForgotBackBtn').onclick=()=>authSetPane('login');
+$('#authLoginBtn').onclick=authLogin;$('#authRegisterBtn').onclick=authRegister;$('#authBootstrapBtn').onclick=authBootstrap;$('#authForgotSubmitBtn').onclick=authForgot;$('#authLinkDeviceBtn').onclick=authLinkDevice;$('#authLogoutBtn').onclick=authLogout;$('#authChangePasswordBtn').onclick=authChangePassword;
+$('#authOpenSettingsBtn').onclick=()=>{closeAuthModal();openSyncModal()};
+$('#migrationUploadBtn').onclick=()=>accountFinishMigration('upload');$('#migrationDownloadBtn').onclick=()=>accountFinishMigration('download');$('#migrationMergeBtn').onclick=()=>accountFinishMigration('merge');
+$('#accountSyncNowBtn').onclick=()=>syncNow().catch(()=>{});$('#accountCreateInviteBtn').onclick=createAccountInvite;$('#accountLogoutBtn').onclick=authLogout;$('#adminRefreshBtn').onclick=renderAdminUsers;
 $('#langBtn').onclick=()=>{lang=lang==='ar'?'en':'ar';localStorage.setItem('monthlyExpensesLang',lang);applyLang()};
 $('#settingsBtn').onclick=openSyncModal;$('#syncCloseBtn').onclick=closeSyncModal;$('#syncModal').onclick=e=>{if(e.target===$('#syncModal'))closeSyncModal()};$('#syncCreateBtn').onclick=syncCreateRoom;$('#syncJoinBtn').onclick=syncJoinRoom;$('#syncDisconnectBtn').onclick=syncDisconnect;$('#syncNowBtn').onclick=syncNow;$('#syncCopyBtn').onclick=async()=>{try{await navigator.clipboard.writeText(displaySyncCode(syncCode));toast(lang==='ar'?'تم نسخ الرمز':'Code copied')}catch(e){}};$('#syncJoinCode').oninput=e=>{const s=normalizeSyncCode(e.target.value);e.target.value=displaySyncCode(s)};
 $('#changelogBtn').onclick=openChangelog;$('#changelogCloseBtn').onclick=closeChangelog;$('#changelogModal').onclick=e=>{if(e.target===$('#changelogModal'))closeChangelog()};document.addEventListener('keydown',e=>{if(e.key==='Escape'&&$('#changelogModal').classList.contains('open'))closeChangelog()});
 
-$$('.nav button').forEach(b=>b.onclick=()=>showPage(b.dataset.page));function showPage(id){$$('.page').forEach(p=>p.classList.toggle('active',p.id===id));$$('.nav button').forEach(b=>b.classList.toggle('active',b.dataset.page===id));if(id==='dashboard')renderDashboard();if(id==='records'){renderRecords();reconcileLocalEvidenceFlags().catch(()=>{})}window.scrollTo({top:0,behavior:'smooth'})}window.showPage=showPage;
+$$('.nav button').forEach(b=>b.onclick=()=>showPage(b.dataset.page));function showPage(id){if(id==='admin'&&authState.user?.role!=='super_admin')id='dashboard';if(id==='new'&&accountMode()&&accountAccess()==='viewer'){toast('هذا الجهاز بصلاحية عرض فقط');id='dashboard'}$$('.page').forEach(p=>p.classList.toggle('active',p.id===id));$$('.nav button').forEach(b=>b.classList.toggle('active',b.dataset.page===id));if(id==='dashboard')renderDashboard();if(id==='records'){renderRecords();reconcileLocalEvidenceFlags().catch(()=>{})}if(id==='admin')renderAdminUsers();window.scrollTo({top:0,behavior:'smooth'})}window.showPage=showPage;
 function toast(msg){const el=$('#toast');el.textContent=msg;el.classList.add('show');setTimeout(()=>el.classList.remove('show'),2300)}
 function renderCategoryOptions(selected){const cur=selected||$('#category')?.value||'other';$('#category').innerHTML=CATEGORIES.map(c=>`<option value="${c}">${t(c)}</option>`).join('');$('#category').value=CATEGORIES.includes(cur)?cur:'other'}
 function addItem(item={}){const row=document.createElement('div');row.className='item-row';row.innerHTML=`<input class="input mini item-name" placeholder="${t('item')}" value="${escapeHtml(item.name||'')}"/><input class="input mini item-price" type="number" inputmode="decimal" step="0.01" min="0" placeholder="${t('price')}" value="${item.price??''}"/><input class="input mini item-qty" type="number" inputmode="numeric" step="1" min="1" placeholder="${t('qty')}" value="${item.qty||1}"/><button class="icon-btn" type="button">×</button>`;row.querySelector('.icon-btn').onclick=()=>{row.remove();if(!$('#items').children.length)addItem();calcTotals()};row.querySelectorAll('input').forEach(x=>x.addEventListener('input',()=>{calcTotals();scheduleDraftSave()}));$('#items').appendChild(row);calcTotals()}
@@ -898,8 +1088,9 @@ function calcTotals(){const itemsTotal=getItems().reduce((sum,item)=>sum+item.pr
 function resetScanner(){currentCanvas=null;sourceCanvas=null;pendingAutoEvidenceBlob=null;receiptDocumentProvided=false;$('#previewWrap').style.display='none';$('#receiptPreview').src='';$('#cameraInput').value='';$('#galleryInput').value='';$('#ocrStatus').textContent=t('ocrHint')}
 
 function clearForm(clearSavedDraft=true){editingId=null;['storeName','subtotal','tax','finalTotal'].forEach(id=>$('#'+id).value='');$('#invoiceDate').value=todayISO();renderCategoryOptions('other');$('#items').innerHTML='';setItemsOpen(false);resetScanner();$('#editModeBadge').textContent='';calcTotals();if(clearSavedDraft)clearDraft()}
-$('#clearBtn').onclick=()=>clearForm(true);
+$('#clearBtn').onclick=()=>{if(accountMode()&&!accountCanWrite()){toast('هذا الجهاز بصلاحية عرض فقط');return}clearForm(true)};
 $('#saveBtn').onclick=async()=>{
+  if(accountMode()&&!accountCanWrite()){toast('هذا الجهاز بصلاحية عرض فقط');return}
   const store=$('#storeName').value.trim(),date=$('#invoiceDate').value,total=Number($('#finalTotal').value||0);
   if(!store||!date||!total){toast(t('required'));return}
   if(!financialsMatch()){toast(t('totalsMismatch'));$('#financeCheck').scrollIntoView({behavior:'smooth',block:'center'});return}
@@ -914,7 +1105,7 @@ $('#saveBtn').onclick=async()=>{
       proofBlob=pendingAutoEvidenceBlob||await canvasToEvidenceBlob(proofCanvas);
       if(proofBlob)localEvidenceSaved=await evidencePutVerified(id,proofBlob);
     }catch(e){console.warn('Automatic receipt evidence local save failed',e)}
-    if(!localEvidenceSaved&&proofBlob&&syncCode){remoteEvidenceSaved=await syncUploadEvidenceBlob(id,proofBlob)}
+    if(!localEvidenceSaved&&proofBlob&&syncTransportActive()){remoteEvidenceSaved=await syncUploadEvidenceBlob(id,proofBlob)}
     if(localEvidenceSaved||remoteEvidenceSaved){
       rec.hasEvidence=true;rec.evidenceUpdatedAt=new Date().toISOString();rec.evidenceOrigin='manual';
     }
@@ -971,7 +1162,7 @@ function renderDashboard(){
   renderBars('#categoryBars',cats,k=>t(k));
   renderRecent(rows)
 }
-$('#saveBudgetBtn').onclick=()=>{const key=normalizeDashboardMonth(),v=Math.max(0,Number($('#budgetInput').value||0));if(v)budgets[key]=v;else delete budgets[key];syncBudgetMeta[key]=new Date().toISOString();localStorage.setItem(SYNC_BUDGET_META_KEY,JSON.stringify(syncBudgetMeta));persist();syncSendBudget(key,v);renderDashboard();toast(t('budgetSaved'))};
+$('#saveBudgetBtn').onclick=()=>{if(accountMode()&&!accountCanWrite()){toast('هذا الجهاز بصلاحية عرض فقط');return}const key=normalizeDashboardMonth(),v=Math.max(0,Number($('#budgetInput').value||0));if(v)budgets[key]=v;else delete budgets[key];syncBudgetMeta[key]=new Date().toISOString();localStorage.setItem(SYNC_BUDGET_META_KEY,JSON.stringify(syncBudgetMeta));persist();syncSendBudget(key,v);renderDashboard();toast(t('budgetSaved'))};
 
 $('#dashboardMonthSelect').onchange=e=>setDashboardMonth(e.target.value);
 $('#dashPrevMonth').onclick=()=>setDashboardMonth(offsetMonthKey(normalizeDashboardMonth(),-1));
@@ -1064,7 +1255,7 @@ function buildMonthlyPrintReport(){
 }
 async function loadMonthlyPrintEvidence(root){
   const blocks=[...root.querySelectorAll('.pr-evidence-body[data-evidence-id]')];
-  for(const box of blocks){const id=box.dataset.evidenceId,img=box.querySelector('img');if(!id||!img)continue;let blob=await evidenceGet(id);if(!blob&&syncCode){try{await syncDownloadEvidence(id);blob=await evidenceGet(id)}catch(e){console.warn('Print evidence sync',id,e)}}if(!blob){box.innerHTML=`<div class="pr-evidence-missing">${escapeHtml(printLabel('تعذر تحميل صورة الدليل لهذه الفاتورة.','The evidence image could not be loaded for this receipt.'))}</div>`;continue}try{img.src=await blobToDataURL(blob);if(img.decode){try{await img.decode()}catch(e){}}if(!img.complete)await new Promise(resolve=>{const done=()=>resolve();img.onload=done;img.onerror=done;setTimeout(done,2200)})}catch(e){console.warn('Print evidence conversion',id,e);box.innerHTML=`<div class="pr-evidence-missing">${escapeHtml(printLabel('تعذر تجهيز صورة الدليل للطباعة.','The evidence image could not be prepared for printing.'))}</div>`}}
+  for(const box of blocks){const id=box.dataset.evidenceId,img=box.querySelector('img');if(!id||!img)continue;let blob=await evidenceGet(id);if(!blob&&syncTransportActive()){try{await syncDownloadEvidence(id);blob=await evidenceGet(id)}catch(e){console.warn('Print evidence sync',id,e)}}if(!blob){box.innerHTML=`<div class="pr-evidence-missing">${escapeHtml(printLabel('تعذر تحميل صورة الدليل لهذه الفاتورة.','The evidence image could not be loaded for this receipt.'))}</div>`;continue}try{img.src=await blobToDataURL(blob);if(img.decode){try{await img.decode()}catch(e){}}if(!img.complete)await new Promise(resolve=>{const done=()=>resolve();img.onload=done;img.onerror=done;setTimeout(done,2200)})}catch(e){console.warn('Print evidence conversion',id,e);box.innerHTML=`<div class="pr-evidence-missing">${escapeHtml(printLabel('تعذر تجهيز صورة الدليل للطباعة.','The evidence image could not be prepared for printing.'))}</div>`}}
 }
 async function prepareMonthlyPrintReport(){
   const btn=$('#printReportBtn');if(btn)btn.disabled=true;
@@ -1073,7 +1264,7 @@ async function prepareMonthlyPrintReport(){
   finally{if(btn)btn.disabled=false;setTimeout(()=>{const root=$('#printReportRoot');if(root)root.setAttribute('aria-hidden','true')},1000)}
 }
 
-window.deleteReceipt=async id=>{if(!confirm(t('confirmDelete')))return;const ts=new Date().toISOString();await evidenceDelete(id);data=data.filter(x=>x.id!==id);persist();syncSendDelete(id,ts);renderAll()};window.editReceipt=id=>{const r=data.find(x=>x.id===id);if(!r)return;editingId=id;$('#storeName').value=r.store;$('#invoiceDate').value=r.date;renderCategoryOptions(r.category||'other');$('#subtotal').value=r.subtotal;$('#tax').value=r.tax;$('#finalTotal').value=r.total;$('#items').innerHTML='';(r.items||[]).forEach(addItem);setItemsOpen(!!(r.items||[]).length);$('#editModeBadge').textContent=t('edit');resetScanner();syncFinalTotalFromInputs();calcTotals();showPage('new')};
+window.deleteReceipt=async id=>{if(accountMode()&&!accountCanWrite()){toast('هذا الجهاز بصلاحية عرض فقط');return}if(!confirm(t('confirmDelete')))return;const ts=new Date().toISOString();await evidenceDelete(id);data=data.filter(x=>x.id!==id);persist();syncSendDelete(id,ts);renderAll()};window.editReceipt=id=>{const r=data.find(x=>x.id===id);if(!r)return;editingId=id;$('#storeName').value=r.store;$('#invoiceDate').value=r.date;renderCategoryOptions(r.category||'other');$('#subtotal').value=r.subtotal;$('#tax').value=r.tax;$('#finalTotal').value=r.total;$('#items').innerHTML='';(r.items||[]).forEach(addItem);setItemsOpen(!!(r.items||[]).length);$('#editModeBadge').textContent=t('edit');resetScanner();syncFinalTotalFromInputs();calcTotals();showPage('new')};
 $('#printReportBtn').onclick=prepareMonthlyPrintReport;
 function renderAll(){renderDashboard();buildMonthOptions();renderRecords();calcTotals()}window.addEventListener('resize',()=>{if($('#dashboard').classList.contains('active'))renderDashboard()});
 
@@ -1086,6 +1277,9 @@ $('#cameraInput').onchange=async e=>{const f=e.target.files?.[0];e.target.value=
 $('#galleryInput').onchange=async e=>{const f=e.target.files?.[0];e.target.value='';await attachDraftEvidence(f)};
 
 window.addEventListener('pagehide',()=>saveDraftNow(true));window.addEventListener('beforeunload',()=>saveDraftNow(false));
+window.addEventListener('online',()=>resumePersistentSync({forcePull:true,reason:'online'}));
+window.addEventListener('pageshow',()=>resumePersistentSync({forcePull:true,reason:'pageshow'}));
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)resumePersistentSync({forcePull:true,reason:'visible'})});
 // Backup / restore
 $('#exportBtn').onclick=async()=>{
   try{
@@ -1101,6 +1295,7 @@ $('#exportBtn').onclick=async()=>{
 };
 $('#restoreBtn').onclick=()=>$('#restoreInput').click();
 $('#restoreInput').onchange=async e=>{
+  if(accountMode()&&!accountCanWrite()){toast('هذا الجهاز بصلاحية عرض فقط');e.target.value='';return}
   const f=e.target.files?.[0];if(!f)return;
   try{
     const p=JSON.parse(await f.text());if(!Array.isArray(p.data))throw new Error('invalid');
@@ -1117,13 +1312,13 @@ $('#restoreInput').onchange=async e=>{
   finally{e.target.value=''}
 };
 
-clearForm(false);applyLang();const launchPage=new URLSearchParams(location.search).get('page');if(['dashboard','new','records'].includes(launchPage))showPage(launchPage);ensurePersistentStorage();restoreDraft();refreshSyncUI();setTimeout(()=>reconcileLocalEvidenceFlags().catch(()=>{}),250);if(syncCode){setTimeout(async()=>{try{await syncInitialPull(true);syncOpenSocket()}catch(e){console.warn('Initial sync unavailable',e)}},400)}
+clearForm(false);applyLang();const launchPage=new URLSearchParams(location.search).get('page');if(['dashboard','new','records'].includes(launchPage))showPage(launchPage);ensurePersistentStorage();restoreDraft();refreshAuthUI();refreshSyncUI();setTimeout(()=>reconcileLocalEvidenceFlags().catch(()=>{}),250);setTimeout(async()=>{await authRefresh();if(accountMode())await prepareAccountAfterLogin(false);else await resumePersistentSync({forcePull:true,reason:'startup'})},350)
 </script>
 
 <script>
 (()=>{
   if(!('serviceWorker' in navigator))return;
-  const CURRENT_APP_VERSION='6.0.1';
+  const CURRENT_APP_VERSION='7.0.0';
   let waitingWorker=null,registration=null,acceptedUpdate=false,remoteVersion='';
   const banner=document.getElementById('appUpdateBanner'),title=document.getElementById('appUpdateTitle'),note=document.getElementById('appUpdateNote'),
         backup=document.getElementById('updateBackupBtn'),apply=document.getElementById('applyUpdateBtn');
