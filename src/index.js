@@ -1,6 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
 
-const VERSION='7.0.2';
+const VERSION='7.0.3';
 
 function syncHeaders(extra={}){return {'content-type':'application/json; charset=utf-8','cache-control':'no-store',...extra}}
 function json(body,status=200,extra={}){return new Response(JSON.stringify(body),{status,headers:syncHeaders(extra)})}
@@ -17,7 +17,7 @@ const AUTH_COOKIE='me_session';
 // Long-lived first-party session. Normal refresh/reopen does not sign the user out.
 const AUTH_SESSION_MAX_AGE=315360000; // 10 years
 const AUTH_SESSION_MS=AUTH_SESSION_MAX_AGE*1000;
-const AUTH_PBKDF2_ITERATIONS=600000;
+const AUTH_PBKDF2_ITERATIONS=100000;
 
 function authJson(body,status=200,extra={}){return json(body,status,extra)}
 function authB64(bytes){let s='';for(const b of bytes)s+=String.fromCharCode(b);return btoa(s).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'')}
@@ -25,7 +25,7 @@ function authUnb64(s){s=String(s||'').replace(/-/g,'+').replace(/_/g,'/');while(
 function authRandomToken(n=32){const b=new Uint8Array(n);crypto.getRandomValues(b);return authB64(b)}
 async function authSha256(v){const b=new TextEncoder().encode(String(v||'')),d=await crypto.subtle.digest('SHA-256',b);return authB64(new Uint8Array(d))}
 async function authPasswordHash(password,salt,pepper='',iterations=AUTH_PBKDF2_ITERATIONS){
-  const enc=new TextEncoder(),rounds=Math.max(100000,Math.min(1000000,Number(iterations)||AUTH_PBKDF2_ITERATIONS));
+  const enc=new TextEncoder(),rounds=Math.max(10000,Math.min(100000,Math.round(Number(iterations)||AUTH_PBKDF2_ITERATIONS)));
   const base=await crypto.subtle.importKey('raw',enc.encode(String(password||'')+'\0'+String(pepper||'')),{name:'PBKDF2'},false,['deriveBits']);
   const bits=await crypto.subtle.deriveBits({name:'PBKDF2',hash:'SHA-256',salt:authUnb64(salt),iterations:rounds},base,256);
   return authB64(new Uint8Array(bits))
