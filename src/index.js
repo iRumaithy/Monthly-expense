@@ -1,6 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
 
-const VERSION='7.0.1';
+const VERSION='7.0.2';
 
 function syncHeaders(extra={}){return {'content-type':'application/json; charset=utf-8','cache-control':'no-store',...extra}}
 function json(body,status=200,extra={}){return new Response(JSON.stringify(body),{status,headers:syncHeaders(extra)})}
@@ -24,10 +24,10 @@ function authB64(bytes){let s='';for(const b of bytes)s+=String.fromCharCode(b);
 function authUnb64(s){s=String(s||'').replace(/-/g,'+').replace(/_/g,'/');while(s.length%4)s+='=';const raw=atob(s),out=new Uint8Array(raw.length);for(let i=0;i<raw.length;i++)out[i]=raw.charCodeAt(i);return out}
 function authRandomToken(n=32){const b=new Uint8Array(n);crypto.getRandomValues(b);return authB64(b)}
 async function authSha256(v){const b=new TextEncoder().encode(String(v||'')),d=await crypto.subtle.digest('SHA-256',b);return authB64(new Uint8Array(d))}
-async function authPasswordHash(password,salt,pepper=''){
-  const enc=new TextEncoder();
-  const base=await crypto.subtle.importKey('raw',enc.encode(String(password||'')+'\0'+String(pepper||'')),'PBKDF2',false,['deriveBits']);
-  const bits=await crypto.subtle.deriveBits({name:'PBKDF2',hash:'SHA-256',salt:authUnb64(salt),iterations:AUTH_PBKDF2_ITERATIONS},base,256);
+async function authPasswordHash(password,salt,pepper='',iterations=AUTH_PBKDF2_ITERATIONS){
+  const enc=new TextEncoder(),rounds=Math.max(100000,Math.min(1000000,Number(iterations)||AUTH_PBKDF2_ITERATIONS));
+  const base=await crypto.subtle.importKey('raw',enc.encode(String(password||'')+'\0'+String(pepper||'')),{name:'PBKDF2'},false,['deriveBits']);
+  const bits=await crypto.subtle.deriveBits({name:'PBKDF2',hash:'SHA-256',salt:authUnb64(salt),iterations:rounds},base,256);
   return authB64(new Uint8Array(bits))
 }
 function authSafeEqual(a,b){
@@ -89,7 +89,8 @@ async function handleAuthRequest(request,env,url){
     }
     const {response,body}=await authInternal(env,path,{...b,pepper:String(env.AUTH_PEPPER||''),ip:request.headers.get('cf-connecting-ip')||''});
     if(!response.ok||!body?.ok)return authJson(body||{ok:false,error:'AUTH_FAILED'},response.status||400);
-    if(body.accountId)await ensureAccountRoom(env,body.accountId);
+    // Account data room is created lazily on the first /api/account/* request.
+    // Do not make login/bootstrap depend on a second Durable Object call.
     if(body.token){const out=authJson({...body,token:undefined});return authWithCookie(out,body.token)}
     return authJson(body)
   }
@@ -181,9 +182,11 @@ export class SyncRoom extends DurableObject{
       if(await this.ctx.storage.get(`auth:email:${em}`))return authJson({ok:false,error:'EMAIL_EXISTS'},409);
       const id=crypto.randomUUID(),accountId=crypto.randomUUID(),salt=authRandomToken(18),passwordHash=await authPasswordHash(password,salt,pepper),now=Date.now();
       const user={id,username,email,emailNormalized:em,usernameNormalized:un,role:superAdmin?'super_admin':'user',status:'active',accountId,passwordSalt:salt,passwordHash,passwordIterations:AUTH_PBKDF2_ITERATIONS,mustChangePassword:false,createdAt:now,lastLoginAt:now};
-      const ops=[this.ctx.storage.put(`auth:user:${id}`,user),this.ctx.storage.put(`auth:username:${un}`,id),this.ctx.storage.put(`auth:email:${em}`,id)];
-      if(superAdmin){meta.ownerUserId=id;meta.createdAt=meta.createdAt||now;ops.push(this.ctx.storage.put('auth:meta',meta))}
-      await Promise.all(ops);
+      // Keep auth directory writes deterministic on both SQLite- and legacy-backed Durable Objects.
+      await this.ctx.storage.put(`auth:user:${id}`,user);
+      await this.ctx.storage.put(`auth:username:${un}`,id);
+      await this.ctx.storage.put(`auth:email:${em}`,id);
+      if(superAdmin){meta.ownerUserId=id;meta.createdAt=meta.createdAt||now;await this.ctx.storage.put('auth:meta',meta)}
       const created=await this.authCreateSession({user,accountId,access:'owner',kind:'user',deviceLabel:b.deviceLabel});
       await this.authAudit(superAdmin?'owner-bootstrap':'register',{userId:id});
       return authJson({ok:true,token:created.token,user:await this.authPublicUser(user),session:created.session,accountId})
@@ -194,7 +197,7 @@ export class SyncRoom extends DurableObject{
       const user=await this.ctx.storage.get(`auth:user:${id}`);
       if(!user||user.status!=='active')return authJson({ok:false,error:user?.status==='suspended'?'ACCOUNT_SUSPENDED':'INVALID_CREDENTIALS'},403);
       if(user.lockUntil&&user.lockUntil>Date.now())return authJson({ok:false,error:'TRY_LATER'},429);
-      const h=await authPasswordHash(String(b.password||''),user.passwordSalt,pepper);
+      const h=await authPasswordHash(String(b.password||''),user.passwordSalt,pepper,user.passwordIterations||AUTH_PBKDF2_ITERATIONS);
       if(!authSafeEqual(h,user.passwordHash)){
         user.failedLoginCount=Number(user.failedLoginCount||0)+1;
         if(user.failedLoginCount>=8){user.lockUntil=Date.now()+15*60*1000;user.failedLoginCount=0}
@@ -209,8 +212,8 @@ export class SyncRoom extends DurableObject{
     if(p==='/auth/change-password'){
       const found=await this.authGetSession(String(b.token||''));if(!found?.user)return authJson({ok:false,error:'AUTH_REQUIRED'},401);
       if(!authValidPassword(b.newPassword))return authJson({ok:false,error:'WEAK_PASSWORD'},400);
-      const old=await authPasswordHash(String(b.currentPassword||''),found.user.passwordSalt,pepper);if(!authSafeEqual(old,found.user.passwordHash))return authJson({ok:false,error:'INVALID_CREDENTIALS'},401);
-      const salt=authRandomToken(18);found.user.passwordSalt=salt;found.user.passwordHash=await authPasswordHash(String(b.newPassword),salt,pepper);found.user.passwordIterations=AUTH_PBKDF2_ITERATIONS;found.user.mustChangePassword=false;
+      const old=await authPasswordHash(String(b.currentPassword||''),found.user.passwordSalt,pepper,found.user.passwordIterations||AUTH_PBKDF2_ITERATIONS);if(!authSafeEqual(old,found.user.passwordHash))return authJson({ok:false,error:'INVALID_CREDENTIALS'},401);
+      const salt=authRandomToken(18);found.user.passwordSalt=salt;found.user.passwordHash=await authPasswordHash(String(b.newPassword),salt,pepper,AUTH_PBKDF2_ITERATIONS);found.user.passwordIterations=AUTH_PBKDF2_ITERATIONS;found.user.mustChangePassword=false;
       await this.ctx.storage.put(`auth:user:${found.user.id}`,found.user);await this.authAudit('password-change',{userId:found.user.id});return authJson({ok:true})
     }
     if(p==='/auth/forgot'){
@@ -253,7 +256,7 @@ export class SyncRoom extends DurableObject{
     if(p==='/auth/admin/reset'){
       const id=String(b.userId||''),user=await this.ctx.storage.get(`auth:user:${id}`);if(!user)return authJson({ok:false,error:'NOT_FOUND'},404);
       const alphabet='ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#',bytes=new Uint8Array(14);crypto.getRandomValues(bytes);const temporaryPassword=`T9!${[...bytes].map(x=>alphabet[x%alphabet.length]).join('')}`;
-      const salt=authRandomToken(18);user.passwordSalt=salt;user.passwordHash=await authPasswordHash(temporaryPassword,salt,pepper);user.mustChangePassword=true;user.failedLoginCount=0;user.lockUntil=0;
+      const salt=authRandomToken(18);user.passwordSalt=salt;user.passwordHash=await authPasswordHash(temporaryPassword,salt,pepper,AUTH_PBKDF2_ITERATIONS);user.passwordIterations=AUTH_PBKDF2_ITERATIONS;user.mustChangePassword=true;user.failedLoginCount=0;user.lockUntil=0;
       await this.ctx.storage.put(`auth:user:${id}`,user);await this.ctx.storage.delete(`auth:reset:${id}`);await this.authRevokeUserSessions(id);await this.authAudit('admin-reset',{userId:id,adminId:adminFound.user.id});
       return authJson({ok:true,temporaryPassword})
     }
@@ -273,7 +276,7 @@ export class SyncRoom extends DurableObject{
   broadcast(msg,except=null){const text=JSON.stringify(msg);for(const ws of this.ctx.getWebSockets()){if(ws===except)continue;try{ws.send(text)}catch(e){}}}
   async fetch(request){
     const u=new URL(request.url),p=u.pathname;
-    if(p.startsWith('/auth/'))return this.authFetch(request,u);
+    if(p.startsWith('/auth/')){try{return await this.authFetch(request,u)}catch(e){console.error('Auth directory error',p,e);return authJson({ok:false,error:'AUTH_RUNTIME_ERROR',detail:String(e?.message||e||'Unknown auth runtime error').slice(0,220),phase:p},500)}}
     if(p==='/room/create'&&request.method==='POST'){
       let m=await this.meta();if(!m){m={createdAt:new Date().toISOString()};await this.ctx.storage.put('meta',m)}return json({ok:true,...m})
     }
@@ -331,7 +334,7 @@ export default {
       if(url.pathname.startsWith('/api/admin/'))return await handleAdminRequest(request,env,url);
       if(url.pathname.startsWith('/api/account/'))return await handleAccountRequest(request,env,url);
       if(url.pathname.startsWith('/api/sync/'))return await handleSyncRequest(request,env,url);
-      if(url.pathname==='/api/health')return json({ok:true,engine:'Manual entry + receipt evidence + Durable Object Sync',sync:'Durable Objects WebSocket + Optional Account Sessions',auth:'Optional account + owner-only user administration',version:VERSION,base:'6.0.2'});
+      if(url.pathname==='/api/health')return json({ok:true,engine:'Manual entry + receipt evidence + Durable Object Sync',sync:'Durable Objects WebSocket + Optional Account Sessions',auth:'Optional account + owner-only user administration',passwordHash:`PBKDF2-SHA256/${AUTH_PBKDF2_ITERATIONS}`,version:VERSION,base:'6.0.2'});
       if(url.pathname==='/api/receipt'||url.pathname==='/api/receipt-text'||url.pathname==='/api/license')return json({ok:false,error:'Smart receipt reading has been permanently removed. Images are stored only as receipt evidence.',version:VERSION},410);
       return env.ASSETS.fetch(request)
     }catch(e){
