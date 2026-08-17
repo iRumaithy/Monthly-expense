@@ -1,4 +1,4 @@
-const CACHE='monthly-expense-v5-9-2-stable-rollback';
+const CACHE='monthly-expense-v6-0-0-manual-evidence';
 const SHELL_KEY='/__monthly_expense_app_shell__';
 const STATIC_CORE=['/manifest.webmanifest','/icon-192.png','/icon-512.png','/icon-maskable-512.png','/apple-touch-icon.png'];
 
@@ -80,7 +80,7 @@ self.addEventListener('fetch',e=>{
   // Update/version checks and emergency recovery must bypass the Service Worker.
   if(isSameOrigin(u)&&(u.searchParams.has('__update_check')||u.searchParams.has('__sw_recovery')))return;
 
-  const cacheable=isSameOrigin(u)||/cdn\.jsdelivr\.net$|unpkg\.com$|esm\.sh$|huggingface\.co$|paddle-model-ecology\.bj\.bcebos\.com$|tessdata\.projectnaptha\.com$/.test(u.hostname);
+  const cacheable=isSameOrigin(u);
   if(!cacheable)return;
 
   const isNav=r.mode==='navigate'||(isSameOrigin(u)&&(u.pathname==='/'||u.pathname==='/index.html'));
