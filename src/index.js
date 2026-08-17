@@ -1,6 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
 
-const VERSION='7.0.0';
+const VERSION='7.0.1';
 
 function syncHeaders(extra={}){return {'content-type':'application/json; charset=utf-8','cache-control':'no-store',...extra}}
 function json(body,status=200,extra={}){return new Response(JSON.stringify(body),{status,headers:syncHeaders(extra)})}
@@ -65,7 +65,8 @@ function authWithCookie(response,token){const h=new Headers(response.headers);h.
 async function handleAuthRequest(request,env,url){
   const p=url.pathname;
   if(!env.OWNER_BOOTSTRAP_TOKEN&&p==='/api/auth/bootstrap-owner')return authJson({ok:false,error:'OWNER_BOOTSTRAP_TOKEN_NOT_CONFIGURED'},503);
-  if(p==='/api/auth/status'&&request.method==='GET'){const {body}=await authInternal(env,'/auth/status');return authJson({ok:true,...(body||{})})}
+  if(!env.AUTH_PEPPER&&['/api/auth/bootstrap-owner','/api/auth/register','/api/auth/login','/api/auth/change-password'].includes(p))return authJson({ok:false,error:'AUTH_PEPPER_NOT_CONFIGURED'},503);
+  if(p==='/api/auth/status'&&request.method==='GET'){const {body}=await authInternal(env,'/auth/status');return authJson({ok:true,...(body||{}),config:{ownerBootstrapConfigured:!!env.OWNER_BOOTSTRAP_TOKEN,authPepperConfigured:!!env.AUTH_PEPPER}})}
   if(p==='/api/auth/me'&&request.method==='GET'){
     const token=authCookieToken(request);
     if(!token){const {body}=await authInternal(env,'/auth/status');return authJson({ok:true,authenticated:false,...(body||{})})}
@@ -109,6 +110,7 @@ async function handleAuthRequest(request,env,url){
 
 async function handleAdminRequest(request,env,url){
   if(!authMutationAllowed(request)&&request.method!=='GET')return authJson({ok:false,error:'BAD_REQUEST_ORIGIN'},403);
+  if(url.pathname==='/api/admin/reset-password'&&!env.AUTH_PEPPER)return authJson({ok:false,error:'AUTH_PEPPER_NOT_CONFIGURED'},503);
   const a=await authRequire(request,env,{admin:true});if(!a.ok)return a.response;const p=url.pathname;
   if(p==='/api/admin/users'&&request.method==='GET'){const {response,body}=await authInternal(env,'/auth/admin/users',{token:a.token});return authJson(body||{ok:false},response.status)}
   if(p==='/api/admin/reset-password'&&request.method==='POST'){const b=await request.json().catch(()=>({}));const {response,body}=await authInternal(env,'/auth/admin/reset',{token:a.token,userId:b.userId,pepper:String(env.AUTH_PEPPER||'')});return authJson(body||{ok:false},response.status)}
@@ -323,13 +325,18 @@ async function handleSyncRequest(request,env,url){
 
 export default {
   async fetch(request,env){
-    const url=new URL(request.url);
-    if(url.pathname.startsWith('/api/auth/'))return await handleAuthRequest(request,env,url);
-    if(url.pathname.startsWith('/api/admin/'))return await handleAdminRequest(request,env,url);
-    if(url.pathname.startsWith('/api/account/'))return await handleAccountRequest(request,env,url);
-    if(url.pathname.startsWith('/api/sync/'))return await handleSyncRequest(request,env,url);
-    if(url.pathname==='/api/health')return json({ok:true,engine:'Manual entry + receipt evidence + Durable Object Sync',sync:'Durable Objects WebSocket + Optional Account Sessions',auth:'Optional account + owner-only user administration',version:VERSION,base:'6.0.2'});
-    if(url.pathname==='/api/receipt'||url.pathname==='/api/receipt-text'||url.pathname==='/api/license')return json({ok:false,error:'Smart receipt reading has been permanently removed. Images are stored only as receipt evidence.',version:VERSION},410);
-    return env.ASSETS.fetch(request)
+    try{
+      const url=new URL(request.url);
+      if(url.pathname.startsWith('/api/auth/'))return await handleAuthRequest(request,env,url);
+      if(url.pathname.startsWith('/api/admin/'))return await handleAdminRequest(request,env,url);
+      if(url.pathname.startsWith('/api/account/'))return await handleAccountRequest(request,env,url);
+      if(url.pathname.startsWith('/api/sync/'))return await handleSyncRequest(request,env,url);
+      if(url.pathname==='/api/health')return json({ok:true,engine:'Manual entry + receipt evidence + Durable Object Sync',sync:'Durable Objects WebSocket + Optional Account Sessions',auth:'Optional account + owner-only user administration',version:VERSION,base:'6.0.2'});
+      if(url.pathname==='/api/receipt'||url.pathname==='/api/receipt-text'||url.pathname==='/api/license')return json({ok:false,error:'Smart receipt reading has been permanently removed. Images are stored only as receipt evidence.',version:VERSION},410);
+      return env.ASSETS.fetch(request)
+    }catch(e){
+      console.error('Monthly Expense request error',e);
+      return authJson({ok:false,error:'SERVER_ERROR',detail:String(e?.message||e||'Unknown server error').slice(0,180),version:VERSION},500)
+    }
   }
 };
