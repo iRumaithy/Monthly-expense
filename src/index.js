@@ -1,5 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
-const VERSION='6.0.0';
+const VERSION='6.0.1';
 function syncHeaders(extra={}){return {'content-type':'application/json; charset=utf-8','cache-control':'no-store',...extra}}
 function normalizeRoomCode(v){return String(v||'').toUpperCase().replace(/[^A-Z2-9]/g,'').slice(0,12)}
 function formatRoomCode(v){const s=normalizeRoomCode(v);return (s.match(/.{1,4}/g)||[s]).join('-')}
