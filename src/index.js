@@ -1,6 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
 
-const VERSION='7.0.3';
+const VERSION='7.0.4';
 
 function syncHeaders(extra={}){return {'content-type':'application/json; charset=utf-8','cache-control':'no-store',...extra}}
 function json(body,status=200,extra={}){return new Response(JSON.stringify(body),{status,headers:syncHeaders(extra)})}
@@ -134,7 +134,14 @@ async function handleAccountRequest(request,env,url){
   if(p==='/api/account/revoke-device'&&request.method==='POST'){
     if(!authMutationAllowed(request))return authJson({ok:false,error:'BAD_REQUEST_ORIGIN'},403);
     const a=await authRequire(request,env,{owner:true});if(!a.ok)return a.response;
-    const b=await request.json().catch(()=>({}));const {response,body}=await authInternal(env,'/auth/device/revoke',{token:a.token,sessionId:b.sessionId});return authJson(body||{ok:false},response.status)
+    const b=await request.json().catch(()=>({}));const {response,body}=await authInternal(env,'/auth/device/revoke',{token:a.token,sessionId:b.sessionId});
+    if(response.ok&&body?.ok&&body.accountId&&body.sessionId){
+      try{
+        await ensureAccountRoom(env,body.accountId);
+        await accountRoomStub(env,body.accountId).fetch(new Request('https://room/room/session-revoked',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({sessionId:body.sessionId})}))
+      }catch(e){console.warn('Instant revoke broadcast failed',e)}
+    }
+    return authJson(body||{ok:false,error:'REVOKE_FAILED'},response.status)
   }
   const isWs=request.headers.get('upgrade')?.toLowerCase()==='websocket';
   const write=request.method!=='GET'&&!isWs;
@@ -245,7 +252,7 @@ export class SyncRoom extends DurableObject{
       const hash=await this.ctx.storage.get(`auth:session-id:${String(b.sessionId||'')}`),s=hash?await this.ctx.storage.get(`auth:session:${hash}`):null;
       if(!s||s.accountId!==found.session.accountId)return authJson({ok:false,error:'NOT_FOUND'},404);
       if(s.id===found.session.id)return authJson({ok:false,error:'CANNOT_REVOKE_CURRENT'},400);
-      await this.authRevokeSessionRecord(s,hash);await this.authAudit('device-revoke',{accountId:s.accountId,sessionId:s.id});return authJson({ok:true})
+      await this.authRevokeSessionRecord(s,hash);await this.authAudit('device-revoke',{accountId:s.accountId,sessionId:s.id});return authJson({ok:true,accountId:s.accountId,sessionId:s.id})
     }
     const adminFound=await this.authGetSession(String(b.token||''));if(p.startsWith('/auth/admin/')&&adminFound?.user?.role!=='super_admin')return authJson({ok:false,error:'FORBIDDEN'},403);
     if(p==='/auth/admin/users'){
@@ -279,6 +286,11 @@ export class SyncRoom extends DurableObject{
     if(p.startsWith('/auth/')){try{return await this.authFetch(request,u)}catch(e){console.error('Auth directory error',p,e);return authJson({ok:false,error:'AUTH_RUNTIME_ERROR',detail:String(e?.message||e||'Unknown auth runtime error').slice(0,220),phase:p},500)}}
     if(p==='/room/create'&&request.method==='POST'){
       let m=await this.meta();if(!m){m={createdAt:new Date().toISOString()};await this.ctx.storage.put('meta',m)}return json({ok:true,...m})
+    }
+    if(p==='/room/session-revoked'&&request.method==='POST'){
+      const b=await request.json().catch(()=>({})),sessionId=String(b.sessionId||'');
+      if(sessionId)this.broadcast({type:'session-revoked',sessionId,at:Date.now()});
+      return json({ok:true})
     }
     const m=await this.meta();if(!m)return json({ok:false,error:'Sync group not found'},404);
     if(p==='/room/info')return json({ok:true,createdAt:m.createdAt});
@@ -334,7 +346,7 @@ export default {
       if(url.pathname.startsWith('/api/admin/'))return await handleAdminRequest(request,env,url);
       if(url.pathname.startsWith('/api/account/'))return await handleAccountRequest(request,env,url);
       if(url.pathname.startsWith('/api/sync/'))return await handleSyncRequest(request,env,url);
-      if(url.pathname==='/api/health')return json({ok:true,engine:'Manual entry + receipt evidence + Durable Object Sync',sync:'Durable Objects WebSocket + Optional Account Sessions',auth:'Optional account + owner-only user administration',passwordHash:`PBKDF2-SHA256/${AUTH_PBKDF2_ITERATIONS}`,version:VERSION,base:'6.0.2'});
+      if(url.pathname==='/api/health')return json({ok:true,engine:'Manual entry + receipt evidence + Durable Object Sync',sync:'Durable Objects WebSocket + Automatic Account Sessions',auth:'Optional account + instant device revocation + owner-only user administration',passwordHash:`PBKDF2-SHA256/${AUTH_PBKDF2_ITERATIONS}`,version:VERSION,base:'6.0.2'});
       if(url.pathname==='/api/receipt'||url.pathname==='/api/receipt-text'||url.pathname==='/api/license')return json({ok:false,error:'Smart receipt reading has been permanently removed. Images are stored only as receipt evidence.',version:VERSION},410);
       return env.ASSETS.fetch(request)
     }catch(e){
