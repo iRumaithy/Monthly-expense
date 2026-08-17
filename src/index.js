@@ -1,6 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
 
-const VERSION='7.0.4';
+const VERSION='7.0.5';
 
 function syncHeaders(extra={}){return {'content-type':'application/json; charset=utf-8','cache-control':'no-store',...extra}}
 function json(body,status=200,extra={}){return new Response(JSON.stringify(body),{status,headers:syncHeaders(extra)})}
