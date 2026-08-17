@@ -216,10 +216,10 @@ button,input,textarea,select{font:inherit}button{cursor:pointer}.app{max-width:1
 @media(max-width:560px){.changelog-dialog{padding:14px;border-radius:20px}.changelog-entry{grid-template-columns:1fr}.changelog-version{justify-self:start}.changelog-summary{font-size:12.5px}}
 
 
-/* === v7.0.3 Optional Accounts / Permissions === */
+/* === v7.0.4 Accounts / Automatic Sync / Permissions === */
 .account-btn.logged{background:#dcefe7!important;color:#17324d!important;border-color:#b9d9cb!important}.account-btn.viewer{background:#fff0cf!important;color:#6b4a12!important}
 .auth-modal{position:fixed;inset:0;z-index:10070;background:rgba(10,25,40,.64);display:none;align-items:center;justify-content:center;padding:16px}.auth-modal.open{display:flex}.auth-dialog{width:min(620px,100%);max-height:92vh;overflow:auto;background:#fffaf2;border:1px solid var(--line);border-radius:24px;padding:18px;box-shadow:0 26px 80px rgba(0,0,0,.34)}.auth-head{display:flex;align-items:center;justify-content:space-between;gap:12px}.auth-head h3{margin:0;color:var(--navy);font-size:22px}.auth-close{width:40px;height:40px;border:0;border-radius:12px;background:#f2e5d3;color:var(--navy);font-size:22px;font-weight:900}.auth-tabs{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0}.auth-tabs button{flex:1 1 120px}.auth-pane{display:none}.auth-pane.active{display:block}.auth-form{display:grid;gap:11px}.auth-note{font-size:12px;line-height:1.75;color:var(--muted);margin:8px 0}.auth-message{display:none;margin:10px 0;padding:10px 12px;border-radius:12px;background:#f1e7d8;color:var(--navy);font-size:12px;line-height:1.6}.auth-message.show{display:block}.auth-message.error{background:#ffe5e2;color:#8b3934}.auth-user-card{padding:14px;border:1px solid var(--line);border-radius:16px;background:#fffdf8}.auth-user-row{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}.auth-badge{display:inline-flex;padding:5px 9px;border-radius:999px;background:#dcefe7;color:#23664f;font-size:11px;font-weight:900}.auth-badge.viewer{background:#fff0cf;color:#815913}.auth-badge.admin{background:#e4e8f5;color:#2e4771}.auth-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.auth-actions .btn{flex:1 1 145px}.account-sync-card{display:none}.account-sync-card.show{display:block}.device-list{display:grid;gap:8px;margin-top:10px}.device-row{border:1px solid var(--line);border-radius:13px;padding:10px 11px;background:#fffdf8;display:flex;justify-content:space-between;gap:10px;align-items:center}.device-row small{display:block;color:var(--muted);margin-top:3px}.link-code{font:900 25px ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:2px;text-align:center;color:var(--navy);background:#f5ead9;border-radius:14px;padding:12px;margin:10px 0}.migration-choice{display:grid;gap:10px;margin-top:14px}.migration-choice .btn{justify-content:flex-start;text-align:start;padding:14px}.migration-choice small{display:block;font-weight:500;opacity:.8;line-height:1.5}.admin-page .admin-summary{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}.admin-users{display:grid;gap:10px;margin-top:14px}.admin-user{border:1px solid var(--line);border-radius:16px;background:#fffdf8;padding:13px}.admin-user-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap}.admin-user h3{margin:0;color:var(--navy);font-size:16px}.admin-user-meta{font-size:12px;color:var(--muted);line-height:1.8;margin-top:5px}.admin-user-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.admin-user-actions .btn{padding:8px 11px;font-size:12px}.nav.has-admin{grid-template-columns:repeat(4,1fr)}
-body.account-viewer [data-page="new"],body.account-viewer #saveBudgetBtn,body.account-viewer #restoreBtn,body.account-viewer #addItemBtn,body.account-viewer #toggleItemsBtn,body.account-viewer #saveBtn,body.account-viewer #clearBtn,body.account-viewer .evidence-actions,body.account-viewer #cameraBtn,body.account-viewer #galleryBtn{display:none!important}body.account-viewer #budgetInput{pointer-events:none;opacity:.75}body.account-viewer .purchase-body>.actions,body.account-viewer .evidence-modal-actions{display:none!important}
+body.account-viewer [data-page="new"],body.account-viewer #saveBudgetBtn,body.account-viewer #restoreBtn,body.account-viewer #addItemBtn,body.account-viewer #toggleItemsBtn,body.account-viewer #saveBtn,body.account-viewer #clearBtn,body.account-viewer #cameraBtn,body.account-viewer #galleryBtn{display:none!important}body.account-viewer #budgetInput{pointer-events:none;opacity:.75}body.account-viewer .purchase-body>.actions,body.account-viewer .evidence-modal-actions,body.account-viewer .evidence-write-btn{display:none!important}
 @media(max-width:760px){.nav.has-admin{grid-template-columns:repeat(2,1fr)}}
 
 </style>
@@ -347,8 +347,8 @@ body.account-viewer [data-page="new"],body.account-viewer #saveBudgetBtn,body.ac
     </div>
   </section>
 </div>
-<footer class="app-version-footer" id="appVersionFooter" data-version="7.0.3">
-  <span data-i18n="versionFooter">الإصدار 7.0.3 — إصلاح PBKDF2 + صلاحيات أجهزة</span>
+<footer class="app-version-footer" id="appVersionFooter" data-version="7.0.4">
+  <span data-i18n="versionFooter">الإصدار 7.0.4 — مزامنة حساب تلقائية + إلغاء فوري</span>
   <button class="changelog-btn" id="changelogBtn" type="button" data-i18n="changelogButton" aria-haspopup="dialog" aria-controls="changelogModal">سجل التحديثات</button>
 </footer>
 <div id="printReportRoot" aria-hidden="true"></div>
@@ -360,42 +360,14 @@ body.account-viewer [data-page="new"],body.account-viewer #saveBudgetBtn,body.ac
 
 <div class="sync-modal" id="syncModal" role="dialog" aria-modal="true">
   <div class="sync-dialog">
-    <div class="sync-head"><h3 data-i18n="syncTitle">مزامنة الأجهزة</h3><button class="sync-close" id="syncCloseBtn" type="button">×</button></div>
-    <div class="sync-card" id="legacySyncCard">
-      <div class="sync-status"><span class="sync-dot" id="syncStatusText" data-i18n="syncNotLinked">غير مرتبط</span><span class="sync-badge" id="syncLiveBadge">Offline</span></div>
-      <div id="syncLinkedArea" style="display:none">
-        <div class="sync-code" id="syncCodeDisplay">—</div>
-        <div class="sync-device" id="syncDeviceText"></div>
-        <div class="sync-help" data-i18n="syncRetentionNote">يبقى هذا الجهاز مرتبطًا تلقائيًا بعد تحديث الصفحة أو إعادة فتحها. عند فصله ستبقى الفواتير والصور محفوظة عليه.</div>
-        <div class="sync-actions"><button class="btn btn-soft" id="syncCopyBtn" type="button" data-i18n="syncCopy">نسخ الرمز</button><button class="btn btn-danger" id="syncDisconnectBtn" type="button" data-i18n="syncDisconnect">فصل هذا الجهاز</button><button class="btn btn-primary full" id="syncNowBtn" type="button" data-i18n="syncNow">مزامنة الآن</button></div>
-      </div>
-      <div id="syncUnlinkedArea">
-        <p class="sync-help" data-i18n="syncIntro">أنشئ مجموعة في الهاتف الأول، ثم أدخل نفس الرمز في أي هاتف آخر. أي فاتورة تحفظ أو تعدل أو تحذف ستظهر تلقائيًا في الأجهزة المرتبطة.</p>
-        <div class="sync-actions"><button class="btn btn-primary full" id="syncCreateBtn" type="button" data-i18n="syncCreate">إنشاء مجموعة جديدة</button></div>
-        <div style="margin-top:12px"><input class="input sync-input" id="syncJoinCode" maxlength="14" placeholder="ABCD-EFGH-JKLM" /></div>
-        <div class="sync-actions"><button class="btn btn-soft full" id="syncJoinBtn" type="button" data-i18n="syncJoin">ربط بهذا الرمز</button></div>
-      </div>
-      <div class="sync-help" id="syncMessage" data-i18n="syncPrivacy">الرمز نفسه هو مفتاح المجموعة. احتفظ به خاصًا. تتم المزامنة عبر Cloudflare فقط عند حفظ تغيير، والصور تُضغط قبل رفعها.</div>
-    </div>
-    <div class="sync-card account-sync-card" id="accountSyncCard">
-      <div class="auth-user-row"><div><strong id="accountSyncTitle">الحساب</strong><div class="sync-help" id="accountSyncSubtitle"></div></div><span class="auth-badge" id="accountAccessBadge">—</span></div>
-      <div class="sync-actions"><button class="btn btn-primary full" id="accountSyncNowBtn" type="button">مزامنة الحساب الآن</button></div>
-      <div id="accountOwnerTools" style="display:none;margin-top:12px">
-        <div class="sync-help"><b>ربط جهاز إضافي بصلاحية محددة</b><br>اختر «عرض فقط» للأجهزة التي يجب أن ترى البيانات والتقارير وتطبعها دون أي تعديل.</div>
-        <select class="input" id="accountInvitePermission"><option value="viewer">عرض فقط</option><option value="editor">محرر</option></select>
-        <input class="input" id="accountInviteLabel" style="margin-top:8px" placeholder="اسم الجهاز (اختياري)" />
-        <div class="sync-actions"><button class="btn btn-soft full" id="accountCreateInviteBtn" type="button">إنشاء رمز ربط</button></div>
-        <div class="link-code" id="accountInviteCode" style="display:none">—</div>
-        <div class="device-list" id="accountDevicesList"></div>
-      </div>
-      <div class="sync-actions" style="margin-top:12px"><button class="btn btn-danger full" id="accountLogoutBtn" type="button">تسجيل الخروج من هذا الجهاز</button></div>
-    </div>
+    <div class="sync-head"><h3>الإعدادات</h3><button class="sync-close" id="syncCloseBtn" type="button">×</button></div>
     <div class="sync-card pwa-install-card" id="pwaInstallCard">
       <div class="pwa-install-head"><strong id="pwaInstallTitle">إضافة للشاشة الرئيسية</strong><span class="pwa-install-badge" id="pwaInstallBadge">جاهز</span></div>
       <p class="pwa-install-text" id="pwaInstallText">ثبّت مصاريف الشهر على شاشة الهاتف لفتحه مثل التطبيق مباشرةً بدون البحث عن الرابط.</p>
       <button class="btn btn-primary" id="pwaInstallBtn" type="button" style="width:100%">إضافة إلى الشاشة الرئيسية</button>
       <div class="pwa-install-steps" id="pwaInstallSteps"></div>
     </div>
+    <div class="sync-help" style="margin-top:12px">إدارة الحساب وربط الأجهزة والمزامنة أصبحت داخل قسم «تسجيل الدخول». مزامنة الحساب تعمل تلقائيًا ولا تحتاج إلى زر مزامنة يدوي.</div>
   </div>
 </div>
 
@@ -413,7 +385,20 @@ body.account-viewer [data-page="new"],body.account-viewer #saveBudgetBtn,body.ac
       <div class="auth-pane" id="authBootstrapPane"><div class="auth-note"><b>تهيئة مالك الصفحة لأول مرة فقط.</b> أدخل رمز التهيئة السري الذي ستضعه في Cloudflare ثم أنشئ حسابك. بعد نجاح العملية لا يمكن إنشاء مالك ثانٍ من هذه الشاشة.</div><div class="auth-form"><input class="input" id="authBootstrapToken" type="password" placeholder="رمز تهيئة المالك"><input class="input" id="authBootstrapUsername" placeholder="اسم مستخدم المالك"><input class="input" id="authBootstrapEmail" type="email" placeholder="البريد الإلكتروني"><input class="input" id="authBootstrapPassword" type="password" placeholder="كلمة المرور"><button class="btn btn-primary" id="authBootstrapBtn" type="button">إنشاء حساب مالك الصفحة</button></div></div>
     </div>
     <div id="authLoggedInView" style="display:none">
-      <div class="auth-user-card"><div class="auth-user-row"><div><strong id="authCurrentName">—</strong><div class="auth-note" id="authCurrentEmail"></div></div><span class="auth-badge" id="authCurrentBadge">—</span></div><div class="auth-actions"><button class="btn btn-soft" id="authOpenSettingsBtn" type="button">إدارة الأجهزة والمزامنة</button><button class="btn btn-danger" id="authLogoutBtn" type="button">تسجيل الخروج</button></div></div>
+      <div class="auth-user-card"><div class="auth-user-row"><div><strong id="authCurrentName">—</strong><div class="auth-note" id="authCurrentEmail"></div></div><span class="auth-badge" id="authCurrentBadge">—</span></div><div class="auth-actions"><button class="btn btn-danger" id="authLogoutBtn" type="button">تسجيل الخروج</button></div></div>
+      <div class="sync-card account-sync-card" id="accountSyncCard">
+        <div class="auth-user-row"><div><strong id="accountSyncTitle">الحساب</strong><div class="sync-help" id="accountSyncSubtitle">المزامنة تعمل تلقائيًا.</div></div><span class="auth-badge" id="accountAccessBadge">—</span></div>
+        <div class="sync-status" style="margin-top:12px"><span class="sync-dot online">المزامنة التلقائية</span><span class="sync-badge" id="accountLiveBadge">جارٍ الاتصال…</span></div>
+        <div class="sync-help">بعد ربط الجهاز تُنزّل بيانات الحساب تلقائيًا، وبعدها تصل أي إضافة أو تعديل أو حذف من الجهاز الأساسي فورًا دون الحاجة إلى الضغط على زر مزامنة.</div>
+        <div id="accountOwnerTools" style="display:none;margin-top:12px">
+          <div class="sync-help"><b>ربط جهاز إضافي بصلاحية محددة</b><br>اختر «عرض فقط» للأجهزة التي يجب أن تشاهد البيانات والتقارير وصور الأدلة وتطبعها دون إجراء أي تعديل.</div>
+          <select class="input" id="accountInvitePermission"><option value="viewer">عرض فقط</option><option value="editor">محرر</option></select>
+          <input class="input" id="accountInviteLabel" style="margin-top:8px" placeholder="اسم الجهاز (اختياري)" />
+          <div class="sync-actions"><button class="btn btn-soft full" id="accountCreateInviteBtn" type="button">إنشاء رمز ربط</button></div>
+          <div class="link-code" id="accountInviteCode" style="display:none">—</div>
+          <div class="device-list" id="accountDevicesList"></div>
+        </div>
+      </div>
       <div class="auth-user-card" id="authChangePasswordCard" style="margin-top:12px"><strong>تغيير كلمة المرور</strong><div class="auth-form" style="margin-top:10px"><input class="input" id="authCurrentPassword" type="password" autocomplete="current-password" placeholder="كلمة المرور الحالية"><input class="input" id="authNewPassword" type="password" autocomplete="new-password" placeholder="كلمة المرور الجديدة"><input class="input" id="authNewPassword2" type="password" autocomplete="new-password" placeholder="تأكيد كلمة المرور الجديدة"><button class="btn btn-primary" id="authChangePasswordBtn" type="button">حفظ كلمة المرور الجديدة</button></div></div>
     </div>
   </div>
@@ -501,11 +486,12 @@ manualEvidencePrompt:'This receipt was saved without an image. Would you like to
 takeEvidencePhoto:'Take Evidence Photo',chooseEvidencePhoto:'Choose Evidence Photo',later:'Later',
 evidenceStorageFail:'Could not save the evidence image on this device',evidenceNotFound:'Evidence image was not found on this device'}
 };
-Object.assign(I18N.ar,{appSub:'إدارة الفواتير والمشتريات الشهرية',receiptScan:'إرفاق صورة الفاتورة',ocrAuto:'الصورة دليل فقط — دون قراءة تلقائية',takePhoto:'تصوير الفاتورة',choosePhoto:'اختيار صورة من الألبوم',enhanced:'مرفقة كدليل',ocrHint:'أدخل بيانات الفاتورة يدويًا؛ لن تُقرأ الصورة أو تُرسل للتحليل.',ocrNote:'تُضغط الصورة محليًا وتُحفظ تلقائيًا مع السجل كإثبات، وتظهر في تفاصيل الفاتورة والتقرير الشهري.',purchases:'تفاصيل المشتريات (اختياري)',showItems:'إضافة تفاصيل المشتريات',hideItems:'إخفاء تفاصيل المشتريات',optionalItemsNote:'يمكن حفظ الفاتورة دون إدخال الأصناف.',optionalItemsSum:'مجموع تفاصيل المشتريات',itemsSubtotal:'مجموع الأغراض الاختيارية',totalsMatch:'✓ تم حساب الإجمالي تلقائيًا: المبلغ قبل الضريبة + الضريبة.',totalsMismatch:'لا يمكن الحفظ: المبلغ قبل الضريبة + الضريبة يجب أن يساوي الإجمالي النهائي.',evidenceDraftSaved:'تم تجهيز صورة الفاتورة وستُحفظ تلقائيًا مع السجل.',syncLinkedOffline:'مرتبط — بانتظار الاتصال',syncRetentionNote:'يبقى هذا الجهاز مرتبطًا تلقائيًا بعد تحديث الصفحة أو إعادة فتحها. عند فصله ستبقى الفواتير والصور محفوظة عليه.',syncDisconnectConfirm:'سيتم إيقاف المزامنة على هذا الجهاز فقط، وستبقى جميع الفواتير والصور المحفوظة عليه. هل تريد المتابعة؟',syncPreparingDisconnect:'جارٍ تثبيت البيانات والصور على هذا الجهاز قبل إيقاف المزامنة…',syncDisconnected:'تم إيقاف المزامنة. بقيت البيانات والصور محفوظة على هذا الجهاز.',versionFooter:'الإصدار 7.0.3 — إصلاح PBKDF2 + صلاحيات أجهزة',changelogButton:'سجل التحديثات',changelogTitle:'سجل التحديثات',changelogIntro:'الإصدارات الموثقة في سجل المشروع، من الأحدث إلى الأقدم.',currentVersion:'الإصدار الحالي'});
-Object.assign(I18N.en,{appSub:'Monthly receipt & spending manager',receiptScan:'Attach Receipt Image',ocrAuto:'Evidence only — no automatic reading',takePhoto:'Photograph Receipt',choosePhoto:'Choose from Photos',enhanced:'Attached as Evidence',ocrHint:'Enter receipt details manually; the image is not read or sent for analysis.',ocrNote:'The image is compressed locally, saved automatically as evidence, and shown in receipt details and the monthly report.',purchases:'Item Details (Optional)',showItems:'Add Item Details',hideItems:'Hide Item Details',optionalItemsNote:'The receipt can be saved without item rows.',optionalItemsSum:'Item details subtotal',itemsSubtotal:'Optional Items Subtotal',totalsMatch:'✓ Final total calculated automatically: subtotal plus tax.',totalsMismatch:'Cannot save: subtotal plus tax must equal the final total.',evidenceDraftSaved:'Receipt image is ready and will be saved automatically with the record.',syncLinkedOffline:'Linked — waiting for connection',syncRetentionNote:'This device stays linked automatically after page updates or reopening. Disconnecting it keeps all receipts and images saved on the device.',syncDisconnectConfirm:'Sync will stop on this device only. All locally saved receipts and images will remain. Continue?',syncPreparingDisconnect:'Securing receipts and images on this device before stopping sync…',syncDisconnected:'Sync stopped. Receipts and images remain saved on this device.',versionFooter:'Version 7.0.3 — PBKDF2 runtime fix + device permissions',changelogButton:'Update Log',changelogTitle:'Update Log',changelogIntro:'Documented project releases, newest first.',currentVersion:'Current version'});
+Object.assign(I18N.ar,{appSub:'إدارة الفواتير والمشتريات الشهرية',receiptScan:'إرفاق صورة الفاتورة',ocrAuto:'الصورة دليل فقط — دون قراءة تلقائية',takePhoto:'تصوير الفاتورة',choosePhoto:'اختيار صورة من الألبوم',enhanced:'مرفقة كدليل',ocrHint:'أدخل بيانات الفاتورة يدويًا؛ لن تُقرأ الصورة أو تُرسل للتحليل.',ocrNote:'تُضغط الصورة محليًا وتُحفظ تلقائيًا مع السجل كإثبات، وتظهر في تفاصيل الفاتورة والتقرير الشهري.',purchases:'تفاصيل المشتريات (اختياري)',showItems:'إضافة تفاصيل المشتريات',hideItems:'إخفاء تفاصيل المشتريات',optionalItemsNote:'يمكن حفظ الفاتورة دون إدخال الأصناف.',optionalItemsSum:'مجموع تفاصيل المشتريات',itemsSubtotal:'مجموع الأغراض الاختيارية',totalsMatch:'✓ تم حساب الإجمالي تلقائيًا: المبلغ قبل الضريبة + الضريبة.',totalsMismatch:'لا يمكن الحفظ: المبلغ قبل الضريبة + الضريبة يجب أن يساوي الإجمالي النهائي.',evidenceDraftSaved:'تم تجهيز صورة الفاتورة وستُحفظ تلقائيًا مع السجل.',syncLinkedOffline:'مرتبط — بانتظار الاتصال',syncRetentionNote:'يبقى هذا الجهاز مرتبطًا تلقائيًا بعد تحديث الصفحة أو إعادة فتحها. عند فصله ستبقى الفواتير والصور محفوظة عليه.',syncDisconnectConfirm:'سيتم إيقاف المزامنة على هذا الجهاز فقط، وستبقى جميع الفواتير والصور المحفوظة عليه. هل تريد المتابعة؟',syncPreparingDisconnect:'جارٍ تثبيت البيانات والصور على هذا الجهاز قبل إيقاف المزامنة…',syncDisconnected:'تم إيقاف المزامنة. بقيت البيانات والصور محفوظة على هذا الجهاز.',versionFooter:'الإصدار 7.0.4 — مزامنة حساب تلقائية + إلغاء فوري',changelogButton:'سجل التحديثات',changelogTitle:'سجل التحديثات',changelogIntro:'الإصدارات الموثقة في سجل المشروع، من الأحدث إلى الأقدم.',currentVersion:'الإصدار الحالي'});
+Object.assign(I18N.en,{appSub:'Monthly receipt & spending manager',receiptScan:'Attach Receipt Image',ocrAuto:'Evidence only — no automatic reading',takePhoto:'Photograph Receipt',choosePhoto:'Choose from Photos',enhanced:'Attached as Evidence',ocrHint:'Enter receipt details manually; the image is not read or sent for analysis.',ocrNote:'The image is compressed locally, saved automatically as evidence, and shown in receipt details and the monthly report.',purchases:'Item Details (Optional)',showItems:'Add Item Details',hideItems:'Hide Item Details',optionalItemsNote:'The receipt can be saved without item rows.',optionalItemsSum:'Item details subtotal',itemsSubtotal:'Optional Items Subtotal',totalsMatch:'✓ Final total calculated automatically: subtotal plus tax.',totalsMismatch:'Cannot save: subtotal plus tax must equal the final total.',evidenceDraftSaved:'Receipt image is ready and will be saved automatically with the record.',syncLinkedOffline:'Linked — waiting for connection',syncRetentionNote:'This device stays linked automatically after page updates or reopening. Disconnecting it keeps all receipts and images saved on the device.',syncDisconnectConfirm:'Sync will stop on this device only. All locally saved receipts and images will remain. Continue?',syncPreparingDisconnect:'Securing receipts and images on this device before stopping sync…',syncDisconnected:'Sync stopped. Receipts and images remain saved on this device.',versionFooter:'Version 7.0.4 — automatic account sync + instant revocation',changelogButton:'Update Log',changelogTitle:'Update Log',changelogIntro:'Documented project releases, newest first.',currentVersion:'Current version'});
 function t(k){return I18N[lang][k]||k}function money(n){return `${Number(n||0).toFixed(2)} ${t('currency')}`}function escapeHtml(s){return String(s??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))}
-const APP_VERSION='7.0.3';
+const APP_VERSION='7.0.4';
 const CHANGELOG_ENTRIES=[
+  {version:'7.0.4',ar:'نقل مزامنة الحساب إلى قسم تسجيل الدخول فقط، جعلها تلقائية فور الربط ومع كل تغيير، تنفيذ إلغاء ربط الأجهزة لحظيًا دون تحديث الصفحة، وتمكين أجهزة العرض فقط من مشاهدة صور الأدلة.',en:'Moved account sync into the sign-in section, made it automatic on link and every change, added instant device revocation without page refresh, and allowed read-only devices to view evidence images.'},
   {version:'7.0.3',ar:'إصلاح توافق PBKDF2 مع Cloudflare Workers: ضبط عامل الاشتقاق إلى الحد المدعوم 100,000 دورة مع إبقاء Salt وAUTH_PEPPER والجلسات والصلاحيات كما هي.',en:'Fixed PBKDF2 compatibility with Cloudflare Workers by using the supported 100,000-iteration work factor while preserving salt, AUTH_PEPPER, sessions, and permissions.'},
   {version:'7.0.2',ar:'إصلاح مسار إنشاء الحساب جذريًا: فصل إنشاء الحساب عن إنشاء مساحة البيانات، جعل تخزين بيانات الهوية متسلسلًا، دعم عامل PBKDF2 محفوظ لكل حساب، واستعادة آمنة من أي إنشاء جزئي مع عرض تفاصيل الخطأ الحقيقي.',en:'Hardened account creation: decoupled account creation from data-room creation, serialized identity writes, supported per-account PBKDF2 work factors, recovered safely from partial creation, and surfaced real server error details.'},
   {version:'7.0.1',ar:'إصلاح أولي لتهيئة المالك والتحقق من إعدادات Cloudflare.',en:'Initial owner-bootstrap and Cloudflare configuration checks.'},
@@ -585,9 +571,10 @@ function uid(){return (crypto?.randomUUID?.()||`r_${Date.now()}_${Math.random().
 function persist(){localStorage.setItem(STORAGE_KEY,JSON.stringify(data));localStorage.setItem(BUDGET_KEY,JSON.stringify(budgets))}
 
 
-// === v7.0.3 Optional accounts, persistent sessions and server-side permissions ===
+// === v7.0.4 Accounts, automatic sync, instant device revocation and server-side permissions ===
 const ACCOUNT_MIGRATION_KEY='monthly_expense_account_migration_v1';
 let authState={available:true,authenticated:false,bootstrapRequired:false,user:null,session:null};
+let suppressSyncReconnect=false;
 function accountMode(){return !!authState.authenticated}
 function accountAccess(){return authState.session?.access||'owner'}
 function accountCanWrite(){return accountMode()&&accountAccess()!=='viewer'&&!authState.user?.mustChangePassword}
@@ -597,7 +584,7 @@ async function appApi(path,opts={}){const headers=new Headers(opts.headers||{}),
 function authErrorText(e){const c=e?.code||e?.message||'',d=String(e?.detail||'').trim();if(['SERVER_ERROR','AUTH_RUNTIME_ERROR','AUTH_DIRECTORY_ERROR'].includes(c)){return lang==='ar'?`حدث خطأ في خدمة الحسابات${d?`: ${d}`:'.'}`:`Account service error${d?`: ${d}`:'.'}`}const ar={INVALID_CREDENTIALS:'اسم المستخدم/البريد أو كلمة المرور غير صحيحة.',ACCOUNT_SUSPENDED:'هذا الحساب موقوف. تواصل مع مالك الصفحة.',TRY_LATER:'محاولات كثيرة. حاول مرة أخرى بعد عدة دقائق.',INVALID_USERNAME:'اسم المستخدم يجب أن يكون 3–32 حرفًا ويحتوي أحرفًا/أرقامًا أو . _ - فقط.',INVALID_EMAIL:'أدخل بريدًا إلكترونيًا صحيحًا.',WEAK_PASSWORD:'كلمة المرور يجب أن تكون 10 أحرف على الأقل وتحتوي حرفًا ورقمًا.',USERNAME_EXISTS:'اسم المستخدم مستخدم بالفعل.',EMAIL_EXISTS:'البريد الإلكتروني مستخدم بالفعل.',OWNER_SETUP_REQUIRED:'يجب تهيئة حساب مالك الصفحة أولًا.',INVALID_BOOTSTRAP_TOKEN:'رمز تهيئة المالك غير صحيح.',OWNER_BOOTSTRAP_TOKEN_NOT_CONFIGURED:'لم يتم ضبط رمز تهيئة المالك في Cloudflare.',AUTH_PEPPER_NOT_CONFIGURED:'لم يتم ضبط AUTH_PEPPER كـ Secret في Cloudflare.',OWNER_ALREADY_EXISTS:'تم إنشاء مالك الصفحة مسبقًا. انتقل إلى تسجيل الدخول واستخدم اسم المستخدم وكلمة المرور.',BAD_REQUEST_ORIGIN:'رفض الخادم الطلب لأسباب حماية. حدّث الصفحة وافتحها من رابط الموقع نفسه ثم أعد المحاولة.',AUTH_FAILED:'تعذر إكمال التحقق في الخادم. حدّث الصفحة وحاول مرة أخرى.',BOOTSTRAP_REQUIRED:'يجب إكمال تهيئة مالك الصفحة أولًا.',OWNER_REQUIRED:'هذه العملية تتطلب جلسة مالك الحساب.',NOT_FOUND:'تعذر العثور على العملية المطلوبة في الخادم.',INVALID_LINK_CODE:'رمز ربط الجهاز غير صالح أو انتهت صلاحيته.',READ_ONLY:'هذا الجهاز بصلاحية عرض فقط.',PASSWORD_CHANGE_REQUIRED:'يجب تغيير كلمة المرور المؤقتة أولًا.',AUTH_REQUIRED:'انتهت الجلسة أو تم إلغاء صلاحية هذا الجهاز. سجّل الدخول مجددًا.',FORBIDDEN:'ليست لديك صلاحية تنفيذ هذه العملية.'};if(ar[c])return ar[c];return lang==='ar'?`تعذر إكمال العملية${c?` (${c})`:''}.${d?` ${d}`:' حاول مرة أخرى.'}`:`Could not complete the operation${c?` (${c})`:''}.${d?` ${d}`:' Please try again.'}`}
 function authShowMessage(text,error=false){const el=$('#authMessage');if(!el)return;el.textContent=text||'';el.classList.toggle('show',!!text);el.classList.toggle('error',!!error)}
 function authSetPane(name){['Login','Register','Link','Forgot','Bootstrap'].forEach(x=>$('#auth'+x+'Pane')?.classList.toggle('active',x.toLowerCase()===name));authShowMessage('')}
-function openAuthModal(mode='login'){refreshAuthUI();$('#authModal').classList.add('open');if(!accountMode()){if(authState.bootstrapRequired)authSetPane('bootstrap');else authSetPane(mode)}}
+function openAuthModal(mode='login'){refreshAuthUI();refreshAccountSyncUI();$('#authModal').classList.add('open');if(!accountMode()){if(authState.bootstrapRequired)authSetPane('bootstrap');else authSetPane(mode)}}
 function closeAuthModal(){$('#authModal').classList.remove('open');authShowMessage('')}
 function refreshAuthUI(){
   const btn=$('#accountBtn'),logged=accountMode();if(btn){btn.classList.toggle('logged',logged);btn.classList.toggle('viewer',logged&&accountAccess()==='viewer');btn.textContent=logged?`👤 ${authState.user?.username||(accountAccess()==='viewer'?'جهاز عرض':'جهاز مرتبط')}`:'👤 تسجيل الدخول'}
@@ -606,6 +593,7 @@ function refreshAuthUI(){
   if(!logged){$('#authRegisterTab').style.display=authState.bootstrapRequired?'none':'';const nav=$('#adminNavBtn');if(nav)nav.style.display='none';$('.nav')?.classList.remove('has-admin');document.body.classList.remove('account-viewer');return}
   $('#authCurrentName').textContent=authState.user?.username||(authState.session?.deviceLabel||'جهاز مرتبط');$('#authCurrentEmail').textContent=authState.user?.email||'جلسة جهاز مرتبطة بالحساب';const badge=$('#authCurrentBadge');badge.textContent=authState.user?.role==='super_admin'?'مالك الصفحة':(accountAccess()==='viewer'?'عرض فقط':accountAccess()==='editor'?'محرر':'مالك الحساب');badge.className='auth-badge'+(accountAccess()==='viewer'?' viewer':'')+(authState.user?.role==='super_admin'?' admin':'');$('#authChangePasswordCard').style.display=authState.user?'block':'none';
   const admin=authState.user?.role==='super_admin',nav=$('#adminNavBtn');if(nav){nav.style.display=admin?'':'none';$('.nav')?.classList.toggle('has-admin',admin)};document.body.classList.toggle('account-viewer',accountAccess()==='viewer');
+  refreshAccountSyncUI();
   if(authState.user?.mustChangePassword)setTimeout(()=>{openAuthModal();authShowMessage('تم تسجيل الدخول بكلمة مرور مؤقتة. غيّر كلمة المرور الآن قبل تعديل البيانات.',false)},20)
 }
 async function authRefresh(){try{const b=await appApi('/api/auth/me');authState={available:true,authenticated:!!b.authenticated,bootstrapRequired:!!b.bootstrapRequired,user:b.user||null,session:b.session||null};refreshAuthUI();refreshSyncUI();return authState}catch(e){authState={available:false,authenticated:false,bootstrapRequired:false,user:null,session:null};refreshAuthUI();return authState}}
@@ -641,17 +629,44 @@ async function authBootstrap(){
 }
 async function authForgot(){try{await appApi('/api/auth/forgot',{method:'POST',body:JSON.stringify({login:$('#authForgotLogin').value})});authShowMessage('تم تسجيل طلب الاستعادة. تواصل مع مالك الصفحة؛ سيستطيع إنشاء كلمة مرور مؤقتة لك.',false)}catch(e){authShowMessage(authErrorText(e),true)}}
 async function authLinkDevice(){try{await appApi('/api/auth/link-device',{method:'POST',body:JSON.stringify({code:$('#authLinkCode').value,deviceLabel:$('#authLinkDeviceLabel').value||authDeviceLabel()})});await authAfterSuccess()}catch(e){authShowMessage(authErrorText(e),true)}}
+async function handleAccountSessionRevoked(wasViewerOverride=null){
+  const wasViewer=wasViewerOverride===null?(accountMode()&&accountAccess()==='viewer'):!!wasViewerOverride;
+  let migrationKey='';try{migrationKey=accountMigrationStorageKey()}catch(e){}
+  suppressSyncReconnect=true;clearTimeout(syncReconnectTimer);
+  const ws=syncSocket;syncSocket=null;if(window._monthlySyncPing){clearInterval(window._monthlySyncPing);window._monthlySyncPing=null}
+  if(ws){try{ws.close(1000,'access revoked')}catch(e){}}
+  try{await fetch('/api/auth/logout',{method:'POST',headers:{'content-type':'application/json','x-monthly-expense-app':'1'},body:'{}',credentials:'same-origin',cache:'no-store'})}catch(e){}
+  authState={available:true,authenticated:false,bootstrapRequired:false,user:null,session:null};
+  if(migrationKey)try{localStorage.removeItem(migrationKey)}catch(e){}
+  if(wasViewer){
+    data=[];budgets={};syncBudgetMeta={};try{localStorage.setItem(SYNC_BUDGET_META_KEY,'{}')}catch(e){}
+    try{await evidenceClearAll()}catch(e){}
+    persist();renderAll()
+  }
+  refreshAuthUI();refreshSyncUI();closeSyncModal();$('#accountMigrationModal')?.classList.remove('open');
+  openAuthModal('link');authSetPane('link');authShowMessage('تم إلغاء ربط هذا الجهاز من الجهاز الرئيسي، وتوقف وصوله إلى الحساب فورًا.',true);
+  setTimeout(()=>{suppressSyncReconnect=false},1500)
+}
 async function authLogout(){try{await appApi('/api/auth/logout',{method:'POST',body:'{}'})}catch(e){}if(syncSocket){try{syncSocket.close()}catch(e){}}authState={available:true,authenticated:false,bootstrapRequired:false,user:null,session:null};refreshAuthUI();refreshSyncUI();closeAuthModal();toast('تم تسجيل الخروج')}
 async function authChangePassword(){const n=$('#authNewPassword').value;if(n!==$('#authNewPassword2').value){authShowMessage('كلمتا المرور الجديدتان غير متطابقتين.',true);return}try{await appApi('/api/auth/change-password',{method:'POST',body:JSON.stringify({currentPassword:$('#authCurrentPassword').value,newPassword:n})});authShowMessage('تم تغيير كلمة المرور بنجاح.');$('#authCurrentPassword').value=$('#authNewPassword').value=$('#authNewPassword2').value='';await authRefresh()}catch(e){authShowMessage(authErrorText(e),true)}}
 async function loadAccountDevices(){if(!accountMode()||accountAccess()!=='owner')return;try{const b=await appApi('/api/account/devices'),el=$('#accountDevicesList');el.innerHTML=(b.devices||[]).map(d=>`<div class="device-row"><div><b>${escapeHtml(d.deviceLabel||d.kind)}</b><small>${d.access==='viewer'?'عرض فقط':d.access==='editor'?'محرر':'مالك'} • ${new Date(d.lastSeenAt).toLocaleString()}</small></div>${d.current?'<span class="auth-badge">هذا الجهاز</span>':`<button class="btn btn-danger" type="button" onclick="revokeAccountDevice('${d.id}')">إلغاء</button>`}</div>`).join('')||'<div class="auth-note">لا توجد أجهزة أخرى.</div>'}catch(e){console.warn(e)}}
-window.revokeAccountDevice=async id=>{if(!confirm('إلغاء وصول هذا الجهاز؟'))return;try{await appApi('/api/account/revoke-device',{method:'POST',body:JSON.stringify({sessionId:id})});await loadAccountDevices()}catch(e){toast(authErrorText(e))}};
+window.revokeAccountDevice=async id=>{if(!confirm('إلغاء وصول هذا الجهاز فورًا؟ سيتم قطع المزامنة عنه مباشرة.'))return;try{await appApi('/api/account/revoke-device',{method:'POST',body:JSON.stringify({sessionId:id})});toast('تم إلغاء ربط الجهاز فورًا');await loadAccountDevices()}catch(e){toast(authErrorText(e))}};
 async function createAccountInvite(){try{const b=await appApi('/api/account/invite',{method:'POST',body:JSON.stringify({permission:$('#accountInvitePermission').value,deviceLabel:$('#accountInviteLabel').value})});const el=$('#accountInviteCode');el.textContent=b.code;el.style.display='block';toast('تم إنشاء رمز ربط صالح لمدة 15 دقيقة')}catch(e){toast(authErrorText(e))}}
-function refreshAccountSyncUI(){const card=$('#accountSyncCard'),legacy=$('#legacySyncCard');if(!card||!legacy)return;card.classList.toggle('show',accountMode());legacy.style.display=accountMode()?'none':'';if(!accountMode())return;const name=authState.user?.username||(authState.session?.deviceLabel||'جهاز مرتبط');$('#accountSyncTitle').textContent=`الحساب: ${name}`;$('#accountSyncSubtitle').textContent=accountAccess()==='viewer'?'هذا الجهاز للعرض والطباعة فقط. الخادم يرفض أي تعديل.':'البيانات مرتبطة بالحساب وتُحدّث بين الأجهزة تلقائيًا.';const badge=$('#accountAccessBadge');badge.textContent=accountAccess()==='viewer'?'عرض فقط':accountAccess()==='editor'?'محرر':'مالك';badge.className='auth-badge'+(accountAccess()==='viewer'?' viewer':'');$('#accountOwnerTools').style.display=accountAccess()==='owner'?'block':'none';if(accountAccess()==='owner')loadAccountDevices()}
-async function renderAdminUsers(){if(authState.user?.role!=='super_admin')return;const el=$('#adminUsersList');el.innerHTML='<div class="auth-note">جارٍ تحميل المستخدمين…</div>';try{const b=await appApi('/api/admin/users'),users=b.users||[];$('#adminSummaryText').textContent=`${users.length} مستخدم مسجل`;el.innerHTML=users.map(u=>`<div class="admin-user"><div class="admin-user-head"><div><h3>${escapeHtml(u.username)} ${u.role==='super_admin'?'👑':''}</h3><div class="admin-user-meta">${escapeHtml(u.email)}<br>الحالة: ${u.status==='active'?'نشط':'موقوف'} • الأجهزة/الجلسات: ${u.activeSessions||0}${u.resetRequested?' • 🔑 طلب استعادة':''}<br>آخر دخول: ${u.lastLoginAt?new Date(u.lastLoginAt).toLocaleString():'—'}${(u.devices||[]).length?`<br>${(u.devices||[]).slice(0,8).map(d=>`📱 ${escapeHtml(d.deviceLabel||'جهاز')} — ${d.access==='viewer'?'عرض فقط':d.access==='editor'?'محرر':'مالك'} — ${new Date(d.lastSeenAt).toLocaleString()}`).join('<br>')}`:''}</div></div><span class="auth-badge ${u.role==='super_admin'?'admin':''}">${u.role==='super_admin'?'مالك الصفحة':'مستخدم'}</span></div>${u.role==='super_admin'?'':`<div class="admin-user-actions"><button class="btn btn-soft" onclick="adminResetPassword('${u.id}','${escapeHtml(u.username)}')">إعادة تعيين كلمة المرور</button><button class="btn btn-soft" onclick="adminLogoutAll('${u.id}','${escapeHtml(u.username)}')">تسجيل خروج كل الأجهزة</button><button class="btn ${u.status==='active'?'btn-danger':'btn-primary'}" onclick="adminSetStatus('${u.id}','${u.status==='active'?'suspended':'active'}')">${u.status==='active'?'إيقاف الحساب':'إعادة تفعيل الحساب'}</button></div>`}</div>`).join('')||'<div class="auth-note">لا يوجد مستخدمون.</div>'}catch(e){el.innerHTML=`<div class="auth-message show error">${escapeHtml(authErrorText(e))}</div>`}}
-window.adminResetPassword=async(id,name)=>{if(!confirm(`إنشاء كلمة مرور مؤقتة جديدة للمستخدم ${name}؟ سيتم تسجيل خروجه من جميع أجهزته.`))return;try{const b=await appApi('/api/admin/reset-password',{method:'POST',body:JSON.stringify({userId:id})});prompt('كلمة المرور المؤقتة — انسخها الآن، لن تظهر مرة أخرى:',b.temporaryPassword||'');await renderAdminUsers()}catch(e){toast(authErrorText(e))}};
-window.adminSetStatus=async(id,status)=>{try{await appApi('/api/admin/user-status',{method:'POST',body:JSON.stringify({userId:id,status})});await renderAdminUsers()}catch(e){toast(authErrorText(e))}};
-window.adminLogoutAll=async(id,name)=>{if(!confirm(`تسجيل خروج ${name} من جميع أجهزته المرتبطة؟`))return;try{await appApi('/api/admin/logout-user',{method:'POST',body:JSON.stringify({userId:id})});toast('تم تسجيل خروج جميع أجهزة المستخدم');await renderAdminUsers()}catch(e){toast(authErrorText(e))}};
-function enforceReadOnlyClick(e){if(!accountMode()||accountAccess()!=='viewer')return;const write=e.target.closest('#saveBudgetBtn,#restoreBtn,#addItemBtn,#toggleItemsBtn,#saveBtn,#clearBtn,#cameraBtn,#galleryBtn,.evidence-actions button,.purchase-body>.actions button');if(write){e.preventDefault();e.stopImmediatePropagation();toast('هذا الجهاز بصلاحية عرض فقط')}}
+function refreshAccountSyncUI(){
+  const card=$('#accountSyncCard');if(!card)return;
+  card.classList.toggle('show',accountMode());if(!accountMode())return;
+  const name=authState.user?.username||(authState.session?.deviceLabel||'جهاز مرتبط');
+  $('#accountSyncTitle').textContent=`الحساب: ${name}`;
+  $('#accountSyncSubtitle').textContent=accountAccess()==='viewer'
+    ?'هذا الجهاز للعرض والطباعة ومشاهدة صور الأدلة فقط. الخادم يرفض أي تعديل.'
+    :'البيانات مرتبطة بالحساب وتُحدّث بين الأجهزة تلقائيًا وفور كل تغيير.';
+  const badge=$('#accountAccessBadge');badge.textContent=accountAccess()==='viewer'?'عرض فقط':accountAccess()==='editor'?'محرر':'مالك';badge.className='auth-badge'+(accountAccess()==='viewer'?' viewer':'');
+  $('#accountOwnerTools').style.display=accountAccess()==='owner'?'block':'none';
+  const live=syncSocket?.readyState===WebSocket.OPEN,connecting=syncSocket?.readyState===WebSocket.CONNECTING;
+  syncConnectionUI(!!live,!!connecting);
+  if(accountAccess()==='owner')loadAccountDevices()
+}
+function enforceReadOnlyClick(e){if(!accountMode()||accountAccess()!=='viewer')return;const write=e.target.closest('#saveBudgetBtn,#restoreBtn,#addItemBtn,#toggleItemsBtn,#saveBtn,#clearBtn,#cameraBtn,#galleryBtn,.evidence-actions .evidence-write-btn,.purchase-body>.actions button');if(write){e.preventDefault();e.stopImmediatePropagation();toast('هذا الجهاز بصلاحية عرض فقط')}}
 document.addEventListener('click',enforceReadOnlyClick,true);
 
 // === v5.4 Real-time multi-device sync (Cloudflare Durable Objects) ===
@@ -718,8 +733,18 @@ function refreshSyncUI(){
   if(!linked){$('#syncStatusText').textContent=t('syncNotLinked');$('#syncStatusText').className='sync-dot';$('#syncLiveBadge').textContent='Offline';$('#syncLiveBadge').className='sync-badge'}
   else if(!syncSocket||syncSocket.readyState!==WebSocket.OPEN)syncConnectionUI(false,false)
 }
-function syncConnectionUI(online,connecting=false){if(!$('#syncStatusText'))return;const label=online?t('syncConnected'):(connecting?t('syncConnecting'):(syncCode?t('syncLinkedOffline'):t('syncNotLinked')));$('#syncStatusText').textContent=label;$('#syncStatusText').className='sync-dot'+(online?' online':'');$('#syncLiveBadge').textContent=online?'Live':(connecting?'…':'Offline');$('#syncLiveBadge').className='sync-badge'+(online?' online':'')}
-function openSyncModal(){refreshSyncUI();$('#syncModal').classList.add('open');syncSetMessage('');if(accountMode()&&accountAccess()==='owner')loadAccountDevices()}
+function syncConnectionUI(online,connecting=false){
+  const accountBadge=$('#accountLiveBadge');
+  if(accountBadge&&accountMode()){
+    accountBadge.textContent=online?'متصل لحظيًا':(connecting?'جارٍ الاتصال…':'غير متصل — سيعاد الاتصال تلقائيًا');
+    accountBadge.className='sync-badge'+(online?' online':'')
+  }
+  const status=$('#syncStatusText');if(!status)return;
+  const label=online?t('syncConnected'):(connecting?t('syncConnecting'):(syncCode?t('syncLinkedOffline'):t('syncNotLinked')));
+  status.textContent=label;status.className='sync-dot'+(online?' online':'');
+  $('#syncLiveBadge').textContent=online?'Live':(connecting?'…':'Offline');$('#syncLiveBadge').className='sync-badge'+(online?' online':'')
+}
+function openSyncModal(){refreshPwaInstallUI();$('#syncModal').classList.add('open')}
 function closeSyncModal(){$('#syncModal').classList.remove('open')}
 async function syncApi(path,opts={}){
   const method=String(opts.method||'GET').toUpperCase();if(accountMode()&&path.startsWith('/api/sync/'))path=path.replace('/api/sync/','/api/account/');
@@ -782,8 +807,19 @@ function syncOpenSocket(){
   if(!syncTransportActive())return;if(syncSocket){try{syncSocket.close()}catch(e){}}clearTimeout(syncReconnectTimer);if(window._monthlySyncPing){clearInterval(window._monthlySyncPing);window._monthlySyncPing=null}
   const proto=location.protocol==='https:'?'wss:':'ws:',wsPath=accountMode()?`/api/account/ws?client=${encodeURIComponent(syncClientId)}`:`/api/sync/ws?code=${encodeURIComponent(syncCode)}&client=${encodeURIComponent(syncClientId)}`,ws=new WebSocket(`${proto}//${location.host}${wsPath}`);syncSocket=ws;syncConnectionUI(false,true);let lastPong=Date.now();
   ws.onopen=()=>{lastPong=Date.now();syncConnectionUI(true,false);window._monthlySyncPing=setInterval(()=>{if(ws.readyState!==WebSocket.OPEN)return;try{if(Date.now()-lastPong>90000){ws.close();return}ws.send('ping')}catch(e){}},30000)};
-  ws.onclose=()=>{if(window._monthlySyncPing){clearInterval(window._monthlySyncPing);window._monthlySyncPing=null}if(syncSocket===ws)syncSocket=null;syncConnectionUI(false,false);if(syncTransportActive())syncReconnectTimer=setTimeout(syncOpenSocket,2500)};ws.onerror=()=>{};
-  ws.onmessage=async ev=>{if(syncSocket!==ws||!syncTransportActive())return;let m;try{m=JSON.parse(ev.data)}catch(e){return}if(m.type==='pong'){lastPong=Date.now();return}if(m.clientId===syncClientId)return;syncApplyingRemote=true;try{
+  ws.onclose=async()=>{if(window._monthlySyncPing){clearInterval(window._monthlySyncPing);window._monthlySyncPing=null}if(syncSocket===ws)syncSocket=null;syncConnectionUI(false,false);
+    if(accountMode()&&!suppressSyncReconnect){
+      const wasViewer=accountAccess()==='viewer';
+      try{const probe=await appApi('/api/auth/me');if(!probe?.authenticated){await handleAccountSessionRevoked(wasViewer);return}}catch(e){}
+    }
+    if(syncTransportActive()&&!suppressSyncReconnect)syncReconnectTimer=setTimeout(syncOpenSocket,2500)
+  };ws.onerror=()=>{};
+  ws.onmessage=async ev=>{if(syncSocket!==ws||!syncTransportActive())return;let m;try{m=JSON.parse(ev.data)}catch(e){return}if(m.type==='pong'){lastPong=Date.now();return}
+    if(m.type==='session-revoked'){
+      if(accountMode()&&String(m.sessionId||'')===String(authState.session?.id||''))await handleAccountSessionRevoked(accountAccess()==='viewer');
+      return
+    }
+    if(m.clientId===syncClientId)return;syncApplyingRemote=true;try{
     if(m.type==='upsert'&&m.receipt){const i=data.findIndex(x=>x.id===m.receipt.id);if(i<0)data.push(m.receipt);else if(isoNewer(m.receipt.updatedAt,data[i].updatedAt))data[i]=m.receipt;persist();renderAll();if(m.receipt.hasEvidence)try{await syncDownloadEvidence(m.receipt.id)}catch(e){console.warn('Live evidence retention failed',m.receipt.id,e)}}
     else if(m.type==='delete'&&m.id){data=data.filter(x=>x.id!==m.id);await evidenceDelete(m.id);persist();renderAll()}
     else if(m.type==='budget'&&m.month){if(Number(m.value)>0)budgets[m.month]=Number(m.value);else delete budgets[m.month];syncBudgetMeta[m.month]=m.updatedAt||new Date().toISOString();localStorage.setItem(SYNC_BUDGET_META_KEY,JSON.stringify(syncBudgetMeta));persist();renderDashboard()}
@@ -966,8 +1002,8 @@ function promptEvidenceAfterSave(id){
   setEvidenceModal(
     t('receiptEvidence'),
     t('manualEvidencePrompt'),
-    `<button class="btn btn-primary" onclick="pickReceiptEvidence('${id}','camera')">📷 ${escapeHtml(t('takeEvidencePhoto'))}</button>
-     <button class="btn btn-soft" onclick="pickReceiptEvidence('${id}','gallery')">🖼️ ${escapeHtml(t('chooseEvidencePhoto'))}</button>
+    `<button class="btn btn-primary evidence-write-btn" onclick="pickReceiptEvidence('${id}','camera')">📷 ${escapeHtml(t('takeEvidencePhoto'))}</button>
+     <button class="btn btn-soft evidence-write-btn" onclick="pickReceiptEvidence('${id}','gallery')">🖼️ ${escapeHtml(t('chooseEvidencePhoto'))}</button>
      <button class="btn btn-soft" onclick="closeEvidenceModal()">${escapeHtml(t('later'))}</button>`
   )
 }
@@ -997,9 +1033,9 @@ window.viewReceiptEvidence=async id=>{
     if(evidenceObjectUrl)URL.revokeObjectURL(evidenceObjectUrl);
     evidenceObjectUrl=URL.createObjectURL(blob);
     setEvidenceModal(t('receiptEvidence'),'',
-      `<button class="btn btn-soft" onclick="pickReceiptEvidence('${id}','camera')">📷 ${escapeHtml(t('replaceEvidence'))}</button>
-       <button class="btn btn-soft" onclick="pickReceiptEvidence('${id}','gallery')">🖼️ ${escapeHtml(t('replaceEvidence'))}</button>
-       <button class="btn btn-danger" onclick="deleteReceiptEvidence('${id}')">${escapeHtml(t('deleteEvidence'))}</button>`,
+      `<button class="btn btn-soft evidence-write-btn" onclick="pickReceiptEvidence('${id}','camera')">📷 ${escapeHtml(t('replaceEvidence'))}</button>
+       <button class="btn btn-soft evidence-write-btn" onclick="pickReceiptEvidence('${id}','gallery')">🖼️ ${escapeHtml(t('replaceEvidence'))}</button>
+       <button class="btn btn-danger evidence-write-btn" onclick="deleteReceiptEvidence('${id}')">${escapeHtml(t('deleteEvidence'))}</button>`,
       evidenceObjectUrl)
   }catch(e){console.error(e);toast(t('evidenceNotFound'))}
 };
@@ -1088,11 +1124,10 @@ $('#authCloseBtn').onclick=closeAuthModal;$('#authModal').onclick=e=>{if(e.targe
 $('#authLoginTab').onclick=()=>authSetPane('login');$('#authRegisterTab').onclick=()=>authSetPane('register');$('#authLinkTab').onclick=()=>authSetPane('link');
 $('#authForgotBtn').onclick=()=>authSetPane('forgot');$('#authForgotBackBtn').onclick=()=>authSetPane('login');
 $('#authLoginBtn').onclick=authLogin;$('#authRegisterBtn').onclick=authRegister;$('#authBootstrapBtn').onclick=authBootstrap;$('#authForgotSubmitBtn').onclick=authForgot;$('#authLinkDeviceBtn').onclick=authLinkDevice;$('#authLogoutBtn').onclick=authLogout;$('#authChangePasswordBtn').onclick=authChangePassword;
-$('#authOpenSettingsBtn').onclick=()=>{closeAuthModal();openSyncModal()};
 $('#migrationUploadBtn').onclick=()=>accountFinishMigration('upload');$('#migrationDownloadBtn').onclick=()=>accountFinishMigration('download');$('#migrationMergeBtn').onclick=()=>accountFinishMigration('merge');
-$('#accountSyncNowBtn').onclick=()=>syncNow().catch(()=>{});$('#accountCreateInviteBtn').onclick=createAccountInvite;$('#accountLogoutBtn').onclick=authLogout;$('#adminRefreshBtn').onclick=renderAdminUsers;
+$('#accountCreateInviteBtn').onclick=createAccountInvite;$('#adminRefreshBtn').onclick=renderAdminUsers;
 $('#langBtn').onclick=()=>{lang=lang==='ar'?'en':'ar';localStorage.setItem('monthlyExpensesLang',lang);applyLang()};
-$('#settingsBtn').onclick=openSyncModal;$('#syncCloseBtn').onclick=closeSyncModal;$('#syncModal').onclick=e=>{if(e.target===$('#syncModal'))closeSyncModal()};$('#syncCreateBtn').onclick=syncCreateRoom;$('#syncJoinBtn').onclick=syncJoinRoom;$('#syncDisconnectBtn').onclick=syncDisconnect;$('#syncNowBtn').onclick=syncNow;$('#syncCopyBtn').onclick=async()=>{try{await navigator.clipboard.writeText(displaySyncCode(syncCode));toast(lang==='ar'?'تم نسخ الرمز':'Code copied')}catch(e){}};$('#syncJoinCode').oninput=e=>{const s=normalizeSyncCode(e.target.value);e.target.value=displaySyncCode(s)};
+$('#settingsBtn').onclick=openSyncModal;$('#syncCloseBtn').onclick=closeSyncModal;$('#syncModal').onclick=e=>{if(e.target===$('#syncModal'))closeSyncModal()};
 $('#changelogBtn').onclick=openChangelog;$('#changelogCloseBtn').onclick=closeChangelog;$('#changelogModal').onclick=e=>{if(e.target===$('#changelogModal'))closeChangelog()};document.addEventListener('keydown',e=>{if(e.key==='Escape'&&$('#changelogModal').classList.contains('open'))closeChangelog()});
 
 $$('.nav button').forEach(b=>b.onclick=()=>showPage(b.dataset.page));function showPage(id){if(id==='admin'&&authState.user?.role!=='super_admin')id='dashboard';if(id==='new'&&accountMode()&&accountAccess()==='viewer'){toast('هذا الجهاز بصلاحية عرض فقط');id='dashboard'}$$('.page').forEach(p=>p.classList.toggle('active',p.id===id));$$('.nav button').forEach(b=>b.classList.toggle('active',b.dataset.page===id));if(id==='dashboard')renderDashboard();if(id==='records'){renderRecords();reconcileLocalEvidenceFlags().catch(()=>{})}if(id==='admin')renderAdminUsers();window.scrollTo({top:0,behavior:'smooth'})}window.showPage=showPage;
@@ -1231,11 +1266,11 @@ function renderRecords(){
         </div>
         <div class="evidence-actions">
           ${r.hasEvidence
-            ?`<button class="btn btn-primary" onclick="viewReceiptEvidence('${r.id}')">${escapeHtml(t('viewEvidence'))}</button>
-              <button class="btn btn-soft" onclick="pickReceiptEvidence('${r.id}','gallery')">${escapeHtml(t('replaceEvidence'))}</button>
-              <button class="btn btn-danger" onclick="deleteReceiptEvidence('${r.id}')">${escapeHtml(t('deleteEvidence'))}</button>`
-            :`<button class="btn btn-primary" onclick="pickReceiptEvidence('${r.id}','camera')">📷 ${escapeHtml(t('takeEvidencePhoto'))}</button>
-              <button class="btn btn-soft" onclick="pickReceiptEvidence('${r.id}','gallery')">🖼️ ${escapeHtml(t('chooseEvidencePhoto'))}</button>`
+            ?`<button class="btn btn-primary evidence-view-btn" onclick="viewReceiptEvidence('${r.id}')">${escapeHtml(t('viewEvidence'))}</button>
+              <button class="btn btn-soft evidence-write-btn" onclick="pickReceiptEvidence('${r.id}','gallery')">${escapeHtml(t('replaceEvidence'))}</button>
+              <button class="btn btn-danger evidence-write-btn" onclick="deleteReceiptEvidence('${r.id}')">${escapeHtml(t('deleteEvidence'))}</button>`
+            :`<button class="btn btn-primary evidence-write-btn" onclick="pickReceiptEvidence('${r.id}','camera')">📷 ${escapeHtml(t('takeEvidencePhoto'))}</button>
+              <button class="btn btn-soft evidence-write-btn" onclick="pickReceiptEvidence('${r.id}','gallery')">🖼️ ${escapeHtml(t('chooseEvidencePhoto'))}</button>`
           }
         </div>
       </div>
@@ -1339,7 +1374,7 @@ clearForm(false);applyLang();const launchPage=new URLSearchParams(location.searc
 <script>
 (()=>{
   if(!('serviceWorker' in navigator))return;
-  const CURRENT_APP_VERSION='7.0.3';
+  const CURRENT_APP_VERSION='7.0.4';
   let waitingWorker=null,registration=null,acceptedUpdate=false,remoteVersion='';
   const banner=document.getElementById('appUpdateBanner'),title=document.getElementById('appUpdateTitle'),note=document.getElementById('appUpdateNote'),
         backup=document.getElementById('updateBackupBtn'),apply=document.getElementById('applyUpdateBtn');

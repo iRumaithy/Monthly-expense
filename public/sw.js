@@ -1,4 +1,4 @@
-const CACHE='monthly-expense-v7-0-3-pbkdf2-cloudflare-fix';
+const CACHE='monthly-expense-v7-0-4-account-live-sync';
 const SHELL_KEY='/__monthly_expense_app_shell__';
 const STATIC_CORE=['/manifest.webmanifest','/icon-192.png','/icon-512.png','/icon-maskable-512.png','/apple-touch-icon.png'];
 
