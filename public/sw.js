@@ -1,15 +1,77 @@
-const CACHE='monthly-expense-v7-0-5-button-stability';
+const CACHE='monthly-expense-v7-0-6-auto-vat';
 const SHELL_KEY='/__monthly_expense_app_shell__';
 const STATIC_CORE=['/manifest.webmanifest','/icon-192.png','/icon-512.png','/icon-maskable-512.png','/apple-touch-icon.png'];
+const PATCH_VERSION='7.0.6';
 
 function isSameOrigin(url){return url.origin===self.location.origin}
 
+function patchAppHtml(html){
+  if(!html||typeof html!=='string')return html;
+
+  html=html
+    .replace(/data-version="7\.0\.5"/g,'data-version="7.0.6"')
+    .replace("const APP_VERSION='7.0.5';","const APP_VERSION='7.0.6';")
+    .replace("const CURRENT_APP_VERSION='7.0.5';","const CURRENT_APP_VERSION='7.0.6';")
+    .replace("versionFooter:'الإصدار 7.0.5 — إصلاح استجابة الأزرار + مزامنة تلقائية'","versionFooter:'الإصدار 7.0.6 — حساب ضريبة 5% تلقائيًا من المبلغ قبل الضريبة'")
+    .replace("versionFooter:'Version 7.0.5 — button stability + automatic account sync'","versionFooter:'Version 7.0.6 — automatic 5% VAT from subtotal'")
+    .replace('الإصدار 7.0.5 — إصلاح استجابة الأزرار + مزامنة تلقائية','الإصدار 7.0.6 — حساب ضريبة 5% تلقائيًا من المبلغ قبل الضريبة')
+    .replace("if(v&&v!==CURRENT_APP_VERSION)show(null,v)","if(v&&String(v).localeCompare(String(CURRENT_APP_VERSION),undefined,{numeric:true,sensitivity:'base'})>0)show(null,v)")
+    .replace("'أدخل المبلغ قبل الضريبة والضريبة ليُحسب الإجمالي تلقائيًا.'","'أدخل المبلغ قبل الضريبة وستُحسب الضريبة 5% والإجمالي النهائي تلقائيًا.'")
+    .replace("'Enter the subtotal and tax to calculate the final total automatically.'","'Enter the subtotal and the 5% VAT and final total will be calculated automatically.'");
+
+  const changelogNeedle='const CHANGELOG_ENTRIES=[';
+  if(html.includes(changelogNeedle)&&!html.includes("{version:'7.0.6'")){
+    html=html.replace(changelogNeedle,`${changelogNeedle}\n  {version:'7.0.6',ar:'حساب ضريبة القيمة المضافة 5% تلقائيًا فور إدخال المبلغ قبل الضريبة، مع تحديث الإجمالي النهائي مباشرة وإبقاء الضريبة قابلة للتعديل اليدوي عند الحاجة.',en:'Automatically calculates 5% VAT as soon as the subtotal is entered, updates the final total immediately, and keeps the tax field manually editable when needed.'},`)
+  }
+
+  if(!html.includes('id="monthlyExpenseAutoVat706"')){
+    const autoVatScript=`
+<script id="monthlyExpenseAutoVat706">
+(()=>{
+  const VAT_RATE=0.05;
+  function bindAutoVat(){
+    const subtotal=document.getElementById('subtotal');
+    const tax=document.getElementById('tax');
+    const total=document.getElementById('finalTotal');
+    if(!subtotal||!tax||!total||subtotal.dataset.autoVat706==='1')return;
+    subtotal.dataset.autoVat706='1';
+    subtotal.addEventListener('input',()=>{
+      const raw=String(subtotal.value??'').trim();
+      if(raw===''){
+        tax.value='';
+        total.value='';
+        try{calcTotals()}catch(_){}
+        try{scheduleDraftSave()}catch(_){}
+        return;
+      }
+      const base=Math.max(0,Number(raw)||0);
+      const vat=Math.round((base*VAT_RATE+Number.EPSILON)*100)/100;
+      tax.value=vat.toFixed(2);
+      total.value=(Math.round(((base+vat)+Number.EPSILON)*100)/100).toFixed(2);
+      try{syncFinalTotalFromInputs()}catch(_){}
+      try{calcTotals()}catch(_){}
+      try{scheduleDraftSave()}catch(_){}
+    });
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',bindAutoVat,{once:true});else bindAutoVat();
+})();
+<\/script>`;
+    html=html.replace(/<\/body>/i,`${autoVatScript}\n</body>`)
+  }
+
+  return html
+}
+
 async function normalizedResponse(res){
-  // Safari rejects a Response returned by a Service Worker when that Response
-  // still carries redirect history (Response.redirected === true). Rebuild the
-  // response from bytes so the cached/navigation response is redirect-free.
-  const body=await res.arrayBuffer();
   const headers=new Headers(res.headers);
+  const contentType=headers.get('content-type')||'';
+  let body;
+  if(/text\/html/i.test(contentType)){
+    const html=await res.text();
+    body=new TextEncoder().encode(patchAppHtml(html));
+  }else{
+    body=await res.arrayBuffer();
+  }
   headers.delete('content-length');
   headers.delete('content-encoding');
   headers.delete('location');
@@ -18,8 +80,6 @@ async function normalizedResponse(res){
 }
 
 async function fetchFreshShell(){
-  // Fetch the canonical root rather than /index.html because some hosts redirect
-  // /index.html -> /. Any redirect that still occurs is removed by normalizedResponse.
   const res=await fetch(`/?__app_shell=${Date.now()}`,{cache:'no-store',redirect:'follow'});
   if(!res.ok)throw new Error(`Shell HTTP ${res.status}`);
   return normalizedResponse(res)
@@ -41,8 +101,6 @@ async function cacheStatic(cache){
 }
 
 self.addEventListener('install',e=>{
-  // Manual-update policy: do not activate automatically. The currently installed
-  // app remains in control until the user explicitly chooses "Update now".
   e.waitUntil((async()=>{
     const cache=await caches.open(CACHE);
     await Promise.allSettled([refreshShell(cache),cacheStatic(cache)])
@@ -58,7 +116,7 @@ self.addEventListener('message',e=>{
         const cache=await caches.open(CACHE);
         await refreshShell(cache);
         await cacheStatic(cache);
-        port?.postMessage({ok:true})
+        port?.postMessage({ok:true,version:PATCH_VERSION})
       }catch(err){port?.postMessage({ok:false,error:String(err?.message||err)})}
     })())
   }
@@ -74,15 +132,10 @@ self.addEventListener('activate',e=>{
 self.addEventListener('fetch',e=>{
   const r=e.request;if(r.method!=='GET')return;
   const u=new URL(r.url);
-
-  // Always-live routes.
   if(isSameOrigin(u)&&u.pathname.startsWith('/api/'))return;
-  // Update/version checks and emergency recovery must bypass the Service Worker.
   if(isSameOrigin(u)&&(u.searchParams.has('__update_check')||u.searchParams.has('__sw_recovery')))return;
-
   const cacheable=isSameOrigin(u);
   if(!cacheable)return;
-
   const isNav=r.mode==='navigate'||(isSameOrigin(u)&&(u.pathname==='/'||u.pathname==='/index.html'));
   if(isNav){
     e.respondWith((async()=>{
@@ -93,15 +146,12 @@ self.addEventListener('fetch',e=>{
         shell=await refreshShell(cache);
         return shell
       }catch(err){
-        // Last-resort network navigation; normalize it too so Safari never receives
-        // a redirect-bearing Response from this Service Worker.
         const res=await fetch(r,{cache:'no-store',redirect:'follow'});
         return normalizedResponse(res)
       }
     })());
     return
   }
-
   e.respondWith((async()=>{
     const cache=await caches.open(CACHE);
     const hit=await cache.match(r);if(hit)return hit;
