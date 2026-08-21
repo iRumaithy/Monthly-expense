@@ -2,7 +2,7 @@ import { DurableObject } from "cloudflare:workers";
 import core, { SyncRoom } from "./index.js";
 export { SyncRoom };
 
-const RELEASE_SYSTEM_VERSION = "7.1.0";
+const RELEASE_SYSTEM_VERSION = "7.1.0-loaderfix2";
 const CANDIDATE_VERSION = "7.1.0";
 const CANDIDATE_NOTES_AR = "نظام اعتماد التحديثات من المالك أولًا + إشعارات فورية داخل التطبيق وخارجه.";
 const CANDIDATE_NOTES_EN = "Owner-first release approval with instant in-app and system push notifications.";
@@ -109,12 +109,74 @@ function releaseAssetPath(version, file) {
   if (!version || version === LEGACY_STABLE_VERSION) return file === "sw.js" ? "/sw.js" : "/index.html";
   return `/releases/${encodeURIComponent(version)}/${file}`;
 }
+
+function patchManagedIndexHtml(html, version) {
+  if (!html || typeof html !== "string") return html;
+  const managed = String(version || CANDIDATE_VERSION);
+
+  html = html
+    .replace(/data-version=["']7\.0\.(5|6)["']/g, `data-version="${managed}"`)
+    .replace(/const APP_VERSION='7\.0\.(5|6)';/g, `const APP_VERSION='${managed}';`)
+    .replace(/const CURRENT_APP_VERSION='7\.0\.(5|6)';/g, `const CURRENT_APP_VERSION='${managed}';`)
+    .replace(/versionFooter:'الإصدار 7\.0\.(5|6)[^']*'/g,
+      `versionFooter:'الإصدار ${managed} — اعتماد التحديثات من المالك + إشعارات فورية'`)
+    .replace(/versionFooter:'Version 7\.0\.(5|6)[^']*'/g,
+      `versionFooter:'Version ${managed} — owner-approved releases + instant notifications'`)
+    .replace(/الإصدار 7\.0\.(5|6)[^<\n]*/g,
+      `الإصدار ${managed} — اعتماد التحديثات من المالك + إشعارات فورية`)
+    .replace(
+      "if(v&&v!==CURRENT_APP_VERSION)show(null,v)",
+      "if(v&&String(v).localeCompare(String(CURRENT_APP_VERSION),undefined,{numeric:true,sensitivity:'base'})>0)show(null,v)"
+    );
+
+  const changelogNeedle = 'const CHANGELOG_ENTRIES=[';
+  if (html.includes(changelogNeedle) && !html.includes(`{version:'${managed}'`)) {
+    html = html.replace(
+      changelogNeedle,
+      `${changelogNeedle}\n  {version:'${managed}',ar:'إضافة نظام إصدار مرحلي: التحديث يصل أولًا لمالك الصفحة للتجربة، ولا يصل للمستخدمين إلا بعد الاعتماد. بعد الاعتماد يُرسل إشعار فوري داخل التطبيق وعبر إشعارات النظام للأجهزة المشتركة، مع الإبقاء على النسخة الاحتياطية والتحديث اليدوي.',en:'Added staged releases: the owner receives and tests each candidate first; users receive it only after approval. Approval triggers immediate in-app and system push notifications for subscribed devices while preserving backup-first manual updating.'},`
+    );
+  }
+
+  // Inject the release manager directly into the real application document.
+  // This deliberately avoids the old client-side loader entirely, so a stale
+  // Service Worker can never make 7.1.0 recursively load itself again.
+  if (!html.includes('window.__APP_RELEASE_CHANNEL__')) {
+    const scripts = `<script>window.__APP_RELEASE_VERSION__='${managed}';window.__APP_RELEASE_CHANNEL__='managed';</script><script src="/release-manager.js?v=${managed}"></script>`;
+    const bodyClose = html.toLowerCase().lastIndexOf('</body>');
+    html = bodyClose >= 0 ? `${html.slice(0, bodyClose)}${scripts}\n${html.slice(bodyClose)}` : `${html}\n${scripts}`;
+  }
+  return html;
+}
+
+async function rawBaseAsset(request, env, file) {
+  const raw = new URL(file === "sw.js" ? "/sw.js" : "/index.html", request.url);
+  raw.search = "";
+  return env.ASSETS.fetch(new Request(raw, { method: "GET", headers: request.headers }));
+}
+
+async function serveManagedIndex(request, env, version) {
+  const base = await rawBaseAsset(request, env, "index.html");
+  if (!base.ok) return base;
+  const html = await base.text();
+  const headers = new Headers(base.headers);
+  headers.set("content-type", "text/html; charset=utf-8");
+  headers.set("cache-control", "no-store, no-cache, must-revalidate");
+  headers.delete("content-length");
+  headers.delete("content-encoding");
+  headers.delete("etag");
+  return new Response(patchManagedIndexHtml(html, version), {
+    status: 200,
+    headers,
+  });
+}
+
 async function serveReleaseAsset(request, env, file) {
   const url = new URL(request.url);
+
+  // Emergency/raw mode always returns the real base asset without release gating.
+  // This remains available for recovery but is no longer needed by the 7.1 loader.
   if (url.searchParams.has("__raw_base")) {
-    const raw = new URL(file === "sw.js" ? "/sw.js" : "/index.html", url);
-    raw.search = "";
-    return env.ASSETS.fetch(new Request(raw, { method: "GET", headers: request.headers }));
+    return rawBaseAsset(request, env, file);
   }
 
   const state = await currentReleaseState(request, env);
@@ -126,15 +188,19 @@ async function serveReleaseAsset(request, env, file) {
   if (owner && state.candidateVersion && state.status === "owner_testing") version = state.candidateVersion;
   if (explicitCandidate && owner && explicitCandidate === state.candidateVersion) version = explicitCandidate;
 
+  // IMPORTANT: index.html for a managed release is generated server-side from
+  // the proven base app. We never serve the bootstrap/loader HTML anymore.
+  if (file === "index.html" && version && version !== LEGACY_STABLE_VERSION) {
+    return serveManagedIndex(request, env, version);
+  }
+
   const assetUrl = new URL(releaseAssetPath(version, file), url);
   assetUrl.search = "";
   const response = await env.ASSETS.fetch(new Request(assetUrl, { method: "GET", headers: request.headers }));
   if (response.ok) return response;
 
   // Safety fallback: never break the app because a staged asset is missing.
-  const fallback = new URL(file === "sw.js" ? "/sw.js" : "/index.html", url);
-  fallback.search = "";
-  return env.ASSETS.fetch(new Request(fallback, { method: "GET", headers: request.headers }));
+  return rawBaseAsset(request, env, file);
 }
 async function handleUpdateApi(request, env, url) {
   const p = url.pathname;
