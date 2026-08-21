@@ -1,1 +1,47 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<meta name="theme-color" content="#17324d" />
+<title>مصاريف الشهر — 7.1.0</title>
+<style>
+  html,body{margin:0;min-height:100%;background:#f4eadb;color:#17324d;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Tahoma,Arial,sans-serif}
+  .boot{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;text-align:center}.card{background:#fffaf2;border:1px solid #dfd2bf;border-radius:22px;padding:22px;max-width:440px;box-shadow:0 16px 45px rgba(35,50,68,.1)}.spin{width:34px;height:34px;border-radius:50%;border:4px solid #dfd2bf;border-top-color:#17324d;margin:0 auto 14px;animation:s .8s linear infinite}@keyframes s{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<!-- This marker is intentionally present so legacy v7.0.x clients can detect the owner-only candidate after the server allows it. -->
+<div id="appVersionFooter" data-version="7.1.0" hidden></div>
+<div class="boot"><div class="card"><div class="spin"></div><strong>جارٍ تشغيل الإصدار 7.1.0</strong><p>يتم تحميل النسخة الأساسية الآمنة وتطبيق نظام اعتماد التحديثات.</p></div></div>
+<script>
+(async()=>{
+  try{
+    const r=await fetch(`/index.html?__raw_base=1&v=${Date.now()}`,{cache:'no-store',credentials:'include'});
+    if(!r.ok)throw new Error(`HTTP ${r.status}`);
+    let html=await r.text();
 
+    html=html
+      .replace(/data-version=["']7\.0\.5["']/g,'data-version="7.1.0"')
+      .replace("const APP_VERSION='7.0.5';","const APP_VERSION='7.1.0';")
+      .replace("const CURRENT_APP_VERSION='7.0.5';","const CURRENT_APP_VERSION='7.1.0';")
+      .replace("versionFooter:'الإصدار 7.0.5 — إصلاح استجابة الأزرار + مزامنة تلقائية'","versionFooter:'الإصدار 7.1.0 — اعتماد التحديثات من المالك + إشعارات فورية'")
+      .replace("versionFooter:'Version 7.0.5 — button stability + automatic account sync'","versionFooter:'Version 7.1.0 — owner-approved releases + instant notifications'")
+      .replace('الإصدار 7.0.5 — إصلاح استجابة الأزرار + مزامنة تلقائية','الإصدار 7.1.0 — اعتماد التحديثات من المالك + إشعارات فورية')
+      .replace("if(v&&v!==CURRENT_APP_VERSION)show(null,v)","if(v&&String(v).localeCompare(String(CURRENT_APP_VERSION),undefined,{numeric:true,sensitivity:'base'})>0)show(null,v)");
+
+    const changelogNeedle='const CHANGELOG_ENTRIES=[';
+    if(html.includes(changelogNeedle)&&!html.includes("{version:'7.1.0'")){
+      html=html.replace(changelogNeedle,`${changelogNeedle}\n  {version:'7.1.0',ar:'إضافة نظام إصدار مرحلي: التحديث يصل أولًا لمالك الصفحة للتجربة، ولا يصل للمستخدمين إلا بعد الاعتماد. بعد الاعتماد يُرسل إشعار فوري داخل التطبيق وعبر إشعارات النظام للأجهزة المشتركة، مع الإبقاء على النسخة الاحتياطية والتحديث اليدوي.',en:'Added staged releases: the owner receives and tests each candidate first; users receive it only after approval. Approval triggers immediate in-app and system push notifications for subscribed devices while preserving backup-first manual updating.'},`)
+    }
+
+    const releaseScripts=`<script>window.__APP_RELEASE_VERSION__='7.1.0';window.__APP_RELEASE_CHANNEL__='managed';<\/script><script src="/release-manager.js?v=7.1.0"><\/script>`;
+    html=html.replace(/<\/body>/i,`${releaseScripts}\n</body>`);
+    document.open();document.write(html);document.close();
+  }catch(e){
+    document.querySelector('.card').innerHTML=`<strong>تعذر تشغيل الإصدار</strong><p>${String(e.message||e)}</p><button onclick="location.reload()" style="border:0;background:#17324d;color:white;border-radius:12px;padding:10px 14px;font-weight:800">إعادة المحاولة</button>`
+  }
+})();
+</script>
+</body>
+</html>
