@@ -2,10 +2,10 @@ import { DurableObject } from "cloudflare:workers";
 import core, { SyncRoom } from "./index.js";
 export { SyncRoom };
 
-const RELEASE_SYSTEM_VERSION = "7.1.0-loaderfix2";
-const CANDIDATE_VERSION = "7.1.0";
-const CANDIDATE_NOTES_AR = "نظام اعتماد التحديثات من المالك أولًا + إشعارات فورية داخل التطبيق وخارجه.";
-const CANDIDATE_NOTES_EN = "Owner-first release approval with instant in-app and system push notifications.";
+const RELEASE_SYSTEM_VERSION = "7.1.1";
+const CANDIDATE_VERSION = "7.1.1";
+const CANDIDATE_NOTES_AR = "تنظيم الإعدادات ونقل اعتماد التحديث إلى إدارة المستخدمين، مع الإبقاء على الإشعارات الفورية.";
+const CANDIDATE_NOTES_EN = "Settings reorganization and owner approval inside User Management, with instant notifications preserved.";
 const LEGACY_STABLE_VERSION = "7.0.6";
 const APP_HEADER = "x-monthly-expense-app";
 
@@ -85,7 +85,8 @@ async function assetExists(request, env, version, file) {
 async function ensureDefaultCandidate(request, env) {
   const { body } = await hubJson(env, "/state");
   const state = body?.state || {};
-  if (state.stableVersion === CANDIDATE_VERSION || state.candidateVersion) return state;
+  if (versionCmp(state.stableVersion || LEGACY_STABLE_VERSION, CANDIDATE_VERSION) >= 0) return state;
+  if (state.candidateVersion && versionCmp(state.candidateVersion, CANDIDATE_VERSION) >= 0) return state;
   if (!(await assetExists(request, env, CANDIDATE_VERSION, "index.html"))) return state;
   if (!(await assetExists(request, env, CANDIDATE_VERSION, "sw.js"))) return state;
   const staged = await hubJson(env, "/stage", {
@@ -155,19 +156,17 @@ async function rawBaseAsset(request, env, file) {
 }
 
 async function serveManagedIndex(request, env, version) {
-  const base = await rawBaseAsset(request, env, "index.html");
-  if (!base.ok) return base;
-  const html = await base.text();
-  const headers = new Headers(base.headers);
+  const assetUrl = new URL(`/releases/${encodeURIComponent(version)}/index.html`, request.url);
+  assetUrl.search = "";
+  const response = await env.ASSETS.fetch(new Request(assetUrl, { method: "GET", headers: request.headers }));
+  if (!response.ok) return rawBaseAsset(request, env, "index.html");
+  const headers = new Headers(response.headers);
   headers.set("content-type", "text/html; charset=utf-8");
   headers.set("cache-control", "no-store, no-cache, must-revalidate");
   headers.delete("content-length");
   headers.delete("content-encoding");
   headers.delete("etag");
-  return new Response(patchManagedIndexHtml(html, version), {
-    status: 200,
-    headers,
-  });
+  return new Response(await response.arrayBuffer(), { status: 200, headers });
 }
 
 async function serveReleaseAsset(request, env, file) {
