@@ -55,7 +55,7 @@
     const el=document.createElement('div');el.className='release-gate-banner user';
     el.innerHTML=`<div class="release-gate-copy"><strong>⬆️ تحديث جديد متوفر — الإصدار ${escapeHtml(version)}</strong><small>${escapeHtml(notes||'تم اعتماد هذا الإصدار من مالك التطبيق. يمكنك أخذ نسخة احتياطية ثم التحديث.')}</small></div><div class="release-gate-actions"><button class="release-soft" data-act="backup">نسخة احتياطية</button><button class="release-primary" data-act="update">تحديث الآن</button></div>`;
     document.body.prepend(el);updateBanner=el;
-    el.querySelector('[data-act="backup"]').onclick=()=>{const b=document.getElementById('backupBtn');if(b)b.click();else toast('استخدم زر النسخة الاحتياطية من أعلى الصفحة.')};
+    el.querySelector('[data-act="backup"]').onclick=()=>{const b=document.getElementById('exportBtn')||document.getElementById('backupBtn');if(b)b.click();else toast('استخدم زر النسخة الاحتياطية من أعلى الصفحة.')};
     el.querySelector('[data-act="update"]').onclick=()=>applyUpdate(version,el.querySelector('[data-act="update"]'))
   }
   function escapeHtml(v){return String(v??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))}
