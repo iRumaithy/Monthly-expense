@@ -2,10 +2,10 @@ import { DurableObject } from "cloudflare:workers";
 import core, { SyncRoom } from "./index.js";
 export { SyncRoom };
 
-const RELEASE_SYSTEM_VERSION = "7.1.1";
-const CANDIDATE_VERSION = "7.1.1";
-const CANDIDATE_NOTES_AR = "تنظيم الإعدادات ونقل اعتماد التحديث إلى إدارة المستخدمين، مع الإبقاء على الإشعارات الفورية.";
-const CANDIDATE_NOTES_EN = "Settings reorganization and owner approval inside User Management, with instant notifications preserved.";
+const RELEASE_SYSTEM_VERSION = "7.1.2";
+const CANDIDATE_VERSION = "7.1.2";
+const CANDIDATE_NOTES_AR = "إصلاح تكرار تنبيه التحديث وإظهار لوحة اعتماد المالك بشكل موثوق داخل إدارة المستخدمين.";
+const CANDIDATE_NOTES_EN = "Fix repeated update prompts and reliably show the owner approval panel inside User Management.";
 const LEGACY_STABLE_VERSION = "7.0.6";
 const APP_HEADER = "x-monthly-expense-app";
 
@@ -225,6 +225,25 @@ async function handleUpdateApi(request, env, url) {
       stagedAt: owner ? (state.stagedAt || null) : null,
       pushEnabled: true,
       lastPushStats: owner ? (state.lastPushStats || null) : null,
+    });
+  }
+
+  if (p === "/api/update/owner-status" && request.method === "GET") {
+    if (!(await isSuperAdmin(request, env))) return json({ ok: false, error: "FORBIDDEN" }, 403);
+    const fresh = await currentReleaseState(request, env);
+    return json({
+      ok: true,
+      systemVersion: RELEASE_SYSTEM_VERSION,
+      currentVersion: url.searchParams.get("current") || "",
+      state: {
+        stableVersion: fresh.stableVersion || LEGACY_STABLE_VERSION,
+        candidateVersion: fresh.candidateVersion || null,
+        candidateNotes: fresh.candidateNotes || null,
+        status: fresh.status || "stable",
+        stagedAt: fresh.stagedAt || null,
+        approvedAt: fresh.approvedAt || null,
+        lastPushStats: fresh.lastPushStats || null,
+      },
     });
   }
 
